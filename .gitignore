@@ -1,5 +1,10 @@
 /target/
 /dist/
+/coverage/
+/cov_output/
+/*.gcda
+/*.gcno
+/*.gcov
 /.idea/
 /.vscode/
 *.log

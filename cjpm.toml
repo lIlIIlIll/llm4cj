@@ -8,3 +8,6 @@ output-type = "static"
 
 [dependencies]
 yjson = { git = "https://github.com/lIlIIlIll/yjson.git", branch = "main", output-type = "static" }
+
+[test-dependencies]
+yjson = { git = "https://github.com/lIlIIlIll/yjson.git", branch = "main", output-type = "static" }
