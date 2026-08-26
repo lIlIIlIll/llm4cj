@@ -1,7 +1,7 @@
 # llm4cj
 
 [![Tests](https://github.com/lIlIIlIll/llm4cj/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lIlIIlIll/llm4cj/actions/workflows/ci.yml)
-[![Coverage](https://codecov.io/gh/lIlIIlIll/llm4cj/branch/main/graph/badge.svg)](https://codecov.io/gh/lIlIIlIll/llm4cj)
+[![Coverage](https://img.shields.io/badge/coverage-58.9%25-brightgreen)](https://github.com/lIlIIlIll/llm4cj/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/lIlIIlIll/llm4cj)](https://github.com/lIlIIlIll/llm4cj/releases)
 [![Cangjie](https://img.shields.io/badge/Cangjie-%3E%3D%201.1.0-f25c2a)](https://cangjie-lang.cn/)
 [![License](https://img.shields.io/github/license/lIlIIlIll/llm4cj)](LICENSE)
