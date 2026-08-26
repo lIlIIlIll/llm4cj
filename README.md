@@ -1,29 +1,44 @@
 # llm4cj
 
-`llm4cj` is a provider-neutral Cangjie package for translating typed LLM
-requests, replies, and streaming events to and from provider wire formats. It
-also provides incremental SSE framing, bounded response-body reads, and
-structured transport errors.
+`llm4cj` converts provider-neutral Cangjie values to and from LLM provider wire
+formats. Use it when an application must support more than one provider without
+putting provider JSON throughout the agent runtime.
 
-The package supports OpenAI Responses, OpenAI-compatible Chat Completions,
-Anthropic Messages, and the corresponding DeepSeek request dialects. It does
-not own credentials, HTTP client configuration, retry policy, model routing,
-agent state, or tool execution.
+The package supports:
 
-## Dependency
+- OpenAI Responses;
+- OpenAI-compatible Chat Completions;
+- Anthropic Messages;
+- DeepSeek Chat Completions and Messages request dialects;
+- incremental Server-Sent Events (SSE) framing;
+- bounded HTTP response-body reads; and
+- structured transport and provider errors.
 
-The package intentionally follows `yjson`'s `main` branch:
+`llm4cj` does not send HTTP requests. Your application still owns credentials,
+HTTP client configuration, retry decisions, model routing, agent state, and tool
+execution. See [Design boundaries](docs/design-boundaries.md) before integrating
+the package into an agent runtime.
+
+## Add the dependency
+
+`llm4cj` is distributed as a Git dependency. Add it to your application's
+`cjpm.toml`:
 
 ```toml
 [dependencies]
 llm4cj = { git = "https://github.com/lIlIIlIll/llm4cj.git", branch = "main" }
-yjson = { git = "https://github.com/lIlIIlIll/yjson.git", branch = "main" }
 ```
 
-Commit `cjpm.lock` in applications that need a record of the exact dependency
-revisions selected by cjpm.
+The package currently follows `yjson` from its `main` branch. Commit your
+application's `cjpm.lock` to record the exact `llm4cj` and `yjson` revisions.
 
-## Example
+The manifest requires Cangjie `1.1.0`. Development and release checks use the
+latest complete Cangjie nightly SDK.
+
+## Encode a request
+
+Create one provider-neutral request, then select the provider protocol at the
+encoding boundary:
 
 ```cangjie
 import llm4cj.*
@@ -35,36 +50,37 @@ let request = LlmWireRequest(
         [LlmWireBlock(LlmWireBlockKind.Text, text: "Hello")]
     )]
 )
-let payload = encodeResponsesWireRequest(request)
+
+let payload = encodeLlmWireRequest(LlmWireProtocol.Responses, request)
 ```
 
-Arbitrary JSON fields such as tool arguments and schemas use
-`yjson.JsonNode`. Provider input rejects duplicate object keys, preserves JSON
-number literals, and enforces explicit depth and size limits.
+`payload` is a JSON request body for the Responses API and contains
+`"model":"model-name"`. The package does not add an endpoint or authorization
+header.
 
-## Development
+Follow [Get started](docs/getting-started.md) for a complete consumer that you
+can build and run.
 
-Prepare a Cangjie nightly environment, then run:
+## Choose the next guide
 
-```sh
-scripts/check.sh
-```
+- [Documentation index](docs/README.md): find a guide by task.
+- [Provider codecs](docs/provider-codecs.md): choose a protocol and valid
+  thinking control.
+- [Streaming and transport](docs/streaming-and-transport.md): process bounded
+  bodies and SSE data.
+- [API reference](docs/api-reference.md): look up public types and functions.
+- [Contributing](CONTRIBUTING.md): prepare and validate a change.
 
-The repository contains a manual-only GitHub Actions workflow. It is not
-triggered by pushes, pull requests, tags, schedules, or releases.
+## Release model
 
-## Releases
+Releases use semantic versions and `v`-prefixed Git tags. During the `0.x`
+series, fixes increment the patch version. New or breaking public API work
+increments the minor version.
 
-Releases use semantic versions and `v`-prefixed Git tags. During the 0.x
-series, fixes increment the patch version and new or breaking public API work
-increments the minor version. See [CHANGELOG.md](CHANGELOG.md) and
-[CONTRIBUTING.md](CONTRIBUTING.md).
-
-This is a Git-only package: releases publish the tag and verification evidence,
-while consumers resolve `main` and commit the resulting `cjpm.lock`. A `.cjp`
-bundle is not published because cjpm does not bundle packages with Git
-dependencies.
+This is a Git-only package. A release publishes a tag and verification evidence,
+not a `.cjp` bundle, because cjpm does not bundle packages that have Git
+dependencies. See [CHANGELOG.md](CHANGELOG.md) for released changes.
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+`llm4cj` is licensed under the [Apache License 2.0](LICENSE).
