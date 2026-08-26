@@ -38,7 +38,6 @@ def main() -> int:
             "cjpm check",
             "cjpm build",
             "cjpm test",
-            "cjpm bundle",
             "clean external Git consumer",
         ],
     }

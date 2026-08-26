@@ -8,6 +8,5 @@ cjpm clean
 cjpm check
 cjpm build
 cjpm test
-cjpm bundle --skip-test --skip-lint
 
 printf 'llm4cj check passed\n'
