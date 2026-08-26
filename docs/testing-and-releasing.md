@@ -14,9 +14,9 @@ scripts/check.sh
 scripts/coverage.sh
 ```
 
-脚本用 `cjpm test --coverage` 生成数据，用 `cjcov` 生成 HTML/JSON/XML 与实验性 branch metrics，再转换为 `coverage/lcov.info`。当前冻结的生产源码 line baseline 是 58.9%，容忍 0.5 个百分点回退；branch coverage 首次记录为 34.3%，因 `cjcov --branches` 仍是实验能力，暂不设硬门禁。
+脚本用 `cjpm test --coverage` 生成数据，用 `cjcov` 生成 HTML/JSON/XML，再把 line 与 branch 数据转换为 `coverage/lcov.info`。CI 强制项目 line coverage 不低于 80%、branch coverage 不低于 70%；pull request 还要求新增生产代码的 line coverage 不低于 90%、branch coverage 不低于 80%。没有新增可执行行或分支时，相应 patch 指标按 100% 通过。
 
-GitHub Actions 在发往 `main` 的 pull request、`main` push 和手动触发时运行。Coverage job 执行同一套 `cjcov` 门禁，并通过 GitHub OIDC 将唯一的 `coverage/lcov.info` 上传到 Codecov；README badge 动态展示 `main` 的 line coverage。
+GitHub Actions 在发往 `main` 的 pull request、`main` push 和手动触发时运行。Coverage job 执行同一套 `cjcov` 门禁，并通过 GitHub OIDC 将唯一的 `coverage/lcov.info` 上传到 Codecov；Codecov 独立强制 project line 80% 与 patch line 90%，README badge 动态展示 `main` 的 line coverage。
 
 ## External consumer
 
