@@ -1,0 +1,10 @@
+[package]
+cjc-version = "1.1.0"
+name = "llm4cj_external_consumer"
+organization = ""
+description = "Clean Git dependency consumer for llm4cj release validation"
+version = "0.1.0"
+output-type = "executable"
+
+[dependencies]
+llm4cj = { git = "https://github.com/lIlIIlIll/llm4cj.git", branch = "main" }
