@@ -39,12 +39,6 @@ cp -a support/external_consumer/. "$consumer_root/"
   fi
 )
 
-bundle="target/llm4cj-${version}.cjp"
-if [[ ! -f "$bundle" ]]; then
-  printf 'bundle not found: %s\n' "$bundle" >&2
-  exit 1
-fi
-
 yjson_commit=$(grep -E '^ *yjson = ' cjpm.lock | grep -Eo 'commitId = "[0-9a-f]{40}"' | grep -Eo '[0-9a-f]{40}')
 if [[ ! "$yjson_commit" =~ ^[0-9a-f]{40}$ ]]; then
   printf 'cannot resolve yjson commit from cjpm.lock\n' >&2
@@ -52,12 +46,6 @@ if [[ ! "$yjson_commit" =~ ^[0-9a-f]{40}$ ]]; then
 fi
 
 mkdir -p dist
-cp -f "$bundle" "dist/llm4cj-${version}.cjp"
-(
-  cd dist
-  sha256sum "llm4cj-${version}.cjp" > SHA256SUMS
-)
-
 python3 scripts/release_manifest.py \
   --output dist/release-manifest.json \
   --version "$version" \
@@ -65,5 +53,10 @@ python3 scripts/release_manifest.py \
   --yjson-commit "$yjson_commit" \
   --cjc-version "$(cjc -v 2>&1 | head -n 1)" \
   --cjpm-version "$(cjpm --version 2>&1 | head -n 1)"
+
+(
+  cd dist
+  sha256sum release-manifest.json > SHA256SUMS
+)
 
 printf 'llm4cj release gate passed: %s\n' "$version"

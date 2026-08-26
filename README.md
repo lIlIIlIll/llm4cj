@@ -60,6 +60,11 @@ series, fixes increment the patch version and new or breaking public API work
 increments the minor version. See [CHANGELOG.md](CHANGELOG.md) and
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
+This is a Git-only package: releases publish the tag and verification evidence,
+while consumers resolve `main` and commit the resulting `cjpm.lock`. A `.cjp`
+bundle is not published because cjpm does not bundle packages with Git
+dependencies.
+
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE).
