@@ -42,9 +42,17 @@ yjson = {{ git = "https://github.com/lIlIIlIll/yjson.git", branch = "main", outp
         subprocess.run(["cjpm", "check"], cwd=work, check=True)
         if index == 0:
             completed = subprocess.run(
-                ["cjpm", "run"], cwd=work, check=True, text=True, capture_output=True
+                ["cjpm", "run"],
+                cwd=work,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
             )
+            if completed.returncode != 0:
+                print(completed.stdout, end="")
+            completed.check_returncode()
             if "你好，仓颉！" not in completed.stdout.splitlines():
                 raise SystemExit("canonical Quick Start produced unexpected output")
+            print("canonical Quick Start output: 你好，仓颉！")
 
 print(f"documentation examples checked: {len(programs)}")
