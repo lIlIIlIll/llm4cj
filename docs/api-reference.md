@@ -1,158 +1,76 @@
 # API reference
 
-This page lists the public `llm4cj` surface. Optional constructor arguments show
-their defaults.
+本页覆盖 `llm4cj` 当前全部 public declaration。`JsonNode` 来自 `yjson`。
 
-## Protocol and request types
+## Wire model
 
-### `LlmWireProtocol`
+### Enums
 
-`Responses`, `ChatCompletions`, or `Messages`.
+- `LlmWireProtocol`: `Responses | ChatCompletions | Messages`。
+- `LlmWireRole`: `User | Assistant`。
+- `LlmWireBlockKind`: `Text | Image | Reasoning | ToolCall | ToolResult | Refusal | Error | Unknown`。
+- `LlmWireImageSourceKind`: `Url | Base64`。
+- `LlmWireImageDetail`: `Auto | Low | High`。
+- `LlmWireThinkingLevel`: `Off | Minimal | Low | Medium | High | XHigh | Max`。
+- `LlmWireThinkingControl`: `Disabled | Toggle(Bool) | Effort(LlmWireThinkingLevel) | Budget(Int64) | Adaptive(?LlmWireThinkingLevel)`。
+- `LlmWireCachePolicy`: `Default | StablePrefix`。
+- `LlmWireToolChoice`: `Auto | NoTools | Required`。
+- `LlmWireEventKind`: `StreamStarted | ContentBlockStarted | TextDelta | ReasoningDelta | ToolCallStarted | ToolArgumentsDelta | ContentBlockCompleted | MessageTerminalObserved | UsageDelta | UsageCompleted | ProviderError | StreamTransportClosed | Completed`。
 
-### `LlmWireRequest`
+### Data classes
 
-```cangjie
-LlmWireRequest(
-    model: String,
-    messages: Array<LlmWireMessage>,
-    system!: String = "",
-    tools!: Array<LlmWireTool> = [],
-    thinking!: LlmWireThinkingControl =
-        LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Medium),
-    maxOutputTokens!: Int64 = 2000,
-    streaming!: Bool = false,
-    parallelToolCalls!: Bool = true,
-    serviceTier!: String = "",
-    cachePolicy!: LlmWireCachePolicy = LlmWireCachePolicy.Default,
-    cacheKey!: String = "",
-    toolChoice!: LlmWireToolChoice = LlmWireToolChoice.Auto,
-    structuredOutput!: ?LlmWireStructuredOutput = None
-)
+- `LlmWireImage(sourceKind, data, mediaType = "", detail = Auto)`: fields `sourceKind`, `data`, `mediaType`, `detail`。
+- `LlmWireOpaqueState(protocol, payload, itemId = "")`: fields `protocol`, `payload`, `itemId`。
+- `LlmWireBlock(kind, text = "", callId = "", name = "", arguments = empty object, isError = false, image = None, opaqueState = None)`: fields match parameters。
+- `LlmWireMessage(role, blocks)`: one conversation turn。
+- `LlmWireTool(name, description, inputSchema)`: tool schema declaration。
+- `LlmWireStructuredOutput(name, schema, description = "", strict = true)`: structured output declaration。
+- `LlmWireRequest(model, messages, system = "", tools = [], thinking = Effort(Medium), maxOutputTokens = 2000, streaming = false, parallelToolCalls = true, serviceTier = "", cachePolicy = Default, cacheKey = "", toolChoice = Auto, structuredOutput = None)`: unified request。
+- `LlmWireUsage(inputTokens = 0, outputTokens = 0, reasoningTokens = 0, cacheReadTokens = 0, cacheWriteTokens = 0)`: token counters。
+- `LlmWireReply(blocks, stopReason = "", usage = LlmWireUsage(), responseId = "")`: decoded terminal reply。
+- `LlmWireEvent(kind, text = "", callId = "", inputTokens = 0, outputTokens = 0, blockIndex = -1, blockKind = "", terminalEventKind = "", rawStopReason = "")`: incremental fact。
+- `LlmWireStreamResult(terminalSource, events)`: validated terminal source plus ordered events。
+
+## Codec functions
+
+- `encodeLlmWireRequest(protocol, request): String`: protocol-dispatched encoder。
+- `encodeResponsesWireRequest(request): String`。
+- `encodeChatCompletionsWireRequest(request): String`。
+- `encodeMessagesWireRequest(request): String`。
+- `encodeDeepSeekChatWireRequest(request): String`。
+- `encodeDeepSeekMessagesWireRequest(request): String`。
+- `decodeLlmWireReply(protocol, source, provider = ""): LlmWireReply`: protocol-dispatched reply decoder。
+- `decodeResponsesWireReply(source, provider = ""): LlmWireReply`。
+- `decodeChatCompletionsWireReply(source, provider = ""): LlmWireReply`。
+- `decodeMessagesWireReply(source, provider = ""): LlmWireReply`。
+- `decodeLlmWireEventFrame(protocol, payload): Array<LlmWireEvent>`: stateless single-frame projection；空字符串和 `[DONE]` 返回空数组。
+- `decodeLlmWireEventStream(protocol, source, provider = ""): LlmWireStreamResult`: stateful complete-stream decode。
+
+## Transport
+
+- `LlmTransportErrorKind`: `InvalidWire | Http | BodyLimit | Sse | Cancelled | Deadline | Transport`。
+- `LlmTransportError(kind, code, message, retryable = false, httpStatus = None, retryAfterMillis = 0, provider = "", providerErrorCode = "", providerErrorType = "")`: 继承 `Exception`，同名参数均为 public field。
+- `LlmResult<T>`: `Ok(T) | Err(LlmTransportError)`；`isOk()` 判断 variant。
+- `SseEvent(event, data, id, retryMillis)`: decoded SSE fields。
+- `SseDecoder(maxEventBytes = 8388608, maxBufferedBytes = 16777216)`: limits 非法时抛 `IllegalArgumentException`；`push(chunk)` 与 `finish()` 返回 `LlmResult<Array<SseEvent>>`。
+- `parseRetryAfterMillis(value): Int64`: integer seconds 转 milliseconds。
+- `extractRetryAfterMillis(headers): Int64`: case-insensitive 提取最大 `Retry-After`。
+- `sseDataLine(line): ?String`: 提取 `data:` 后内容并移除一个可选空格。
+- `readLlmHttpBody(stream, declaredSize, maxBytes): LlmResult<Array<Byte>>`: 有界读取 `InputStream`。
+
+## 完整程序
+
+```cj
+package api_reference_demo
+
+import llm4cj.*
+
+main(): Int64 {
+    let decoder = SseDecoder(maxEventBytes: 1024, maxBufferedBytes: 2048)
+    match (decoder.push("event: token\ndata: hello\n\n")) {
+        case LlmResult.Ok(events) => println(events[0].data)
+        case LlmResult.Err(error) => println(error.code)
+    }
+    0
+}
 ```
-
-`messages` contains `LlmWireMessage` values. Each message has a `User` or
-`Assistant` role and an array of `LlmWireBlock` values.
-
-### `LlmWireBlock`
-
-```cangjie
-LlmWireBlock(
-    kind: LlmWireBlockKind,
-    text!: String = "",
-    callId!: String = "",
-    name!: String = "",
-    arguments!: JsonNode = wireJsonObject([]),
-    isError!: Bool = false,
-    image!: ?LlmWireImage = None,
-    opaqueState!: ?LlmWireOpaqueState = None
-)
-```
-
-Block kinds are `Text`, `Image`, `Reasoning`, `ToolCall`, `ToolResult`, `Refusal`,
-`Error`, and `Unknown`. `arguments` defaults to an empty JSON object.
-
-### Supporting request types
-
-- `LlmWireImage` stores a URL or Base64 image, media type, and image detail.
-- `LlmWireTool` stores a name, description, and `JsonNode` input schema.
-- `LlmWireStructuredOutput` stores a schema name, `JsonNode` schema, optional
-  description, and `strict` flag.
-- `LlmWireOpaqueState` stores provider data that must survive a decode and later
-  encode cycle.
-- `LlmWireThinkingControl` provides `Disabled`, `Toggle`, `Effort`, `Budget`, and
-  `Adaptive` variants. See [Provider codecs](provider-codecs.md) for valid
-  combinations.
-- `LlmWireCachePolicy` is `Default` or `StablePrefix`.
-- `LlmWireToolChoice` is `Auto`, `NoTools`, or `Required`.
-
-## Request encoders
-
-```cangjie
-encodeLlmWireRequest(protocol: LlmWireProtocol, request: LlmWireRequest): String
-encodeResponsesWireRequest(request: LlmWireRequest): String
-encodeChatCompletionsWireRequest(request: LlmWireRequest): String
-encodeMessagesWireRequest(request: LlmWireRequest): String
-encodeDeepSeekChatWireRequest(request: LlmWireRequest): String
-encodeDeepSeekMessagesWireRequest(request: LlmWireRequest): String
-```
-
-Each function returns a JSON request body. Invalid model combinations throw
-`LlmTransportError`.
-
-## Replies and streams
-
-`LlmWireReply` contains decoded `blocks`, `stopReason`, `usage`, and
-`responseId`. `LlmWireUsage` contains input, output, reasoning, cache-read, and
-cache-write token counts.
-
-```cangjie
-decodeLlmWireReply(
-    protocol: LlmWireProtocol,
-    source: String,
-    provider!: String = ""
-): LlmWireReply
-
-decodeResponsesWireReply(source: String, provider!: String = ""): LlmWireReply
-decodeChatCompletionsWireReply(source: String, provider!: String = ""): LlmWireReply
-decodeMessagesWireReply(source: String, provider!: String = ""): LlmWireReply
-
-decodeLlmWireEventFrame(
-    protocol: LlmWireProtocol,
-    payload: String
-): Array<LlmWireEvent>
-
-decodeLlmWireEventStream(
-    protocol: LlmWireProtocol,
-    source: String,
-    provider!: String = ""
-): LlmWireStreamResult
-```
-
-`LlmWireStreamResult` contains the reconstructed `terminalSource` and ordered
-`events`. Event kinds include stream and block lifecycle events, text and
-reasoning deltas, tool-call events, usage events, provider errors, transport
-closure, and validated completion.
-
-## SSE framing
-
-```cangjie
-SseDecoder(
-    maxEventBytes!: Int64 = 8388608,
-    maxBufferedBytes!: Int64 = 16777216
-)
-
-SseDecoder.push(chunk: String): LlmResult<Array<SseEvent>>
-SseDecoder.finish(): LlmResult<Array<SseEvent>>
-sseDataLine(line: String): ?String
-```
-
-`SseEvent` exposes `event`, `data`, `id`, and `retryMillis`.
-
-## Response bodies and retry headers
-
-```cangjie
-readLlmHttpBody(
-    stream: InputStream,
-    declaredSize: ?Int64,
-    maxBytes: Int64
-): LlmResult<Array<Byte>>
-
-parseRetryAfterMillis(value: String): Int64
-extractRetryAfterMillis(headers: String): Int64
-```
-
-Only positive integer `Retry-After` seconds are accepted. Invalid or absent
-values produce `0`.
-
-## Errors and results
-
-`LlmResult<T>` is `Ok(T)` or `Err(LlmTransportError)`. `isOk()` returns whether
-the value is `Ok`.
-
-`LlmTransportError` extends `Exception` and exposes:
-
-- `kind`: `InvalidWire`, `Http`, `BodyLimit`, `Sse`, `Cancelled`, `Deadline`, or
-  `Transport`;
-- `code` and `message`;
-- `retryable`, `httpStatus`, and `retryAfterMillis`;
-- `provider`, `providerErrorCode`, and `providerErrorType`.

@@ -1,79 +1,53 @@
-# Build a minimal llm4cj consumer
+# 安装与首个程序
 
-This tutorial adds `llm4cj` to a Cangjie executable and verifies that the
-package can encode a provider-neutral request as an OpenAI Responses payload.
-It does not make a network request or require provider credentials.
+## 前提
 
-## Prerequisites
+- Cangjie `1.1.0` 或更高版本。
+- `cjpm` 可用。
+- 当前持续验证平台为 Linux x64。
 
-- A Cangjie SDK compatible with manifest version `1.1.0`.
-- An existing cjpm executable project.
-- Git access to the `llm4cj` and `yjson` repositories.
+## 安装稳定版本
 
-## 1. Add llm4cj
-
-Add the Git dependency to your project's `cjpm.toml`:
+在应用的 `cjpm.toml` 中加入：
 
 ```toml
 [dependencies]
-llm4cj = { git = "https://github.com/lIlIIlIll/llm4cj.git", branch = "main" }
+llm4cj = { git = "https://github.com/lIlIIlIll/llm4cj.git", tag = "v0.1.0" }
 ```
 
-Keep the generated `cjpm.lock` file in version control. The lock file records
-the exact revisions selected from both `main` branches.
+`v0.1.0` 是稳定 tag。若显式改用 `branch = "main"`，你使用的是开发分支。
 
-## 2. Encode a request
+## 运行离线示例
 
-Replace your executable entry point with this program:
+将下面内容保存为 `src/main.cj`。程序不发起 HTTP 请求，因此输出是确定的。
 
-`src/main.cj`
-
-```cangjie
-package llm4cj_consumer
+```cj
+package llm4cj_external_consumer
 
 import llm4cj.*
 
 main(): Int64 {
-    let payload = encodeResponsesWireRequest(LlmWireRequest(
-        "consumer-model",
+    let request = LlmWireRequest(
+        "demo-model",
         [LlmWireMessage(
             LlmWireRole.User,
-            [LlmWireBlock(LlmWireBlockKind.Text, text: "hello")]
+            [LlmWireBlock(LlmWireBlockKind.Text, text: "你好")]
         )]
-    ))
-    if (payload.contains("consumer-model")) { 0 } else { 1 }
+    )
+    let payload = encodeLlmWireRequest(LlmWireProtocol.Responses, request)
+    if (!payload.contains("demo-model")) { return 1 }
+
+    let reply = decodeLlmWireReply(
+        LlmWireProtocol.Responses,
+        "{\"id\":\"resp_demo\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"你好，仓颉！\"}]}],\"usage\":{}}"
+    )
+    for (block in reply.blocks) {
+        if (let LlmWireBlockKind.Text <- block.kind) { println(block.text) }
+    }
+    0
 }
 ```
 
-Match the `package` declaration to the package name in your `cjpm.toml` if your
-project is not named `llm4cj_consumer`.
+执行 `cjpm run`，预期输出 `你好，仓颉！`。真实集成只需在 encoder 与 decoder 之间加入应用自己的 HTTP client，并保持响应大小限制。
 
-## 3. Build and run the consumer
-
-Build the project, then run its release executable:
-
-```terminal
-cjpm build
-target/release/bin/main
-echo $?
-```
-
-The final command must print:
-
-```text
-0
-```
-
-An exit code of `0` confirms that cjpm resolved the Git dependencies and that
-`encodeResponsesWireRequest` produced a payload containing the selected model.
-It does not verify network access to an LLM provider.
-
-If cjpm cannot resolve `yjson`, remove any local path override and let
-`llm4cj` resolve the Git dependency recorded in its manifest.
-
-## Next steps
-
-- Use [Provider codecs](provider-codecs.md) to select a protocol and thinking
-  control.
-- Use [Streaming and transport](streaming-and-transport.md) when your HTTP client
-  receives an SSE response.
+下一步阅读[协议选择](choosing-a-protocol.md)和[请求与响应](requests-and-replies.md)。

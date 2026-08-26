@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: true
+      - name: Resolve latest complete nightly
+        id: nightly
+        run: echo "version=$(python3 scripts/latest_cangjie_nightly.py)" >> "$GITHUB_OUTPUT"
+      - name: Setup Cangjie
+        uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
+        with:
+          channel: nightly
+          version: ${{ steps.nightly.outputs.version }}
+          archive-path: ${{ runner.temp }}/cangjie-nightly.tar.gz
+      - name: Record toolchain
+        run: |
+          cjc -v
+          cjpm --version
+      - name: Build, test, and verify docs
+        run: scripts/check.sh
+
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: true
+      - name: Resolve latest complete nightly
+        id: nightly
+        run: echo "version=$(python3 scripts/latest_cangjie_nightly.py)" >> "$GITHUB_OUTPUT"
+      - name: Setup Cangjie
+        uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
+        with:
+          channel: nightly
+          version: ${{ steps.nightly.outputs.version }}
+          archive-path: ${{ runner.temp }}/cangjie-nightly.tar.gz
+      - name: Generate cjcov and LCOV reports
+        run: scripts/coverage.sh
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage/lcov.info
+          fail_ci_if_error: true
+          verbose: true

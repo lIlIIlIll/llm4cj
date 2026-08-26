@@ -1,74 +1,37 @@
-# Contributing to llm4cj
+# 贡献指南
 
-Contributions must preserve the package boundary: `llm4cj` owns provider wire
-formats and bounded transport primitives. Applications own credentials, HTTP
-clients, retry decisions, model routing, agent policy, tool execution, and
-recovery.
+感谢你改进 `llm4cj`。请让变更保持 provider-neutral，并维持“应用拥有网络与策略、库拥有 wire codec 与有界 framing”的边界。
 
-## Prepare the environment
+## 开发流程
 
-Use the latest complete Cangjie nightly SDK. The package manifest requires
-Cangjie `1.1.0`. Do not build an SDK as part of this repository's development
-flow.
+1. 从 `main` 创建短生命周期分支。
+2. 修改源码时同时加入可重复的测试；修改 public API、默认值、协议 mapping 或错误码时更新 API 文档和 CHANGELOG。
+3. 运行贡献者门禁：
 
-Clone the repository with its `cjpm.lock` file present. The lock file records the
-`yjson` revision used by local and release checks.
-
-## Make a change
-
-Keep each change inside one public behavior boundary. Add or update tests when a
-change affects:
-
-- provider request encoding;
-- reply or stream decoding;
-- error codes or retry metadata;
-- SSE framing; or
-- byte and depth limits.
-
-Tests must assert decoded values, encoded fields, errors, or limits. A test that
-only checks that a function returns is not enough for codec behavior.
-
-## Run the local gate
-
-Run the repository gate from the project root:
-
-```terminal
+```bash
 scripts/check.sh
 ```
 
-The script runs `cjpm clean`, `cjpm check`, `cjpm build`, and `cjpm test`. A
-successful run ends with:
+4. 若改动影响 executable line，运行 coverage：
 
-```text
-llm4cj check passed
+```bash
+scripts/coverage.sh
 ```
 
-The GitHub Actions workflow is manual. A local pass does not mean hosted CI has
-run.
+5. 提交聚焦的 commit，并在 pull request 中说明行为、原因和实际运行的验证。
 
-## Prepare a pull request
+不要在测试或文档中放入真实 API key，不要依赖真实 provider 网络获得确定性结果。完整示例必须能编译；核心 Quick Start 必须离线运行。
 
-Describe the provider or transport behavior that changed and why. Include the
-commands you ran and any gate you did not run. Keep tests with the behavior they
-verify.
+## 文档约定
 
-Do not include credentials or real provider payloads that contain private data.
-Use reduced fixtures that preserve the wire behavior under test.
+文档使用中文说明，API、protocol、field 和 command 保持源码拼写。任务页提供完整程序，短 snippet 只能作为补充。不要写未经执行的测试数量、平台承诺或性能结论。
 
-## Prepare a release
+## 维护者发布
 
-Maintainers run the release gate from a clean checkout:
+release candidate 需要 clean checkout，并运行：
 
-```terminal
-scripts/release_gate.sh 0.1.1
+```bash
+scripts/release_gate.sh <major.minor.patch>
 ```
 
-Replace `0.1.1` with the version in `cjpm.toml`. The gate requires a tracked
-`cjpm.lock`, runs the local gate, builds a clean external Git consumer, and runs
-that consumer's executable. It then writes:
-
-- `dist/release-manifest.json`;
-- `dist/SHA256SUMS`.
-
-The gate does not create a `.cjp` bundle. After it passes, review the generated
-evidence before publishing the matching `v<version>` tag.
+该门禁比日常 `scripts/check.sh` 多验证 version、lockfile、external consumer 与 release manifest。发布安全问题前先阅读 [SECURITY.md](SECURITY.md)。
