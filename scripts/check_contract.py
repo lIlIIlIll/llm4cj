@@ -174,11 +174,15 @@ if codes != expected_codes:
     raise SystemExit("error-code inventory drifted; update contract/error-codes.txt intentionally")
 
 digest = hashlib.sha256()
-fixtures = sorted((ROOT / "fixtures").glob("*.json"))
-if len(fixtures) != 6:
-    raise SystemExit(f"expected six dialect fixtures, found {len(fixtures)}")
+fixtures = (
+    sorted((ROOT / "fixtures").glob("*.json"))
+    + sorted((ROOT / "fixtures/requests").glob("*.json"))
+    + sorted((ROOT / "fixtures/streams").glob("*.json"))
+)
+if len(fixtures) != 18:
+    raise SystemExit(f"expected six response, six request, and six stream dialect fixtures, found {len(fixtures)}")
 for path in fixtures:
-    digest.update(path.name.encode("utf-8") + b"\0" + path.read_bytes() + b"\0")
+    digest.update(path.relative_to(ROOT / "fixtures").as_posix().encode("utf-8") + b"\0" + path.read_bytes() + b"\0")
 actual_digest = digest.hexdigest()
 expected_digest = (ROOT / "contract/fixture-digest.txt").read_text(encoding="utf-8").strip()
 if actual_digest != expected_digest:

@@ -1,0 +1,1 @@
+{"fixture":"deepseek.messages.v1","events":["{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}","{\"type\":\"message_stop\"}"]}

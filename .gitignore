@@ -14,3 +14,7 @@ __pycache__/
 # Repository contract and provider fixtures must override developer-global ignores.
 !/contract/*.txt
 !/fixtures/*.json
+!/fixtures/requests/
+!/fixtures/requests/*.json
+!/fixtures/streams/
+!/fixtures/streams/*.json

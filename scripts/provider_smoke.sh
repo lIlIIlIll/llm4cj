@@ -6,33 +6,39 @@ if [[ -z "${DIALECT:-}" || -z "${PROVIDER_SMOKE_CONFIG:-}" ]]; then
   exit 2
 fi
 
-root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-probe_root="$root/support/protocol_probe"
-(cd "$probe_root" && cjpm build)
-response_file=$(mktemp -t llm4cj-provider-response.XXXXXX.json)
-trap 'rm -f -- "$response_file"' EXIT
-export LLM4CJ_PROTOCOL_PROBE="$probe_root/target/release/bin/main"
+probe='support/provider_probe/target/release/bin/main'
+if [[ ! -x "$probe" ]]; then
+  echo 'provider smoke requires the public codec probe to be built' >&2
+  exit 2
+fi
 
-python3 - "$DIALECT" "$response_file" "${CANDIDATE_SHA:-}" <<'PY'
-import json, os, pathlib, subprocess, sys, urllib.error, urllib.request
-dialect, response_path, candidate = sys.argv[1:]
-config = json.loads(os.environ["PROVIDER_SMOKE_CONFIG"])
+python3 - "$DIALECT" "$PROVIDER_SMOKE_CONFIG" "${CANDIDATE_SHA:-}" "$probe" <<'PY'
+import json, pathlib, subprocess, sys, urllib.error, urllib.request
+dialect, raw, candidate, probe = sys.argv[1:]
+config = json.loads(raw)
 entry = config.get(dialect)
 if not isinstance(entry, dict) or not entry.get("endpoint") or not isinstance(entry.get("body"), dict):
     raise SystemExit(f"no verified provider smoke configuration for {dialect}")
+model = entry["body"].get("model")
+if not isinstance(model, str) or not model:
+    raise SystemExit(f"provider smoke model is missing for {dialect}")
+encoded = subprocess.run([probe, "encode", dialect, model], check=True, text=True, capture_output=True).stdout.strip()
+body = json.loads(encoded)
+if body.get("model") != model or body.get("stream") is not True:
+    raise SystemExit(f"public encoder did not produce the expected streaming request for {dialect}")
 request = urllib.request.Request(
-    entry["endpoint"], data=json.dumps(entry["body"]).encode(),
-    headers=entry.get("headers", {}), method="POST",
+    entry["endpoint"], data=encoded.encode(), headers=entry.get("headers", {}), method="POST",
 )
 try:
     with urllib.request.urlopen(request, timeout=60) as response:
         status = response.status
-        body = response.read()
-        json.loads(body)
+        content_type = response.headers.get_content_type()
+        payload = response.read().decode("utf-8")
 except urllib.error.HTTPError as error:
     raise SystemExit(f"provider smoke failed for {dialect}: HTTP {error.code}")
-pathlib.Path(response_path).write_bytes(body)
-subprocess.run([os.environ["LLM4CJ_PROTOCOL_PROBE"], dialect, response_path], check=True)
-result = {"dialect": dialect, "status": "passed", "http_status": status, "candidate_sha": candidate}
-pathlib.Path(f"provider-smoke-{dialect}.json").write_text(json.dumps(result, separators=(",", ":")) + "\n")
+if content_type != "text/event-stream":
+    raise SystemExit(f"provider smoke expected text/event-stream for {dialect}, got {content_type}")
+subprocess.run([probe, "decode-stream", dialect, payload], check=True, text=True, capture_output=True)
+result = {"dialect": dialect, "status": "passed", "http_status": status, "streaming": True, "public_encoder": True, "candidate_sha": candidate}
+pathlib.Path("provider-smoke-result.json").write_text(json.dumps(result, separators=(",", ":")) + "\n")
 PY

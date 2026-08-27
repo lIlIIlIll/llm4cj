@@ -29,6 +29,9 @@ jobs:
         with:
           channel: sts
           version: latest
+      - name: Build public codec probe
+        working-directory: support/provider_probe
+        run: cjpm build
       - name: Run secret-safe provider smoke
         env:
           DIALECT: ${{ matrix.dialect }}

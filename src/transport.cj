@@ -6,7 +6,7 @@ import std.io.*
 
 public enum LlmTransportErrorKind {
     InvalidWire | InvalidRequest | Unsupported | InvalidState |
-    Http | BodyLimit | Sse | Cancelled | Deadline | Transport
+    Http | BodyLimit | LimitExceeded | Sse | Cancelled | Deadline | Transport
 }
 
 public class LlmTransportError <: Exception {
@@ -18,17 +18,20 @@ public class LlmTransportError <: Exception {
     public let provider: String
     public let providerErrorCode: String
     public let providerErrorType: String
+    public let diagnosticJson: ?String
     public init(
         kind: LlmTransportErrorKind, code: String, message: String,
         retryable!: Bool = false, httpStatus!: ?Int64 = None,
         retryAfterMillis!: ?Int64 = None, provider!: String = "",
-        providerErrorCode!: String = "", providerErrorType!: String = ""
+        providerErrorCode!: String = "", providerErrorType!: String = "",
+        diagnosticJson!: ?String = None
     ) {
         super(message)
         this.kind = kind; this.code = code; this.retryable = retryable
         this.httpStatus = httpStatus; this.retryAfterMillis = retryAfterMillis
         this.provider = provider; this.providerErrorCode = providerErrorCode
         this.providerErrorType = providerErrorType
+        this.diagnosticJson = diagnosticJson
     }
 }
 
@@ -49,7 +52,9 @@ public class SseEvent {
 
 public class SseDecoder {
     private let maxEventBytes: Int64
+    private let maxLineBytes: Int64
     private let maxBufferedBytes: Int64
+    private let maxEventsPerPush: Int64
     private let line = ArrayList<Byte>()
     private let dataLines = ArrayList<String>()
     private var eventType = ""
@@ -60,15 +65,18 @@ public class SseDecoder {
     private var sawCarriageReturn = false
     private var firstLine = true
     private var closed = false
+    private var failed = false
 
-    public init(maxEventBytes!: Int64 = 8388608, maxBufferedBytes!: Int64 = 16777216) {
-        if (maxEventBytes < 1 || maxBufferedBytes < maxEventBytes) { throw IllegalArgumentException("invalid SSE limits") }
+    public init(maxEventBytes!: Int64 = 8388608, maxLineBytes!: Int64 = 1048576, maxBufferedBytes!: Int64 = 16777216, maxEventsPerPush!: Int64 = 1024) {
+        if (maxEventBytes < 1 || maxLineBytes < 1 || maxBufferedBytes < 1 || maxEventsPerPush < 1) { throw IllegalArgumentException("invalid SSE limits") }
         this.maxEventBytes = maxEventBytes; this.maxBufferedBytes = maxBufferedBytes
+        this.maxLineBytes = maxLineBytes; this.maxEventsPerPush = maxEventsPerPush
     }
 
     public func push(chunk: String): LlmResult<Array<SseEvent>> { push(chunk.toArray()) }
 
     public func push(chunk: Array<Byte>): LlmResult<Array<SseEvent>> {
+        if (failed) { return llmFailure<Array<SseEvent>>(LlmTransportErrorKind.InvalidState, "llm.sse_failed", "SSE decoder is poisoned by an earlier error") }
         if (closed) { return llmFailure<Array<SseEvent>>(LlmTransportErrorKind.InvalidState, "llm.sse_closed", "SSE decoder is closed") }
         let output = ArrayList<SseEvent>()
         try {
@@ -79,14 +87,15 @@ public class SseDecoder {
                 }
                 if (byte == 13) { processLine(output); sawCarriageReturn = true }
                 else if (byte == 10) { processLine(output) }
-                else { line.add(byte); eventBytes++; enforceLimits() }
+                else { line.add(byte); eventBytes++; enforceLimits(output.size) }
             }
             LlmResult.Ok(output.toArray())
-        } catch (error: LlmTransportError) { LlmResult.Err(error) }
-        catch (error: Exception) { llmFailure<Array<SseEvent>>(LlmTransportErrorKind.Sse, "llm.sse_utf8_invalid", error.message) }
+        } catch (error: LlmTransportError) { failed = true; LlmResult.Err(error) }
+        catch (error: Exception) { failed = true; llmFailure<Array<SseEvent>>(LlmTransportErrorKind.Sse, "llm.sse_utf8_invalid", error.message) }
     }
 
     public func finish(): LlmResult<Array<SseEvent>> {
+        if (failed) { return llmFailure<Array<SseEvent>>(LlmTransportErrorKind.InvalidState, "llm.sse_failed", "SSE decoder is poisoned by an earlier error") }
         if (closed) { return llmFailure<Array<SseEvent>>(LlmTransportErrorKind.InvalidState, "llm.sse_closed", "SSE decoder is closed") }
         closed = true
         line.clear()
@@ -96,7 +105,7 @@ public class SseDecoder {
 
     private func processLine(output: ArrayList<SseEvent>): Unit {
         eventBytes++
-        enforceLimits()
+        enforceLimits(output.size)
         var raw = String.fromUtf8(line.toArray())
         line.clear()
         if (firstLine) {
@@ -111,6 +120,7 @@ public class SseDecoder {
                     builder.append(dataLines[index])
                 }
                 output.add(SseEvent(if (eventType == "") { "message" } else { eventType }, builder.toString(), lastEventId, lastRetry))
+                enforceLimits(output.size)
             }
             resetEvent()
             return
@@ -131,11 +141,16 @@ public class SseDecoder {
             case "retry" => match (parseSseRetryMillis(value)) { case Some(found) => lastRetry = Some(found); case None => () }
             case _ => ()
         }
+        enforceLimits(output.size)
     }
 
-    private func enforceLimits(): Unit {
-        if (eventBytes > maxEventBytes) { throw LlmTransportError(LlmTransportErrorKind.BodyLimit, "llm.sse_event_too_large", "SSE event exceeds configured limit") }
-        if (eventBytes > maxBufferedBytes) { throw LlmTransportError(LlmTransportErrorKind.BodyLimit, "llm.sse_buffer_too_large", "SSE buffer exceeds configured limit") }
+    private func enforceLimits(outputCount: Int64): Unit {
+        if (eventBytes > maxEventBytes) { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, "llm.sse_event_too_large", "SSE event exceeds configured limit") }
+        if (line.size > maxLineBytes) { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, "llm.sse_line_too_large", "SSE line exceeds configured limit") }
+        var retained = Int64(line.size + eventType.toArray().size + lastEventId.toArray().size)
+        for (value in dataLines) { retained += value.toArray().size }
+        if (retained > maxBufferedBytes) { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, "llm.sse_buffer_too_large", "SSE parser retention exceeds configured limit") }
+        if (outputCount > maxEventsPerPush) { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, "llm.sse_output_too_large", "SSE push produced too many events") }
     }
 
     private func resetEvent(): Unit {
