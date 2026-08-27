@@ -1,0 +1,1 @@
+{"fixture":"deepseek.chat.v1","source":"https://api-docs.deepseek.com/api/create-chat-completion","captured":"2026-08-27","response":{"id":"chat_fixture","choices":[{"index":0,"message":{"content":"ok"},"finish_reason":"stop"}]}}

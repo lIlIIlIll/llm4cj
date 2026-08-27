@@ -18,6 +18,12 @@ scripts/check.sh
 scripts/coverage.sh
 ```
 
+覆盖率最低要求为 project line 90%、project branch 80%、patch line 95%、patch branch 90%。修改 public declaration、错误码或 fixture 时还要运行：
+
+```bash
+python3 scripts/check_contract.py
+```
+
 5. 提交聚焦的 commit，并在 pull request 中说明行为、原因和实际运行的验证。
 
 不要在测试或文档中放入真实 API key，不要依赖真实 provider 网络获得确定性结果。完整示例必须能编译；核心 Quick Start 必须离线运行。
@@ -34,4 +40,4 @@ release candidate 需要 clean checkout，并运行：
 scripts/release_gate.sh <major.minor.patch>
 ```
 
-该门禁比日常 `scripts/check.sh` 多验证 version、lockfile、external consumer 与 release manifest。发布安全问题前先阅读 [SECURITY.md](SECURITY.md)。
+该门禁比日常 `scripts/check.sh` 多验证 coverage、lockfile、固定到候选 commit 的 external consumer、六个 dialect 的手动 provider-smoke artifact 与 release manifest。运行前将 `PROVIDER_SMOKE_EVIDENCE_DIR` 指向对应候选 commit 的脱敏 artifact 目录。发布安全问题前先阅读 [SECURITY.md](SECURITY.md)。

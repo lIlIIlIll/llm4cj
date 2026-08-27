@@ -1,35 +1,9 @@
 # 流式与传输
 
-`llm4cj` 不发送 HTTP 请求。应用读取 response body 后，把受限字节流交给 `readLlmHttpBody`，把 SSE chunk 交给 `SseDecoder`，再把事件 data 交给协议 decoder。
+先把网络字节分片送给 `SseDecoder.push`，再把产生的每个 `SseEvent` 送给 `codec.newStreamDecoder().push`。网络 EOF 后调用两个层级各自的 finish 方法：SSE 的 `finish` 丢弃未用空行结束的尾部事件；协议 decoder 的 `finishTransport` 要求已经观察到合法终态。
 
-## 完整程序
+`LlmWireEvent` 分开保存 `blockIndex`、`outputIndex`、`choiceIndex`、`toolCallIndex`、`itemId` 与 `callId`，因此并行 tool call 不依赖缺失或混用的 ID。
 
-```cj
-package streaming_demo
+SSE parser 接受 CR、LF、CRLF 与首行 BOM，保留空 `data`，并让 `id` 与 `retry` 跨事件生效。`maxEventBytes` 限制整个事件块，包括 comment、未知字段、`id` 和 `event`。响应体另由 `readLlmHttpBody` 做总量限制。
 
-import llm4cj.*
-
-main(): Int64 {
-    let source = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n" +
-        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",\"status\":\"completed\",\"output\":[],\"usage\":{}}}\n\n"
-    let result = decodeLlmWireEventStream(LlmWireProtocol.Responses, source)
-    for (event in result.events) {
-        if (let LlmWireEventKind.TextDelta <- event.kind) { println(event.text) }
-    }
-    println(result.terminalSource)
-    0
-}
-```
-
-## 两种 event API
-
-- `decodeLlmWireEventFrame` 是无状态低延迟投影。它不重建最终 reply，也不证明 stream 完整。
-- `decodeLlmWireEventStream` 读取完整 SSE 字符串，必须观察到协议终止证据才返回 `LlmWireStreamResult`，并在最后加入 `Completed`。
-
-`MessageTerminalObserved` 只表示 provider 发出了协议终止标记；`Completed` 表示 decoder 已重建并验证可用终态。transport close 不能替代 provider terminal evidence。
-
-## SSE framing
-
-`SseDecoder.push` 可接收任意切片边界并返回零个或多个 `SseEvent`；结束输入后必须调用 `finish`。默认单事件上限 8 MiB，累计缓冲上限 16 MiB。`retry` 字段保存在 event 中，但重试策略属于应用。
-
-`parseRetryAfterMillis` 与 `extractRetryAfterMillis` 只解析整数秒；无效或非正值返回 `0`，溢出饱和到 `Int64.Max`。
+`parseRetryAfterMillis` 支持 delta-seconds、IMF-fixdate、RFC 850 和 asctime；多个 `Retry-After` 由 `extractRetryAfterMillis` 选择较大的有效值。

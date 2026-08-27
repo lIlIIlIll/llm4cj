@@ -3,11 +3,11 @@ cjc-version = "1.1.0"
 name = "llm4cj"
 organization = ""
 description = "Provider-neutral LLM wire codecs, SSE framing, and bounded transport primitives"
-version = "0.1.0"
+version = "0.2.0"
 output-type = "static"
 
 [dependencies]
-yjson = { git = "https://github.com/lIlIIlIll/yjson.git", branch = "main", output-type = "static" }
+yjson = { git = "https://github.com/lIlIIlIll/yjson.git", commitId = "92858f75aedc3dd6f7322789117854514549e62c", output-type = "static" }
 
 [test-dependencies]
-yjson = { git = "https://github.com/lIlIIlIll/yjson.git", branch = "main", output-type = "static" }
+yjson = { git = "https://github.com/lIlIIlIll/yjson.git", commitId = "92858f75aedc3dd6f7322789117854514549e62c", output-type = "static" }

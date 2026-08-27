@@ -1,0 +1,1 @@
+{"fixture":"deepseek.responses.v1","source":"https://api-docs.deepseek.com/","captured":"2026-08-27","response":{"id":"resp_fixture","status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}]}}
