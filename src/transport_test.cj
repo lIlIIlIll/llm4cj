@@ -25,6 +25,15 @@ func expectLlmError(code: String, body: () -> Unit): Unit {
 
 func event(data: String): SseEvent { SseEvent("message", data, "", None) }
 
+class AlternateChatReasoningDialect <: LlmWireDialect {
+    private let standard = deepSeekChatDialect()
+    public prop compatibilityId: String { get() { "test.chat.reasoning.v1" } }
+    public prop protocol: LlmWireProtocol { get() { LlmWireProtocol.ChatCompletions } }
+    public prop chatReasoningField: ?String { get() { Some("analysis") } }
+    public func validateThinking(control: LlmWireThinkingControl, capabilities: LlmWireCapabilities): Unit { standard.validateThinking(control, capabilities) }
+    public func encodeThinking(control: LlmWireThinkingControl): JsonNode { standard.encodeThinking(control) }
+}
+
 @Test
 class Llm4CjV02Tests {
     @TestCase
@@ -154,6 +163,12 @@ class Llm4CjV02Tests {
         @Expect(delta.events[0].name, "lookup")
         let done = decoder.push(event("{\"type\":\"response.function_call_arguments.done\",\"output_index\":2,\"item_id\":\"item-1\",\"name\":\"lookup\",\"arguments\":\"{}\"}"))
         @Expect(done.events[0].callId, "call-9")
+        expectLlmError("llm.responses_done_duplicate", { => let _ = decoder.push(event("{\"type\":\"response.function_call_arguments.done\",\"output_index\":2,\"item_id\":\"item-1\",\"name\":\"lookup\",\"arguments\":\"{}\"}")) })
+
+        let late = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect()).newStreamDecoder()
+        let _ = late.push(event("{\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"item-2\",\"call_id\":\"call-2\",\"name\":\"lookup\"}}"))
+        let _ = late.push(event("{\"type\":\"response.function_call_arguments.done\",\"output_index\":0,\"item_id\":\"item-2\",\"name\":\"lookup\",\"arguments\":\"\"}"))
+        expectLlmError("llm.responses_delta_after_done", { => let _ = late.push(event("{\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"item-2\",\"delta\":\"late\"}")) })
     }
 
     @TestCase
@@ -300,7 +315,7 @@ class Llm4CjV02Tests {
         match (responses.decodeResponse("{\"status\":\"failed\"}")) { case LlmWireResponseState.Terminal(LlmWireTerminal.Failed(_)) => (); case _ => @Fail("expected failed") }
         expectLlmError("llm.responses_status_unsupported", { => let _ = responses.decodeResponse("{\"status\":\"future\"}") })
 
-        let chat = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
+        let chat = LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect())
         let chatState = chat.decodeResponse("{\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"message\":{\"content\":\"ok\",\"reasoning_content\":\"why\",\"tool_calls\":[{\"id\":\"t\",\"function\":{\"name\":\"f\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"content_filter\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":5,\"prompt_tokens_details\":{\"cached_tokens\":1},\"completion_tokens_details\":{\"reasoning_tokens\":2}}}")
         match (chatState) { case LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, _)) => @Expect(reply.blocks.size, 3); @Expect(reply.usage.cacheReadTokens, 1); case _ => @Fail("expected filtered") }
         match (chat.decodeResponse("{\"choices\":[{\"message\":{},\"finish_reason\":\"insufficient_system_resource\"}]}")) { case LlmWireResponseState.Terminal(LlmWireTerminal.Failed(_)) => (); case _ => @Fail("expected resource failure") }
@@ -350,7 +365,7 @@ class Llm4CjV02Tests {
         @Expect(responses.push(event("{\"type\":\"future\"}")).events.size, 0)
         match (responses.push(event("{\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",\"output\":[]}}" )).terminal) { case Some(LlmWireTerminal.Incomplete(_, _)) => (); case _ => @Fail("expected incomplete") }
 
-        let chat = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect()).newStreamDecoder()
+        let chat = LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect()).newStreamDecoder()
         let update = chat.push(event("{\"id\":\"c\",\"model\":\"m\",\"usage\":{\"prompt_tokens\":1},\"choices\":[{\"index\":2,\"delta\":{\"content\":\"a\",\"reasoning_content\":\"b\"}}]}"))
         @Expect(update.events.size, 2)
         match (chat.push(event("{\"choices\":[{\"index\":2,\"delta\":{},\"finish_reason\":\"content_filter\"}]}" )).terminal) { case Some(LlmWireTerminal.Incomplete(_, _)) => (); case _ => @Fail("expected filtered") }
@@ -755,5 +770,31 @@ class Llm4CjV02Tests {
 
         let kinds = [WireJsonKind.Null, WireJsonKind.Boolean, WireJsonKind.Number, WireJsonKind.Text, WireJsonKind.List, WireJsonKind.Object]
         for (i in 0..kinds.size) { for (j in 0..kinds.size) { @Expect(kinds[i] == kinds[j], i == j) } }
+    }
+
+    @TestCase
+    func t034ChatReasoningFieldControlsFixedAndStreamingDecode() {
+        let custom = LlmWireCodec(LlmWireProtocol.ChatCompletions, AlternateChatReasoningDialect())
+        let fixed = custom.decodeResponse("{\"choices\":[{\"message\":{\"analysis\":\"custom\",\"reasoning_content\":\"stray\"},\"finish_reason\":\"stop\"}]}")
+        let blocks = match (fixed) { case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply)) => reply.blocks; case _ => @Fail("custom fixed response") }
+        @Expect(blocks.size, 1)
+        match (blocks[0]) { case LlmWireBlock.Reasoning(value) => @Expect(value.text, "custom"); case _ => @Fail("custom reasoning block") }
+        let replay = custom.encodeRequest(LlmWireRequest("m", [LlmWireMessage(LlmWireRole.Assistant, blocks)]))
+        @Expect(replay.contains("\"analysis\":\"custom\""), true)
+        @Expect(replay.contains("reasoning_content"), false)
+
+        let streaming = custom.newStreamDecoder()
+        let update = streaming.push(event("{\"choices\":[{\"index\":0,\"delta\":{\"analysis\":\"stream\",\"reasoning_content\":\"stray\"}}]}"))
+        @Expect(update.events.size, 1)
+        @Expect(update.events[0].kind, LlmWireEventKind.ReasoningDelta)
+        @Expect(update.events[0].text, "stream")
+        let terminal = streaming.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}"))
+        match (terminal.terminal) { case Some(LlmWireTerminal.Succeeded(reply)) => match (reply.blocks[0]) { case LlmWireBlock.Reasoning(value) => @Expect(value.text, "stream"); case _ => @Fail("stream reasoning block") }; case _ => @Fail("custom stream terminal") }
+
+        let openAi = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
+        match (openAi.decodeResponse("{\"choices\":[{\"message\":{\"reasoning_content\":\"stray\"},\"finish_reason\":\"stop\"}]}")) { case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply)) => @Expect(reply.blocks.size, 0); case _ => @Fail("OpenAI fixed response") }
+        let openAiStream = openAi.newStreamDecoder()
+        @Expect(openAiStream.push(event("{\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"stray\"}}]}" )).events.size, 0)
+        match (openAiStream.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}" )).terminal) { case Some(LlmWireTerminal.Succeeded(reply)) => @Expect(reply.blocks.size, 0); case _ => @Fail("OpenAI stream terminal") }
     }
 }

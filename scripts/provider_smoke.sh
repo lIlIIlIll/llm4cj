@@ -34,5 +34,5 @@ except urllib.error.HTTPError as error:
 pathlib.Path(response_path).write_bytes(body)
 subprocess.run([os.environ["LLM4CJ_PROTOCOL_PROBE"], dialect, response_path], check=True)
 result = {"dialect": dialect, "status": "passed", "http_status": status, "candidate_sha": candidate}
-pathlib.Path("provider-smoke-result.json").write_text(json.dumps(result, separators=(",", ":")) + "\n")
+pathlib.Path(f"provider-smoke-{dialect}.json").write_text(json.dumps(result, separators=(",", ":")) + "\n")
 PY

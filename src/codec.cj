@@ -335,7 +335,10 @@ func decodeChatResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseSta
     let message = match (wireOptionalObject(choice, "message", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "Chat choice is missing message", provider: codec.provider) }
     let blocks = ArrayList<LlmWireBlock>()
     match (wireOptionalString(message, "content", provider: codec.provider)) { case Some(value) => if (value != "") { blocks.add(LlmWireBlock.Text(LlmWireTextBlock(value))) }; case None => () }
-    match (wireOptionalString(message, "reasoning_content", provider: codec.provider)) { case Some(value) => if (value != "") { blocks.add(LlmWireBlock.Reasoning(LlmWireReasoningBlock(value, replayDialectId: codec.dialect.compatibilityId))) }; case None => () }
+    match (codec.dialect.chatReasoningField) {
+        case Some(field) => match (wireOptionalString(message, field, provider: codec.provider)) { case Some(value) => if (value != "") { blocks.add(LlmWireBlock.Reasoning(LlmWireReasoningBlock(value, replayDialectId: codec.dialect.compatibilityId))) }; case None => () }
+        case None => ()
+    }
     match (wireOptionalArray(message, "tool_calls", provider: codec.provider)) {
         case Some(calls) => for (raw in calls) {
             let call = wireObject(raw, "Chat tool call", provider: codec.provider)
