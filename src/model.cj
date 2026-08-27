@@ -185,14 +185,49 @@ func nativeReplayFromPayload(
     completion!: LlmWireOpaqueCompletion = LlmWireOpaqueCompletion.Complete,
     displayReasoning!: ?String = None
 ): LlmWireNativeReplayBlock {
-    if (dialectId == "" || nativeType == "" || schemaVersion < 1 || assistantTurnIndex < 0 || blockOrder < 0 || payload.wireKind != WireJsonKind.Object) {
+    if (dialectId == "" || nativeType == "" || schemaVersion != 1 || assistantTurnIndex != 0 || blockOrder < 0 || payload.wireKind != WireJsonKind.Object) {
         throw LlmTransportError(LlmTransportErrorKind.InvalidWire, "llm.native_replay_payload_invalid", "native replay metadata and payload must be complete")
+    }
+    if (scope != LlmWireNativeReplayScope.AssistantTurn) {
+        throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.native_replay_scope_unsupported", "conversation-scoped native replay is not supported")
     }
     match (payload.field("type")) {
         case Some(value) => if (value.wireKind != WireJsonKind.Text || value.text != nativeType) { throw LlmTransportError(LlmTransportErrorKind.InvalidWire, "llm.native_replay_type_mismatch", "native replay type does not match payload") }
         case None => throw LlmTransportError(LlmTransportErrorKind.InvalidWire, "llm.native_replay_type_missing", "native replay payload must contain type")
     }
+    validateNativeReplayPayload(protocol, dialectId, nativeType, payload)
     LlmWireNativeReplayBlock(protocol, dialectId, nativeType, schemaVersion, modelConstraint, scope, assistantTurnIndex, blockOrder, completion, payload.stringify(), displayReasoning)
+}
+
+func validateNativeReplayPayload(protocol: LlmWireProtocol, dialectId: String, nativeType: String, payload: JsonNode): Unit {
+    let allowed = match ((protocol, dialectId, nativeType)) {
+        case (LlmWireProtocol.Messages, "anthropic.messages.v1", "thinking") |
+             (LlmWireProtocol.Messages, "anthropic.messages.v1", "redacted_thinking") |
+             (LlmWireProtocol.Messages, "deepseek.messages.v1", "thinking") |
+             (LlmWireProtocol.Messages, "deepseek.messages.v1", "redacted_thinking") |
+             (LlmWireProtocol.Responses, "openai.responses.v1", "reasoning") |
+             (LlmWireProtocol.Responses, "deepseek.responses.v1", "reasoning") |
+             (LlmWireProtocol.ChatCompletions, "deepseek.chat.v1", "reasoning_content") => true
+        case _ => false
+    }
+    if (!allowed) {
+        throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.native_replay_type_unsupported", "native type is not replayable for this protocol and dialect")
+    }
+    match (nativeType) {
+        case "thinking" =>
+            let _ = wireRequiredString(payload, "thinking")
+            let _ = wireRequiredString(payload, "signature")
+        case "redacted_thinking" => let _ = wireRequiredString(payload, "data")
+        case "reasoning_content" => let _ = wireRequiredString(payload, "reasoning_content")
+        case "reasoning" =>
+            let _ = wireRequiredString(payload, "id")
+            let hasSummary = payload.field("summary").isSome()
+            let hasContent = payload.field("content").isSome()
+            if (!hasSummary && !hasContent) { throw LlmTransportError(LlmTransportErrorKind.InvalidWire, "llm.native_replay_payload_invalid", "Responses reasoning replay requires summary or content") }
+            if (hasSummary) { let _ = wireOptionalArray(payload, "summary") }
+            if (hasContent) { let _ = wireOptionalArray(payload, "content") }
+        case _ => ()
+    }
 }
 
 func protocolName(value: LlmWireProtocol): String { match (value) { case LlmWireProtocol.Responses => "responses"; case LlmWireProtocol.ChatCompletions => "chat_completions"; case LlmWireProtocol.Messages => "messages" } }

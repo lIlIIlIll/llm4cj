@@ -16,4 +16,4 @@ v0.2.0 是一次有意的 breaking release，不提供旧 API shim。
 | request encoder 返回 JSON 字符串 | `LlmWireEncodedRequest` 同时携带 body、required headers 与 feature requirements |
 | 仅有 SSE event 大小限制 | `LlmWireStreamLimits` 同时限制跨事件累计的语义输出 |
 
-迁移时先为每个 endpoint 选择内置或自定义 dialect，再从真实 model catalog 构造 capability。不要为了通过校验把所有 capability 都设为 true。把所有终态 match 改为穷尽处理，且仅将完整 native replay block 回放给原 dialect。Anthropic structured output 应迁移为 `JsonSchemaDocument`；OpenAI 风格的命名 schema 继续使用 `JsonSchema`。
+迁移时优先为每个 endpoint 选择六个内置 dialect，再从真实 model catalog 构造 capability。自定义 `LlmWireStandardDialect` 必须使用非保留 compatibility ID，且只能声明 request style 已有的可编码能力。不要为了通过校验把所有 capability 都设为 true。把所有终态 match 改为穷尽处理，且仅将 schema version 1、assistant-turn scope、allowlist 类型的完整 native replay block 回放给原 dialect。Anthropic structured output 应迁移为 `JsonSchemaDocument`；OpenAI 风格的命名 schema 继续使用 `JsonSchema`。

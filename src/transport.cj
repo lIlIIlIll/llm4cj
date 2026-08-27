@@ -185,13 +185,13 @@ public class SseDecoder {
     }
 }
 
-public func parseSseRetryMillis(value: String): ?Int64 { parseUnsignedDecimal(value.trimAscii()) }
+public func parseSseRetryMillis(value: String): ?Int64 { parseUnsignedDecimal(value) }
 
 public func parseRetryAfterMillis(value: String, nowEpochMillis: Int64): ?Int64 {
     let text = value.trimAscii()
     match (parseUnsignedDecimal(text)) {
         case Some(seconds) => if (seconds > Int64.Max / 1000) { Some(Int64.Max) } else { Some(seconds * 1000) }
-        case None => match (parseHttpDateEpochMillis(text)) {
+        case None => match (parseHttpDateEpochMillis(text, nowEpochMillis)) {
             case Some(epoch) => if (epoch <= nowEpochMillis) { Some(0) } else { Some(epoch - nowEpochMillis) }
             case None => None
         }
@@ -249,12 +249,12 @@ func parseUnsignedDecimal(text: String): ?Int64 {
     Some(result)
 }
 
-func parseHttpDateEpochMillis(text: String): ?Int64 {
+func parseHttpDateEpochMillis(text: String, nowEpochMillis: Int64): ?Int64 {
     try {
         match (text.indexOf(",")) {
             case Some(index) =>
                 let rest = text[index + 1..].trimAscii()
-                if (rest.contains("-")) { parseRfc850Date(rest) } else { parseImfDate(rest) }
+                if (rest.contains("-")) { parseRfc850Date(rest, nowEpochMillis) } else { parseImfDate(rest) }
             case None => parseAsctimeDate(text)
         }
     } catch (_: Exception) { None }
@@ -272,13 +272,29 @@ func parseImfDate(rest: String): ?Int64 {
     dateEpochMillis(Int64.parse(parts[2]), monthNumber(parts[1]), Int64.parse(parts[0]), parts[3])
 }
 
-func parseRfc850Date(rest: String): ?Int64 {
+func parseRfc850Date(rest: String, nowEpochMillis: Int64): ?Int64 {
     let parts = nonEmptyParts(rest, " ")
     if (parts.size != 3 || parts[2] != "GMT") { return None }
     let date = parts[0].split("-")
     if (date.size != 3) { return None }
     let shortYear = Int64.parse(date[2])
-    dateEpochMillis(if (shortYear >= 70) { 1900 + shortYear } else { 2000 + shortYear }, monthNumber(date[1]), Int64.parse(date[0]), parts[1])
+    if (shortYear < 0 || shortYear > 99) { return None }
+    let currentYear = yearAtEpochMillis(nowEpochMillis)
+    var year = (currentYear / 100) * 100 + shortYear
+    if (year > currentYear + 50) { year -= 100 }
+    dateEpochMillis(year, monthNumber(date[1]), Int64.parse(date[0]), parts[1])
+}
+
+func yearAtEpochMillis(epochMillis: Int64): Int64 {
+    if (epochMillis <= 0) { return 1970 }
+    var days = epochMillis / 1000 / 86400
+    var year: Int64 = 1970
+    while (true) {
+        let yearDays: Int64 = if (isLeapYear(year)) { 366 } else { 365 }
+        if (days < yearDays) { return year }
+        days -= yearDays; year++
+    }
+    year
 }
 
 func parseAsctimeDate(text: String): ?Int64 {

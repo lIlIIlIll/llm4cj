@@ -70,10 +70,6 @@ func wireOptionalInt(value: JsonNode, name: String, provider!: String = ""): ?In
     }
 }
 
-func wireIntOrZero(value: JsonNode, name: String, provider!: String = ""): Int64 {
-    match (wireOptionalInt(value, name, provider: provider)) { case Some(found) => found; case None => 0 }
-}
-
 func wireRequiredInt(value: JsonNode, name: String, provider!: String = ""): Int64 {
     match (wireOptionalInt(value, name, provider: provider)) {
         case Some(found) => found
@@ -111,6 +107,9 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
     validatePromptCache(codec, request.promptCache, request.promptCacheRoutingKey)
     for (messageIndex in 0..request.messages.size) {
         let message = request.messages[messageIndex]
+        if (!messageHasContent(message)) {
+            throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.message_empty", "canonical messages must contain at least one non-empty block")
+        }
         for (blockIndex in 0..message.blocks.size) {
             validateBlockForReplay(codec, request, message, message.blocks[blockIndex], blockIndex)
             validateBlockShape(message.blocks[blockIndex])
@@ -226,13 +225,24 @@ func validateBlockForReplay(codec: LlmWireCodec, request: LlmWireRequest, messag
         case LlmWireBlock.Opaque(_) => unsupportedRequest("llm.opaque_diagnostic_only", "unknown native diagnostics cannot be replayed")
         case LlmWireBlock.Reasoning(_) => unsupportedRequest("llm.reasoning_display_only", "display reasoning is not request-encodable")
         case LlmWireBlock.Refusal(_) => unsupportedRequest("llm.refusal_display_only", "refusal output is not request-encodable")
-        case LlmWireBlock.ToolCall(value) => match (value.arguments) {
-            case LlmWireToolArguments.Complete(_) => ()
+        case LlmWireBlock.ToolCall(value) =>
+            if (!validToolName(value.name)) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_call_name_invalid", "tool call names must use the tool-name grammar") }
+            match (value.arguments) {
+            case LlmWireToolArguments.Complete(arguments) =>
+                if (arguments.wireKind != WireJsonKind.Object) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object") }
             case LlmWireToolArguments.Partial(_) => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be sent as an executable tool call")
             case _ => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_arguments_not_executable", "invalid tool arguments cannot be sent as an executable tool call")
         }
         case _ => ()
     }
+}
+
+func messageHasContent(message: LlmWireMessage): Bool {
+    for (block in message.blocks) { match (block) {
+        case LlmWireBlock.Text(value) => if (value.text != "") { return true }
+        case _ => return true
+    } }
+    false
 }
 
 func validateToolsAndSchemas(request: LlmWireRequest): Unit {

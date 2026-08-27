@@ -18,6 +18,8 @@
 
 `LlmWireEventKind`、`LlmWireEvent`、`LlmWireStreamLimits`、`LlmWireStreamUpdate`、`LlmWireStreamDecoder`。
 
+`LlmWireStreamLimits` 分别限制 total semantic、text、reasoning、tool arguments、retained state、block、tool call 与 semantic event 数量；这些值在 decoder 构造后不可变。
+
 ## 传输
 
 `LlmTransportErrorKind`、`LlmTransportPhase`、`LlmTransportError`、`LlmResult`、`SseEvent`、`SseDecoder`、`parseSseRetryMillis`、`parseRetryAfterMillis`、`extractRetryAfterMillis`、`sseDataLine`、`readLlmHttpBody`。

@@ -20,7 +20,8 @@ class CanonicalReplyAssembler {
             case LlmWireBlock.ToolCall(call) =>
                 if (requireExecutableToolCalls) {
                     match (call.arguments) {
-                        case LlmWireToolArguments.Complete(_) => ()
+                        case LlmWireToolArguments.Complete(value) =>
+                            if (value.wireKind != WireJsonKind.Object) { invalidWire("llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object") }
                         case _ => invalidWire("llm.tool_arguments_not_executable", "a successful reply contains tool arguments that are not a complete JSON object")
                     }
                 }

@@ -7,8 +7,8 @@ func encodeWireRequest(codec: LlmWireCodec, request: LlmWireRequest): LlmWireEnc
     let headers = ArrayList<LlmWireHeader>()
     let requirements = ArrayList<LlmWireFeatureRequirement>()
     let body = match (codec.protocol) {
-        case LlmWireProtocol.Responses => encodeResponsesRequest(codec, request)
-        case LlmWireProtocol.ChatCompletions => encodeChatRequest(codec, request)
+        case LlmWireProtocol.Responses => encodeResponsesRequest(codec, request, requirements)
+        case LlmWireProtocol.ChatCompletions => encodeChatRequest(codec, request, requirements)
         case LlmWireProtocol.Messages => encodeMessagesRequest(codec, request, headers, requirements)
     }
     LlmWireEncodedRequest(body, requiredHeaders: headers.toArray(), featureRequirements: requirements.toArray())
@@ -29,7 +29,7 @@ func baseRequest(codec: LlmWireCodec, request: LlmWireRequest): JsonNode {
     root
 }
 
-func addDialectOptions(codec: LlmWireCodec, root: JsonNode, request: LlmWireRequest): Unit {
+func addDialectOptions(codec: LlmWireCodec, root: JsonNode, request: LlmWireRequest, requirements: ArrayList<LlmWireFeatureRequirement>): Unit {
     encodeThinking(codec, root, request.thinking)
     match ((codec.dialect.contract.parallelToolStyle, request.parallelToolCalls)) {
         case (LlmWireParallelToolStyle.OpenAiTopLevel, Some(value)) => root.put("parallel_tool_calls", wireJsonBool(value))
@@ -43,11 +43,11 @@ func addDialectOptions(codec: LlmWireCodec, root: JsonNode, request: LlmWireRequ
         case LlmWireToolChoice.Required => root.put("tool_choice", wireJsonString("required"))
     }
     match (request.promptCacheRoutingKey) { case Some(value) => root.put("prompt_cache_key", wireJsonString(value)); case None => () }
-    encodePromptCache(codec, root, request.promptCache)
+    encodePromptCache(codec, root, request.promptCache, requirements)
 }
 
-func encodeResponsesRequest(codec: LlmWireCodec, request: LlmWireRequest): String {
-    let root = baseRequest(codec, request); addDialectOptions(codec, root, request)
+func encodeResponsesRequest(codec: LlmWireCodec, request: LlmWireRequest, requirements: ArrayList<LlmWireFeatureRequirement>): String {
+    let root = baseRequest(codec, request); addDialectOptions(codec, root, request, requirements)
     if (request.system != "") { root.put("instructions", wireJsonString(request.system)) }
     match (request.structuredOutput) {
         case LlmWireStructuredOutput.Text => root.put("text", wireJsonObject([WireJsonField("format", wireJsonObject([WireJsonField("type", wireJsonString("text"))]))]))
@@ -76,8 +76,8 @@ func encodeResponsesRequest(codec: LlmWireCodec, request: LlmWireRequest): Strin
     root.put("input", input); addResponsesTools(root, request.tools); root.stringify()
 }
 
-func encodeChatRequest(codec: LlmWireCodec, request: LlmWireRequest): String {
-    let root = baseRequest(codec, request); addDialectOptions(codec, root, request)
+func encodeChatRequest(codec: LlmWireCodec, request: LlmWireRequest, requirements: ArrayList<LlmWireFeatureRequirement>): String {
+    let root = baseRequest(codec, request); addDialectOptions(codec, root, request, requirements)
     match (request.structuredOutput) {
         case LlmWireStructuredOutput.Text => root.put("response_format", wireJsonObject([WireJsonField("type", wireJsonString("text"))]))
         case LlmWireStructuredOutput.JsonObject => root.put("response_format", wireJsonObject([WireJsonField("type", wireJsonString("json_object"))]))
@@ -142,7 +142,7 @@ func encodeMessagesRequest(codec: LlmWireCodec, request: LlmWireRequest, headers
             existing.put("format", wireJsonObject([WireJsonField("type", wireJsonString("json_schema")), WireJsonField("schema", schema)])); root.put("output_config", existing)
         case _ => ()
     }
-    encodePromptCache(codec, root, request.promptCache)
+    encodePromptCache(codec, root, request.promptCache, requirements)
     let messages = wireJsonArray([])
     for (message in request.messages) { let content = wireJsonArray([]); for (block in message.blocks) { content.add(encodeMessagesContent(block)) }; messages.add(wireJsonObject([WireJsonField("role", wireJsonString(roleName(message.role))), WireJsonField("content", content)])) }
     root.put("messages", messages)
@@ -192,13 +192,15 @@ func encodeThinking(codec: LlmWireCodec, root: JsonNode, control: LlmWireThinkin
     }
 }
 
-func encodePromptCache(codec: LlmWireCodec, root: JsonNode, value: LlmWirePromptCache): Unit {
+func encodePromptCache(codec: LlmWireCodec, root: JsonNode, value: LlmWirePromptCache, requirements: ArrayList<LlmWireFeatureRequirement>): Unit {
     match (value) {
         case LlmWirePromptCache.ProviderDefault => ()
         case LlmWirePromptCache.Automatic(lifetime) => match (codec.dialect.contract.promptCacheStyle) {
-            case LlmWirePromptCacheStyle.OpenAi => if (lifetime != LlmWirePromptCacheLifetime.ProviderDefault) { root.put("prompt_cache_retention", wireJsonString(cacheLifetimeName(lifetime))) }
+            case LlmWirePromptCacheStyle.OpenAi =>
+                if (lifetime != LlmWirePromptCacheLifetime.ProviderDefault) { root.put("prompt_cache_retention", wireJsonString(cacheLifetimeName(lifetime))) }
+                else { requirements.add(LlmWireFeatureRequirement("openai.prompt_cache_automatic", LlmWireRequirementState.Satisfied)) }
             case LlmWirePromptCacheStyle.Anthropic => unsupportedRequest("llm.cache_unsupported", "Anthropic cache breakpoints require provider-native content blocks")
-            case LlmWirePromptCacheStyle.ProviderAutomatic => ()
+            case LlmWirePromptCacheStyle.ProviderAutomatic => requirements.add(LlmWireFeatureRequirement("provider.prompt_cache_automatic", LlmWireRequirementState.Satisfied))
             case LlmWirePromptCacheStyle.Unsupported => unsupportedRequest("llm.cache_unsupported", "automatic prompt caching is not supported")
         }
     }
@@ -280,13 +282,6 @@ func toolArgumentsObject(arguments: LlmWireToolArguments): JsonNode {
     }
 }
 
-func blockText(block: LlmWireBlock): String {
-    match (block) {
-        case LlmWireBlock.Text(value) => value.text
-        case LlmWireBlock.Image(_) => unsupportedRequest("llm.chat_image_unsupported", "Chat image encoding requires a multipart content block")
-        case _ => unsupportedRequest("llm.chat_block_unsupported", "block cannot be encoded as Chat Completions text")
-    }
-}
 func roleName(role: LlmWireRole): String { match (role) { case LlmWireRole.User => "user"; case LlmWireRole.Assistant => "assistant" } }
 func imageDetail(value: LlmWireImageDetail): String { match (value) { case LlmWireImageDetail.Auto => "auto"; case LlmWireImageDetail.Low => "low"; case LlmWireImageDetail.High => "high" } }
 func imageUrl(value: LlmWireImageBlock): String { match (value.sourceKind) { case LlmWireImageSourceKind.Url => value.data; case LlmWireImageSourceKind.Base64 => "data:" + value.mediaType + ";base64," + value.data } }
@@ -389,7 +384,8 @@ func decodeChatResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseSta
         requireExecutableToolCalls: stop != "length" && stop != "content_filter"
     )
     match (stop) {
-        case "stop" | "tool_calls" | "function_call" => LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply))
+        case "stop" | "tool_calls" => LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply))
+        case "function_call" => throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.chat_legacy_function_call_unsupported", "legacy Chat function_call responses are not supported", provider: codec.provider)
         case "length" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.Length))
         case "content_filter" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.ContentFilter))
         case "insufficient_system_resource" => LlmWireResponseState.Terminal(LlmWireTerminal.Failed(LlmWireFailure(LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true)))

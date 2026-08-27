@@ -132,7 +132,10 @@ public class LlmWireDialectContract {
         usageMergeStyle!: LlmWireUsageMergeStyle = LlmWireUsageMergeStyle.ReplacePresent
     ) {
         if (compatibilityId == "") { throw IllegalArgumentException("dialect compatibility ID must not be empty") }
-        validateContractShape(protocol, requestStyle, outputTokenField, promptCacheStyle, parallelToolStyle)
+        validateContractShape(
+            protocol, requestStyle, outputTokenField, promptCacheStyle, parallelToolStyle,
+            structuredOutputModes, generationSpeeds
+        )
         this.compatibilityId = compatibilityId; this.protocol = protocol; this.requestStyle = requestStyle; this.outputTokenField = outputTokenField
         this.requireMaxOutputTokens = requireMaxOutputTokens; this.thinkingControls = thinkingControls; this.thinkingLevels = thinkingLevels
         this.structuredOutputModes = structuredOutputModes; this.serviceTiers = serviceTiers; this.generationSpeeds = generationSpeeds
@@ -170,7 +173,20 @@ public enum LlmWireBuiltinDialect { OpenAiResponses | OpenAiChat | AnthropicMess
 
 public class LlmWireStandardDialect <: LlmWireDialect {
     private let value: LlmWireDialectContract
-    public init(contract: LlmWireDialectContract) { this.value = contract }
+    public init(contract: LlmWireDialectContract) {
+        if (isBuiltinCompatibilityId(contract.compatibilityId)) {
+            throw IllegalArgumentException("built-in compatibility IDs are reserved")
+        }
+        this.value = contract
+    }
+    public prop contract: LlmWireDialectContract { get() { value } }
+    public prop compatibilityId: String { get() { value.compatibilityId } }
+    public prop protocol: LlmWireProtocol { get() { value.protocol } }
+}
+
+class BuiltinWireDialect <: LlmWireDialect {
+    private let value: LlmWireDialectContract
+    init(contract: LlmWireDialectContract) { this.value = contract }
     public prop contract: LlmWireDialectContract { get() { value } }
     public prop compatibilityId: String { get() { value.compatibilityId } }
     public prop protocol: LlmWireProtocol { get() { value.protocol } }
@@ -210,7 +226,11 @@ func withCodecContext(error: LlmTransportError, codec: LlmWireCodec, defaultPhas
     )
 }
 
-func validateContractShape(protocol: LlmWireProtocol, style: LlmWireRequestStyle, tokenField: LlmWireOutputTokenField, cacheStyle: LlmWirePromptCacheStyle, parallelStyle: LlmWireParallelToolStyle): Unit {
+func validateContractShape(
+    protocol: LlmWireProtocol, style: LlmWireRequestStyle, tokenField: LlmWireOutputTokenField,
+    cacheStyle: LlmWirePromptCacheStyle, parallelStyle: LlmWireParallelToolStyle,
+    structuredModes: Array<LlmWireStructuredOutputMode>, generationSpeeds: Array<LlmWireGenerationSpeed>
+): Unit {
     let valid = match (style) {
         case LlmWireRequestStyle.OpenAiResponses | LlmWireRequestStyle.DeepSeekResponses => protocol == LlmWireProtocol.Responses && tokenField == LlmWireOutputTokenField.MaxOutputTokens
         case LlmWireRequestStyle.OpenAiChat => protocol == LlmWireProtocol.ChatCompletions && tokenField == LlmWireOutputTokenField.MaxCompletionTokens
@@ -220,14 +240,32 @@ func validateContractShape(protocol: LlmWireProtocol, style: LlmWireRequestStyle
     if (!valid) { throw IllegalArgumentException("dialect protocol, request style, and output token field are inconsistent") }
     if (parallelStyle == LlmWireParallelToolStyle.AnthropicToolChoice && protocol != LlmWireProtocol.Messages) { throw IllegalArgumentException("Anthropic tool choice requires Messages") }
     if (cacheStyle == LlmWirePromptCacheStyle.Anthropic && protocol != LlmWireProtocol.Messages) { throw IllegalArgumentException("Anthropic prompt cache requires Messages") }
+    if (!generationSpeeds.isEmpty() && style != LlmWireRequestStyle.AnthropicMessages) {
+        throw IllegalArgumentException("generation speed has no encoding for this request style")
+    }
+    for (mode in structuredModes) {
+        let representable = match ((style, mode)) {
+            case (LlmWireRequestStyle.OpenAiResponses, _) | (LlmWireRequestStyle.DeepSeekResponses, _) | (LlmWireRequestStyle.OpenAiChat, _) => true
+            case (LlmWireRequestStyle.DeepSeekChat, LlmWireStructuredOutputMode.Text) |
+                 (LlmWireRequestStyle.DeepSeekChat, LlmWireStructuredOutputMode.JsonObject) |
+                 (LlmWireRequestStyle.AnthropicMessages, LlmWireStructuredOutputMode.JsonSchema) => true
+            case _ => false
+        }
+        if (!representable) { throw IllegalArgumentException("structured output mode has no encoding for this request style") }
+    }
 }
 
-public func openAiResponsesDialect(): LlmWireDialect { LlmWireStandardDialect(builtinContract(LlmWireBuiltinDialect.OpenAiResponses)) }
-public func openAiChatDialect(): LlmWireDialect { LlmWireStandardDialect(builtinContract(LlmWireBuiltinDialect.OpenAiChat)) }
-public func anthropicMessagesDialect(): LlmWireDialect { LlmWireStandardDialect(builtinContract(LlmWireBuiltinDialect.AnthropicMessages)) }
-public func deepSeekResponsesDialect(): LlmWireDialect { LlmWireStandardDialect(builtinContract(LlmWireBuiltinDialect.DeepSeekResponses)) }
-public func deepSeekChatDialect(): LlmWireDialect { LlmWireStandardDialect(builtinContract(LlmWireBuiltinDialect.DeepSeekChat)) }
-public func deepSeekMessagesDialect(): LlmWireDialect { LlmWireStandardDialect(builtinContract(LlmWireBuiltinDialect.DeepSeekMessages)) }
+public func openAiResponsesDialect(): LlmWireDialect { BuiltinWireDialect(builtinContract(LlmWireBuiltinDialect.OpenAiResponses)) }
+public func openAiChatDialect(): LlmWireDialect { BuiltinWireDialect(builtinContract(LlmWireBuiltinDialect.OpenAiChat)) }
+public func anthropicMessagesDialect(): LlmWireDialect { BuiltinWireDialect(builtinContract(LlmWireBuiltinDialect.AnthropicMessages)) }
+public func deepSeekResponsesDialect(): LlmWireDialect { BuiltinWireDialect(builtinContract(LlmWireBuiltinDialect.DeepSeekResponses)) }
+public func deepSeekChatDialect(): LlmWireDialect { BuiltinWireDialect(builtinContract(LlmWireBuiltinDialect.DeepSeekChat)) }
+public func deepSeekMessagesDialect(): LlmWireDialect { BuiltinWireDialect(builtinContract(LlmWireBuiltinDialect.DeepSeekMessages)) }
+
+func isBuiltinCompatibilityId(value: String): Bool {
+    value == "openai.responses.v1" || value == "openai.chat.v1" || value == "anthropic.messages.v1" ||
+    value == "deepseek.responses.v1" || value == "deepseek.chat.v1" || value == "deepseek.messages.v1"
+}
 
 func builtinContract(value: LlmWireBuiltinDialect): LlmWireDialectContract {
     let levels = [LlmWireThinkingLevel.Minimal, LlmWireThinkingLevel.Low, LlmWireThinkingLevel.Medium, LlmWireThinkingLevel.High, LlmWireThinkingLevel.XHigh, LlmWireThinkingLevel.Max]

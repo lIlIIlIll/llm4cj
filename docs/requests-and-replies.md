@@ -17,4 +17,6 @@ usage counter 使用 `Option<Int64>`。`None` 表示 provider 没有返回该字
 
 conversation 只接受可发送的 canonical history：assistant tool call 之后必须由一个 user tool-result turn 完整闭合当前 pending calls，不能混入普通内容、拆成不完整批次或在闭合前继续新对话。本库不提供会删除或重排非法历史的 lenient 编码模式。
 
+空 block 列表和只包含空文本的 message 会以 `llm.message_empty` 拒绝。ToolResult turn 不允许与 Text 交错，因此 Chat encoder 不会重新排序“文本 + 工具结果”这种非法 canonical 输入。`Complete` tool arguments 在所有协议中都必须是 JSON object；历史 ToolCall name 与工具定义采用相同的 1–64 字节 ASCII 名称语法。
+
 `LlmWireReply.toContinuationInput()` 只投影可安全继续发送的 text、完整 tool call 和 native replay block。`InvalidJson`、`InvalidShape` 或 `Partial` tool arguments 会明确失败；display reasoning、refusal 与未知诊断 block 不会被静默转换成普通输入文本。Responses encoder 只聚合相邻普通 content，native item 与 message 的相对顺序保持不变。
