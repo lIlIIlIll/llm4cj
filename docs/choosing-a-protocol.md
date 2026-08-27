@@ -1,34 +1,13 @@
-# 选择协议
+# 协议与 dialect
 
-协议由 endpoint 的 wire contract 决定，不由模型名称决定。
+protocol 定义 envelope；dialect 定义 provider 对同一 envelope 的字段语义。两者必须匹配，否则 `LlmWireCodec` 构造失败。
 
-| endpoint 文档要求 | `LlmWireProtocol` | 说明 |
+| protocol | 首选内置 dialect | 其他内置 dialect |
 | --- | --- | --- |
-| Responses API | `Responses` | 新集成的默认选择 |
-| OpenAI-compatible Chat Completions | `ChatCompletions` | 使用 `messages`/`choices` envelope |
-| Anthropic-compatible Messages | `Messages` | 使用 content block 与 Messages SSE 事件 |
+| Responses | `openai.responses.v1` | `deepseek.responses.v1` |
+| Chat Completions | `openai.chat.v1` | `deepseek.chat.v1` |
+| Messages | `anthropic.messages.v1` | `deepseek.messages.v1` |
 
-如果 provider 同时提供多个 endpoint，优先使用 `Responses`；如果 endpoint 只声明 Chat Completions 或 Messages，必须跟随 endpoint。
+新集成优先 Responses。只有 endpoint 明确要求 Chat Completions 或 Messages 时才切换。兼容名称不是行为承诺；调用方还必须根据具体模型提供 `LlmWireCapabilities`。
 
-## 完整程序
-
-```cj
-package protocol_choice
-
-import llm4cj.*
-
-main(): Int64 {
-    let request = LlmWireRequest(
-        "demo",
-        [LlmWireMessage(LlmWireRole.User, [LlmWireBlock(LlmWireBlockKind.Text, text: "ping")])]
-    )
-    println(encodeLlmWireRequest(LlmWireProtocol.Responses, request))
-    println(encodeLlmWireRequest(LlmWireProtocol.ChatCompletions, request))
-    println(encodeLlmWireRequest(LlmWireProtocol.Messages, request))
-    0
-}
-```
-
-## DeepSeek 差异
-
-源码和测试已验证的 DeepSeek dialect 通过 `encodeDeepSeekChatWireRequest` 与 `encodeDeepSeekMessagesWireRequest` 显式提供。DeepSeek Messages 接受 toggle 或 effort thinking control，不接受 budget；`Minimal`/`Off` effort 会被拒绝。不要把这些规则外推到其他 provider。
+未提供 capability 时，仅保证基础文本和 `ProviderDefault` thinking。任何显式 thinking、tools、structured output、parallel tool calls、service tier 或 stable cache 选项都必须先声明支持。

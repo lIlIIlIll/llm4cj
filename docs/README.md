@@ -1,17 +1,14 @@
 # llm4cj 文档
 
-按任务选择入口：
+从[安装与首个程序](getting-started.md)开始。新集成优先使用 Responses，并显式选择 dialect 与 model capability。
 
-| 目标 | 文档 |
-| --- | --- |
-| 安装并运行第一个离线程序 | [getting-started.md](getting-started.md) |
-| 为 endpoint 选择协议 | [choosing-a-protocol.md](choosing-a-protocol.md) |
-| 构造 request、读取 reply | [requests-and-replies.md](requests-and-replies.md) |
-| 处理 SSE 与有界 HTTP body | [streaming-and-transport.md](streaming-and-transport.md) |
-| 使用 tools、thinking、structured output | [tools-thinking-and-structured-output.md](tools-thinking-and-structured-output.md) |
-| 处理错误与容量限制 | [errors-and-limits.md](errors-and-limits.md) |
-| 查找所有 public API | [api-reference.md](api-reference.md) |
-| 理解组件责任 | [architecture.md](architecture.md) |
-| 维护测试、coverage 与 release | [testing-and-releasing.md](testing-and-releasing.md) |
-
-初次采用建议依次阅读“安装”“协议选择”“请求与响应”。维护者再阅读“架构”和“测试与发布”。所有示例默认离线，不需要 provider credential。
+- [协议与 dialect](choosing-a-protocol.md)
+- [请求与响应](requests-and-replies.md)
+- [流式与传输](streaming-and-transport.md)
+- [Tools、thinking 与 structured output](tools-thinking-and-structured-output.md)
+- [错误与限制](errors-and-limits.md)
+- [从 v0.1 迁移](migrating-from-v0.1.md)
+- [API reference](api-reference.md)
+- [架构](architecture.md)
+- [测试与发布](testing-and-releasing.md)
+- [v0.2 测试矩阵](v0.2-test-plan.md)

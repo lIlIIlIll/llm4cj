@@ -1,16 +1,17 @@
 # 架构
 
-`wire.cj` 定义 provider-neutral model、三个协议的 encoder/decoder、stream event projection 与 terminal reconstruction。`json_support.cj` 提供保留 number literal、拒绝 duplicate key 的有界 JSON bridge。`transport.cj` 提供 SSE framing、Retry-After parsing、bounded body read 和统一 error/result。
-
-```mermaid
-flowchart LR
-    A[Request] --> B[Protocol encode]
-    B --> C[HTTP / SSE boundary]
-    C --> D[Event / reply decode]
+```text
+model -> validation -> dialect -> codec -> protocol stream state
+                                      ^
+network bytes -> bounded body / SSE --+
 ```
 
-应用拥有 HTTP client、credential、endpoint、model selection、retry/backoff、deadline source、tool execution 与 agent loop。该边界让 codec 可离线测试，并避免把 provider policy 隐式固化到基础库。
+- `model.cj`：统一请求、block、usage 与终态；
+- `dialect.cj`：内置 dialect、capabilities 与 codec 入口；
+- `validation.cj`：严格字段和会话历史校验；
+- `codec.cj`：三种协议的请求与固定响应；
+- `stream.cj`：三种协议的增量状态机；
+- `transport.cj`：字节 SSE、Retry-After 与有界 body；
+- `json_support.cj`：重复键拒绝、数字字面量保留及 JSON limits。
 
-低延迟路径使用 `decodeLlmWireEventFrame`；完成性路径使用 `decodeLlmWireEventStream`。二者共享事件类型，但只有后者维护跨 frame 状态和 terminal evidence。
-
-0.x 期间允许 minor 版本调整 public API。任何 public surface、默认值、协议 mapping 或错误码变化都应进入 CHANGELOG，并由 external consumer 验证安装边界。
+协议 envelope、provider dialect、model capability 和 agent 语义是四个边界。只有前三者进入本库；agent loop 留在 consumer。
