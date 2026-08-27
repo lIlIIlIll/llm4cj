@@ -14,6 +14,7 @@ REQUIRED = [
     "docs/requests-and-replies.md", "docs/streaming-and-transport.md",
     "docs/tools-thinking-and-structured-output.md", "docs/errors-and-limits.md",
     "docs/api-reference.md", "docs/architecture.md", "docs/testing-and-releasing.md",
+    "docs/migrating-from-v0.1.md", "docs/v0.2-test-plan.md",
 ]
 
 
@@ -48,7 +49,7 @@ if not minimum or minimum.group(1) not in (ROOT / "README.md").read_text(encodin
 
 api = (ROOT / "docs/api-reference.md").read_text(encoding="utf-8")
 source = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "src").glob("*.cj"))
-names = set(re.findall(r"^public\s+(?:class|enum|func)\s+([A-Za-z][A-Za-z0-9_]*)", source, re.MULTILINE))
+names = set(re.findall(r"^public\s+(?:class|enum|interface|struct|func)\s+([A-Za-z][A-Za-z0-9_]*)", source, re.MULTILINE))
 missing = sorted(name for name in names if f"`{name}" not in api)
 if missing:
     fail("public API missing from reference: " + ", ".join(missing))

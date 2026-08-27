@@ -6,6 +6,7 @@ cd "$root"
 
 python3 scripts/check_docs.py
 python3 scripts/check_examples.py
+python3 scripts/check_contract.py
 cjpm clean
 cjpm check
 cjpm build

@@ -1,30 +1,9 @@
 # Tools、thinking 与 structured output
 
-## 完整程序
+thinking 控制分为 `ProviderDefault`、`Disabled`、`Enabled`、`Effort`、`Budget` 和 `Adaptive`。默认值不发送字段；显式值必须同时得到 capability 和 dialect 映射支持。Anthropic adaptive effort 写入 `output_config.effort`，不会错误地嵌入 `thinking`。
 
-```cj
-package advanced_request
+严格校验是默认策略：tool call ID 必须非空且唯一，tool result 只能匹配此前尚未消费的 call。非法、孤立或未来匹配的数据会失败。`Lenient` 只用于明确接纳脏历史的场景，并按原 block 顺序编码，不会静默删除数据。
 
-import llm4cj.*
-import yjson.*
+Messages 的 provider-native thinking state 使用 `LlmWireOpaqueBlock`。`thinking`、`redacted_thinking` 和未知 block 会保存完整原始对象；只有完成、protocol 相同且 dialect ID 相同的 opaque block 才能回放。用于显示的 reasoning 与回放数据彼此分离。
 
-main(): Int64 {
-    let schema = YJson.parse("{\"type\":\"object\"}")
-    let request = LlmWireRequest(
-        "demo",
-        [LlmWireMessage(LlmWireRole.User, [LlmWireBlock(LlmWireBlockKind.Text, text: "查天气")])],
-        tools: [LlmWireTool("weather", "查询天气", schema)],
-        thinking: LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low),
-        toolChoice: LlmWireToolChoice.Auto,
-        structuredOutput: Some(LlmWireStructuredOutput("answer", schema))
-    )
-    println(encodeResponsesWireRequest(request))
-    0
-}
-```
-
-`LlmWireTool` 的 `inputSchema` 和 `LlmWireStructuredOutput.schema` 是 `yjson.JsonNode`。consumer 若直接构造 schema，需要同时声明并导入 `yjson`。
-
-Thinking 支持 `Disabled`、`Toggle`、`Effort`、`Budget` 与 `Adaptive`，但具体协议未必支持每个值。encoder 会拒绝不能安全映射的组合。`LlmWireCachePolicy.StablePrefix`、`serviceTier` 与 `parallelToolCalls` 同样由各协议 encoder 决定是否及如何投影。
-
-Tool result 必须使用原 tool call 的 `callId`。Chat encoder 会忽略找不到对应 call 的孤立 tool result。应用负责执行工具、校验参数和控制副作用。
+tools、parallel tool calls 和 structured output 都需要对应 capability。模型目录属于上层应用，本库不会根据 model 字符串猜能力。

@@ -17,16 +17,45 @@ if ! grep -Eq "^version = \"${version}\"$" cjpm.toml; then
   printf 'manifest version does not match %s\n' "$version" >&2
   exit 2
 fi
+candidate=$(git rev-parse HEAD)
+if [[ ! "$candidate" =~ ^[0-9a-f]{40}$ ]]; then
+  printf 'cannot resolve candidate commit\n' >&2
+  exit 2
+fi
 if ! git ls-files --error-unmatch cjpm.lock >/dev/null 2>&1; then
   printf 'release gate requires a tracked cjpm.lock\n' >&2
   exit 2
 fi
+smoke_dir=${PROVIDER_SMOKE_EVIDENCE_DIR:-}
+if [[ -z "$smoke_dir" || ! -d "$smoke_dir" ]]; then
+  printf 'PROVIDER_SMOKE_EVIDENCE_DIR must contain six successful candidate smoke artifacts\n' >&2
+  exit 2
+fi
+python3 - "$smoke_dir" "$candidate" <<'PY'
+import json, pathlib, sys
+root, candidate = pathlib.Path(sys.argv[1]), sys.argv[2]
+expected = {"openai-responses", "openai-chat", "anthropic-messages", "deepseek-responses", "deepseek-chat", "deepseek-messages"}
+records = [json.loads(path.read_text()) for path in sorted(root.glob("*.json"))]
+actual = {record.get("dialect") for record in records if record.get("status") == "passed" and record.get("candidate_sha") == candidate}
+if actual != expected:
+    raise SystemExit(f"provider smoke evidence mismatch: expected {sorted(expected)}, got {sorted(actual)}")
+PY
 
-bash scripts/check.sh
+scripts/check.sh
+scripts/coverage.sh
 
 consumer_root=$(mktemp -d -t llm4cj-consumer.XXXXXX)
 trap 'rm -rf -- "$consumer_root"' EXIT
 cp -a support/external_consumer/. "$consumer_root/"
+python3 - "$consumer_root/cjpm.toml" "$candidate" <<'PY'
+import pathlib, re, sys
+path, candidate = pathlib.Path(sys.argv[1]), sys.argv[2]
+text = path.read_text()
+text, count = re.subn(r'llm4cj = \{ git = "([^"]+)", tag = "[^"]+" \}', rf'llm4cj = {{ git = "\1", commitId = "{candidate}" }}', text)
+if count != 1:
+    raise SystemExit("external consumer dependency shape drifted")
+path.write_text(text)
+PY
 (
   cd "$consumer_root"
   cjpm check
@@ -37,11 +66,15 @@ cp -a support/external_consumer/. "$consumer_root/"
     printf 'external consumer contains a local path fallback\n' >&2
     exit 1
   fi
+  if ! grep -Fq "commitId = \"$candidate\"" cjpm.toml; then
+    printf 'external consumer is not pinned to the candidate commit\n' >&2
+    exit 1
+  fi
 )
 
 yjson_commit=$(grep -E '^ *yjson = ' cjpm.lock | grep -Eo 'commitId = "[0-9a-f]{40}"' | grep -Eo '[0-9a-f]{40}')
-if [[ ! "$yjson_commit" =~ ^[0-9a-f]{40}$ ]]; then
-  printf 'cannot resolve yjson commit from cjpm.lock\n' >&2
+if [[ "$yjson_commit" != "92858f75aedc3dd6f7322789117854514549e62c" ]]; then
+  printf 'yjson is not pinned to the approved commit\n' >&2
   exit 1
 fi
 
@@ -49,14 +82,14 @@ mkdir -p dist
 python3 scripts/release_manifest.py \
   --output dist/release-manifest.json \
   --version "$version" \
-  --source-commit "$(git rev-parse HEAD)" \
+  --source-commit "$candidate" \
   --yjson-commit "$yjson_commit" \
   --cjc-version "$(cjc -v 2>&1 | head -n 1)" \
-  --cjpm-version "$(cjpm --version 2>&1 | head -n 1)"
-
+  --cjpm-version "$(cjpm --version 2>&1 | head -n 1)" \
+  --smoke-evidence "$smoke_dir"
 (
   cd dist
   sha256sum release-manifest.json > SHA256SUMS
 )
 
-printf 'llm4cj release gate passed: %s\n' "$version"
+printf 'llm4cj release gate passed: %s at %s\n' "$version" "$candidate"

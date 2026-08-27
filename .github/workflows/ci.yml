@@ -11,61 +11,62 @@ permissions:
   contents: read
 
 jobs:
-  tests:
+  verify_minimum:
+    name: verify (minimum-1.1.0)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           clean: true
-      - name: Resolve latest complete nightly
-        id: nightly
-        run: echo "version=$(python3 scripts/latest_cangjie_nightly.py)" >> "$GITHUB_OUTPUT"
-      - name: Setup Cangjie
+      - name: Setup Cangjie 1.1.0
         uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
         with:
-          channel: nightly
-          version: ${{ steps.nightly.outputs.version }}
-          archive-path: ${{ runner.temp }}/cangjie-nightly.tar.gz
-      - name: Record toolchain
-        run: |
-          cjc -v
-          cjpm --version
-      - name: Build, test, and verify docs
-        run: scripts/check.sh
+          channel: sts
+          version: 1.1.0
+      - run: scripts/check.sh
+
+  verify_stable:
+    name: verify (stable-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          clean: true
+      - name: Setup latest stable Cangjie
+        uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
+        with:
+          channel: sts
+          version: latest
+      - run: scripts/check.sh
 
   coverage:
+    name: coverage
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           clean: true
           fetch-depth: 0
-      - name: Resolve latest complete nightly
-        id: nightly
-        run: echo "version=$(python3 scripts/latest_cangjie_nightly.py)" >> "$GITHUB_OUTPUT"
-      - name: Setup Cangjie
+      - name: Setup latest stable Cangjie
         uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
         with:
-          channel: nightly
-          version: ${{ steps.nightly.outputs.version }}
-          archive-path: ${{ runner.temp }}/cangjie-nightly.tar.gz
+          channel: sts
+          version: latest
       - name: Generate cjcov and LCOV reports
         run: scripts/coverage.sh
-      - name: Verify patch line and branch coverage
+      - name: Verify patch coverage
         if: github.event_name == 'pull_request'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           git diff --unified=0 "$BASE_SHA"...HEAD -- 'src/*.cj' > coverage/patch.diff
-          python3 scripts/check_patch_coverage.py \
-            --diff coverage/patch.diff \
-            --lcov coverage/lcov.info \
-            --baseline coverage-baseline.toml
+          python3 scripts/check_patch_coverage.py --diff coverage/patch.diff --lcov coverage/lcov.info --baseline coverage-baseline.toml
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
@@ -73,4 +74,13 @@ jobs:
           files: coverage/lcov.info
           disable_search: true
           fail_ci_if_error: true
-          verbose: true
+
+  contract:
+    name: contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          clean: true
+      - run: python3 scripts/check_contract.py
