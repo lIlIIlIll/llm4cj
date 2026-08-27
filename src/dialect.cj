@@ -20,12 +20,27 @@ public class LlmWireHeader {
     public let name: String
     public let value: String
     public init(name: String, value: String) {
-        if (name.trimAscii() == "" || value.contains("\r") || value.contains("\n")) {
+        if (!validHeaderName(name.trimAscii()) || value.contains("\r") || value.contains("\n") || containsHeaderControl(value)) {
             throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.header_invalid", "header name and value must be safe single-line values")
         }
         this.name = name.trimAscii().toAsciiLower()
         this.value = value.trimAscii()
     }
+}
+
+func validHeaderName(value: String): Bool {
+    let bytes = value.toArray(); if (bytes.isEmpty()) { return false }
+    for (byte in bytes) {
+        let alphaNumeric = (byte >= 48u8 && byte <= 57u8) || (byte >= 65u8 && byte <= 90u8) || (byte >= 97u8 && byte <= 122u8)
+        let punctuation = byte == 33u8 || byte == 35u8 || byte == 36u8 || byte == 37u8 || byte == 38u8 || byte == 39u8 || byte == 42u8 || byte == 43u8 || byte == 45u8 || byte == 46u8 || byte == 94u8 || byte == 95u8 || byte == 96u8 || byte == 124u8 || byte == 126u8
+        if (!alphaNumeric && !punctuation) { return false }
+    }
+    true
+}
+
+func containsHeaderControl(value: String): Bool {
+    for (byte in value.toArray()) { if (byte < 32u8 && byte != 9u8 || byte == 127u8) { return true } }
+    false
 }
 
 public class LlmWireFeatureRequirement {
@@ -113,6 +128,7 @@ public class LlmWireDialectContract {
         parallelToolStyle!: LlmWireParallelToolStyle = LlmWireParallelToolStyle.Unsupported, tools!: Bool = true
     ) {
         if (compatibilityId == "") { throw IllegalArgumentException("dialect compatibility ID must not be empty") }
+        validateContractShape(protocol, requestStyle, outputTokenField, promptCacheStyle, parallelToolStyle)
         this.compatibilityId = compatibilityId; this.protocol = protocol; this.requestStyle = requestStyle; this.outputTokenField = outputTokenField
         this.requireMaxOutputTokens = requireMaxOutputTokens; this.thinkingControls = thinkingControls; this.thinkingLevels = thinkingLevels
         this.structuredOutputModes = structuredOutputModes; this.serviceTiers = serviceTiers; this.generationSpeeds = generationSpeeds
@@ -162,12 +178,25 @@ public class LlmWireCodec {
     public let capabilities: LlmWireCapabilities
     public let provider: String
     public init(protocol: LlmWireProtocol, dialect: LlmWireDialect, capabilities!: LlmWireCapabilities = LlmWireCapabilities(), provider!: String = "") {
-        if (protocol != dialect.protocol) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.dialect_protocol_mismatch", "dialect protocol does not match codec protocol") }
+        if (protocol != dialect.protocol || protocol != dialect.contract.protocol) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.dialect_protocol_mismatch", "dialect protocol does not match codec protocol") }
+        if (dialect.compatibilityId != dialect.contract.compatibilityId) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.dialect_identity_mismatch", "dialect identity does not match its contract") }
         this.protocol = protocol; this.dialect = dialect; this.capabilities = capabilities; this.provider = provider
     }
     public func encodeRequest(request: LlmWireRequest): LlmWireEncodedRequest { validateWireRequest(this, request); encodeWireRequest(this, request) }
     public func decodeResponse(source: String): LlmWireResponseState { decodeWireResponse(this, source) }
-    public func newStreamDecoder(): LlmWireStreamDecoder { newWireStreamDecoder(this) }
+    public func newStreamDecoder(limits!: LlmWireStreamLimits = LlmWireStreamLimits()): LlmWireStreamDecoder { newWireStreamDecoder(this, limits) }
+}
+
+func validateContractShape(protocol: LlmWireProtocol, style: LlmWireRequestStyle, tokenField: LlmWireOutputTokenField, cacheStyle: LlmWirePromptCacheStyle, parallelStyle: LlmWireParallelToolStyle): Unit {
+    let valid = match (style) {
+        case LlmWireRequestStyle.OpenAiResponses | LlmWireRequestStyle.DeepSeekResponses => protocol == LlmWireProtocol.Responses && tokenField == LlmWireOutputTokenField.MaxOutputTokens
+        case LlmWireRequestStyle.OpenAiChat => protocol == LlmWireProtocol.ChatCompletions && tokenField == LlmWireOutputTokenField.MaxCompletionTokens
+        case LlmWireRequestStyle.DeepSeekChat => protocol == LlmWireProtocol.ChatCompletions && tokenField == LlmWireOutputTokenField.MaxTokens
+        case LlmWireRequestStyle.AnthropicMessages | LlmWireRequestStyle.DeepSeekMessages => protocol == LlmWireProtocol.Messages && tokenField == LlmWireOutputTokenField.MaxTokens
+    }
+    if (!valid) { throw IllegalArgumentException("dialect protocol, request style, and output token field are inconsistent") }
+    if (parallelStyle == LlmWireParallelToolStyle.AnthropicToolChoice && protocol != LlmWireProtocol.Messages) { throw IllegalArgumentException("Anthropic tool choice requires Messages") }
+    if (cacheStyle == LlmWirePromptCacheStyle.Anthropic && protocol != LlmWireProtocol.Messages) { throw IllegalArgumentException("Anthropic prompt cache requires Messages") }
 }
 
 public func openAiResponsesDialect(): LlmWireDialect { LlmWireStandardDialect(builtinContract(LlmWireBuiltinDialect.OpenAiResponses)) }

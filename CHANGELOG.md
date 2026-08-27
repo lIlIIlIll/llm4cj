@@ -9,6 +9,9 @@ All notable changes are recorded here.
 - Preserve provider-native thinking, redacted thinking, and unknown Messages blocks as dialect-bound opaque replay data.
 - Distinguish pending, succeeded, incomplete, and failed response states, including structured provider failures.
 - Add stateful incremental decoders with stable block, item, call, choice, and tool-call identities.
+- Preserve DeepSeek `reasoning_content` across tool continuation and Responses native/message ordering.
+- Enforce aggregate stream limits, message phases, immutable tool identities, executable tool arguments, and request schema invariants.
+- Verify public request, fixed-response, and stream fixtures with deterministic byte fragmentation, and refuse release-asset replacement.
 - Rebuild SSE parsing around bytes with CR/LF/CRLF, BOM, empty data, persistent fields, complete-event limits, and RFC-compatible `Retry-After` dates.
 - Pin `yjson` to commit `92858f75aedc3dd6f7322789117854514549e62c` and add API, error-code, fixture, coverage, consumer, and provider-smoke release evidence.
 

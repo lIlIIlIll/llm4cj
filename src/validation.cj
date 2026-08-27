@@ -91,6 +91,7 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
         throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.max_output_tokens_required", "this dialect requires maxOutputTokens")
     }
     validateThinking(codec, request)
+    validateToolsAndSchemas(request)
     var usesTools = !request.tools.isEmpty()
     for (message in request.messages) { for (block in message.blocks) { match (block) { case LlmWireBlock.ToolCall(_) | LlmWireBlock.ToolResult(_) => usesTools = true; case _ => () } } }
     match (request.toolChoice) { case LlmWireToolChoice.ProviderDefault => (); case _ => usesTools = true }
@@ -110,7 +111,10 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
     validatePromptCache(codec, request.promptCache, request.promptCacheRoutingKey)
     for (messageIndex in 0..request.messages.size) {
         let message = request.messages[messageIndex]
-        for (blockIndex in 0..message.blocks.size) { validateBlockForReplay(codec, request, message, message.blocks[blockIndex], blockIndex) }
+        for (blockIndex in 0..message.blocks.size) {
+            validateBlockForReplay(codec, request, message, message.blocks[blockIndex], blockIndex)
+            validateBlockShape(message.blocks[blockIndex])
+        }
     }
     validateConversation(request.messages)
 }
@@ -160,6 +164,7 @@ func structuredMode(value: LlmWireStructuredOutput): ?LlmWireStructuredOutputMod
         case LlmWireStructuredOutput.Text => Some(LlmWireStructuredOutputMode.Text)
         case LlmWireStructuredOutput.JsonObject => Some(LlmWireStructuredOutputMode.JsonObject)
         case LlmWireStructuredOutput.JsonSchema(_) => Some(LlmWireStructuredOutputMode.JsonSchema)
+        case LlmWireStructuredOutput.JsonSchemaDocument(_) => Some(LlmWireStructuredOutputMode.JsonSchema)
     }
 }
 
@@ -167,6 +172,12 @@ func validateStructuredOutput(codec: LlmWireCodec, value: LlmWireStructuredOutpu
     match (structuredMode(value)) {
         case None => ()
         case Some(mode) => if (!supportsStructuredMode(codec.dialect.contract.structuredOutputModes, mode) || !supportsStructuredMode(codec.capabilities.structuredOutputModes, mode)) { unsupportedRequest("llm.structured_output_unsupported", "structured output mode is not supported by this dialect and model") }
+    }
+    match ((codec.dialect.contract.requestStyle, value)) {
+        case (LlmWireRequestStyle.AnthropicMessages, LlmWireStructuredOutput.JsonSchema(_)) => unsupportedRequest("llm.structured_output_metadata_unsupported", "Anthropic output_config.format cannot represent OpenAI schema name, description, or strict metadata")
+        case (LlmWireRequestStyle.AnthropicMessages, LlmWireStructuredOutput.JsonSchemaDocument(_)) => ()
+        case (_, LlmWireStructuredOutput.JsonSchemaDocument(_)) => unsupportedRequest("llm.structured_output_document_unsupported", "this dialect requires a named JSON schema specification")
+        case _ => ()
     }
 }
 func supportsStructuredMode(values: Array<LlmWireStructuredOutputMode>, target: LlmWireStructuredOutputMode): Bool { for (value in values where value == target) { return true }; false }
@@ -216,8 +227,46 @@ func validateBlockForReplay(codec: LlmWireCodec, request: LlmWireRequest, messag
         case LlmWireBlock.Reasoning(_) => unsupportedRequest("llm.reasoning_display_only", "display reasoning is not request-encodable")
         case LlmWireBlock.Refusal(_) => unsupportedRequest("llm.refusal_display_only", "refusal output is not request-encodable")
         case LlmWireBlock.ToolCall(value) => match (value.arguments) {
+            case LlmWireToolArguments.Complete(_) => ()
             case LlmWireToolArguments.Partial(_) => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be sent as an executable tool call")
-            case _ => ()
+            case _ => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_arguments_not_executable", "invalid tool arguments cannot be sent as an executable tool call")
+        }
+        case _ => ()
+    }
+}
+
+func validateToolsAndSchemas(request: LlmWireRequest): Unit {
+    let names = HashSet<String>()
+    for (tool in request.tools) {
+        if (!validToolName(tool.name)) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_name_invalid", "tool names must be 1-64 ASCII letters, digits, underscore, or hyphen") }
+        if (names.contains(tool.name)) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_name_duplicate", "tool names must be unique") }
+        names.add(tool.name)
+        if (tool.inputSchema.wireKind != WireJsonKind.Object) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_schema_invalid", "tool input schema must be a JSON object") }
+    }
+    match (request.structuredOutput) {
+        case LlmWireStructuredOutput.JsonSchema(value) =>
+            if (value.name == "" || value.schema.wireKind != WireJsonKind.Object) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.structured_schema_invalid", "structured output name and object schema are required") }
+        case LlmWireStructuredOutput.JsonSchemaDocument(value) =>
+            if (value.wireKind != WireJsonKind.Object) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.structured_schema_invalid", "structured output schema must be a JSON object") }
+        case _ => ()
+    }
+}
+
+func validToolName(value: String): Bool {
+    let bytes = value.toArray()
+    if (bytes.isEmpty() || bytes.size > 64) { return false }
+    for (byte in bytes) {
+        let allowed = (byte >= 65u8 && byte <= 90u8) || (byte >= 97u8 && byte <= 122u8) || (byte >= 48u8 && byte <= 57u8) || byte == 95u8 || byte == 45u8
+        if (!allowed) { return false }
+    }
+    true
+}
+
+func validateBlockShape(block: LlmWireBlock): Unit {
+    match (block) {
+        case LlmWireBlock.Image(value) => match (value.sourceKind) {
+            case LlmWireImageSourceKind.Url => if (value.data.trimAscii() == "") { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.image_url_invalid", "image URL must not be empty") }
+            case LlmWireImageSourceKind.Base64 => if (value.data == "" || value.mediaType == "" || !value.mediaType.contains("/")) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.image_base64_invalid", "base64 images require data and a media type") }
         }
         case _ => ()
     }

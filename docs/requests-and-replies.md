@@ -15,4 +15,4 @@ tool arguments 不再被压成一个字符串状态：`Complete` 只保存 canon
 
 usage counter 使用 `Option<Int64>`。`None` 表示 provider 没有返回该字段，`Some(0)` 才表示 provider 明确报告零。
 
-`LlmWireReply.toContinuationInput()` 只投影可安全继续发送的 text、tool call 和 native replay block。display reasoning、refusal 与未知诊断 block 不会被静默转换成普通输入文本。
+`LlmWireReply.toContinuationInput()` 只投影可安全继续发送的 text、完整 tool call 和 native replay block。`InvalidJson`、`InvalidShape` 或 `Partial` tool arguments 会明确失败；display reasoning、refusal 与未知诊断 block 不会被静默转换成普通输入文本。Responses encoder 只聚合相邻普通 content，native item 与 message 的相对顺序保持不变。

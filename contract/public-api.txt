@@ -17,6 +17,7 @@ class LlmWireRefusalBlock
 class LlmWireReply
 class LlmWireRequest
 class LlmWireStandardDialect
+class LlmWireStreamLimits
 class LlmWireStreamUpdate
 class LlmWireTextBlock
 class LlmWireTool

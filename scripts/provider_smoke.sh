@@ -13,7 +13,7 @@ if [[ ! -x "$probe" ]]; then
 fi
 
 python3 - "$DIALECT" "$PROVIDER_SMOKE_CONFIG" "${CANDIDATE_SHA:-}" "$probe" <<'PY'
-import json, pathlib, subprocess, sys, urllib.error, urllib.request
+import json, pathlib, subprocess, sys, tempfile, urllib.error, urllib.request
 dialect, raw, candidate, probe = sys.argv[1:]
 config = json.loads(raw)
 entry = config.get(dialect)
@@ -33,12 +33,20 @@ try:
     with urllib.request.urlopen(request, timeout=60) as response:
         status = response.status
         content_type = response.headers.get_content_type()
-        payload = response.read().decode("utf-8")
+        payload = bytearray()
+        while chunk := response.read(8192):
+            payload.extend(chunk)
+            if len(payload) > 64 * 1024 * 1024:
+                raise SystemExit(f"provider smoke response exceeded 64 MiB for {dialect}")
 except urllib.error.HTTPError as error:
     raise SystemExit(f"provider smoke failed for {dialect}: HTTP {error.code}")
 if content_type != "text/event-stream":
     raise SystemExit(f"provider smoke expected text/event-stream for {dialect}, got {content_type}")
-subprocess.run([probe, "decode-stream", dialect, payload], check=True, text=True, capture_output=True)
+with tempfile.NamedTemporaryFile(prefix="llm4cj-provider-", suffix=".sse") as stream:
+    stream.write(payload)
+    stream.flush()
+    for chunk_size in (1, 3, 7, 4096):
+        subprocess.run([probe, "decode-stream", dialect, stream.name, str(chunk_size)], check=True, text=True, capture_output=True)
 result = {"dialect": dialect, "status": "passed", "http_status": status, "streaming": True, "public_encoder": True, "candidate_sha": candidate}
-pathlib.Path("provider-smoke-result.json").write_text(json.dumps(result, separators=(",", ":")) + "\n")
+pathlib.Path(f"provider-smoke-{dialect}.json").write_text(json.dumps(result, separators=(",", ":")) + "\n")
 PY

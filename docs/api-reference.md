@@ -16,7 +16,7 @@
 
 ## 流式
 
-`LlmWireEventKind`、`LlmWireEvent`、`LlmWireStreamUpdate`、`LlmWireStreamDecoder`。
+`LlmWireEventKind`、`LlmWireEvent`、`LlmWireStreamLimits`、`LlmWireStreamUpdate`、`LlmWireStreamDecoder`。
 
 ## 传输
 

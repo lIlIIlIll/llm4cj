@@ -57,7 +57,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" dist/release-manifest.json dist/SHA256SUMS --clobber
-          else
-            gh release create "$RELEASE_TAG" dist/release-manifest.json dist/SHA256SUMS --verify-tag --generate-notes --title "llm4cj $RELEASE_TAG"
+            echo "release $RELEASE_TAG already exists; refusing to replace immutable evidence" >&2
+            exit 1
           fi
+          gh release create "$RELEASE_TAG" dist/release-manifest.json dist/SHA256SUMS --verify-tag --generate-notes --title "llm4cj $RELEASE_TAG"

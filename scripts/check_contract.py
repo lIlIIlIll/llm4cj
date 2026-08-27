@@ -8,7 +8,8 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-source = "\n".join(path.read_text(encoding="utf-8") for path in sorted((ROOT / "src").glob("*.cj")))
+production_sources = [path for path in sorted((ROOT / "src").glob("*.cj")) if not path.name.endswith("_test.cj")]
+source = "\n".join(path.read_text(encoding="utf-8") for path in production_sources)
 
 
 def normalize_declaration(value: str) -> str:
@@ -160,18 +161,22 @@ api = sorted(
 )
 expected_api = (ROOT / "contract/public-api.txt").read_text(encoding="utf-8").splitlines()
 if api != expected_api:
-    raise SystemExit("public API snapshot drifted; update contract/public-api.txt intentionally")
+    added = sorted(set(api) - set(expected_api))
+    removed = sorted(set(expected_api) - set(api))
+    raise SystemExit(f"public API snapshot drifted; added={added}, removed={removed}")
 
 api_shape = public_api_shape(source)
 api_shape_digest = hashlib.sha256(("\n".join(api_shape) + "\n").encode("utf-8")).hexdigest()
 expected_api_shape_digest = (ROOT / "contract/public-api-shape.sha256").read_text(encoding="utf-8").strip()
 if api_shape_digest != expected_api_shape_digest:
-    raise SystemExit("public API shape drifted; update contract/public-api-shape.sha256 intentionally")
+    raise SystemExit(f"public API shape drifted: {api_shape_digest}")
 
 codes = sorted(set(re.findall(r'"(llm\.[a-z0-9_.]+)"', source)))
 expected_codes = (ROOT / "contract/error-codes.txt").read_text(encoding="utf-8").splitlines()
 if codes != expected_codes:
-    raise SystemExit("error-code inventory drifted; update contract/error-codes.txt intentionally")
+    added = sorted(set(codes) - set(expected_codes))
+    removed = sorted(set(expected_codes) - set(codes))
+    raise SystemExit(f"error-code inventory drifted; added={added}, removed={removed}")
 
 digest = hashlib.sha256()
 fixtures = (
