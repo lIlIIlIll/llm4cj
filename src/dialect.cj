@@ -47,6 +47,7 @@ public class LlmWireCapabilities {
 public interface LlmWireDialect {
     prop compatibilityId: String
     prop protocol: LlmWireProtocol
+    prop chatReasoningField: ?String
     func validateThinking(control: LlmWireThinkingControl, capabilities: LlmWireCapabilities): Unit
     func encodeThinking(control: LlmWireThinkingControl): JsonNode
 }
@@ -80,6 +81,15 @@ public class LlmWireStandardDialect <: LlmWireDialect {
                 case LlmWireBuiltinDialect.OpenAiResponses | LlmWireBuiltinDialect.DeepSeekResponses => LlmWireProtocol.Responses
                 case LlmWireBuiltinDialect.OpenAiChat | LlmWireBuiltinDialect.DeepSeekChat => LlmWireProtocol.ChatCompletions
                 case LlmWireBuiltinDialect.AnthropicMessages | LlmWireBuiltinDialect.DeepSeekMessages => LlmWireProtocol.Messages
+            }
+        }
+    }
+
+    public prop chatReasoningField: ?String {
+        get() {
+            match (builtin) {
+                case LlmWireBuiltinDialect.DeepSeekChat => Some("reasoning_content")
+                case _ => None
             }
         }
     }
@@ -175,12 +185,9 @@ func encodeStandardThinking(builtin: LlmWireBuiltinDialect, control: LlmWireThin
             case _ => []
         }
         case LlmWireBuiltinDialect.DeepSeekResponses => match (control) {
-            case LlmWireThinkingControl.Disabled => [WireJsonField("thinking", wireJsonObject([WireJsonField("type", wireJsonString("disabled"))]))]
-            case LlmWireThinkingControl.Enabled => [WireJsonField("thinking", wireJsonObject([WireJsonField("type", wireJsonString("enabled"))]))]
-            case LlmWireThinkingControl.Effort(level) => [
-                WireJsonField("thinking", wireJsonObject([WireJsonField("type", wireJsonString("enabled"))])),
-                WireJsonField("reasoning", wireJsonObject([WireJsonField("effort", wireJsonString(wireThinkingLevel(level)))]))
-            ]
+            case LlmWireThinkingControl.Disabled => [WireJsonField("reasoning", wireJsonObject([WireJsonField("effort", wireJsonString("none"))]))]
+            case LlmWireThinkingControl.Enabled => [WireJsonField("reasoning", wireJsonObject([WireJsonField("effort", wireJsonString("high"))]))]
+            case LlmWireThinkingControl.Effort(level) => [WireJsonField("reasoning", wireJsonObject([WireJsonField("effort", wireJsonString(wireThinkingLevel(level)))]))]
             case _ => []
         }
         case LlmWireBuiltinDialect.OpenAiChat => match (control) {
