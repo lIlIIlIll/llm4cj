@@ -1,22 +1,16 @@
 package llm4cj
 
 import std.collection.*
+import std.deriving.Derive
 import yjson.*
 
 let LLM_JSON_MAX_BYTES: Int64 = 8388608
 let LLM_JSON_MAX_DEPTH: Int64 = 256
 let LLM_JSON_MAX_STRING_BYTES: Int64 = 8388608
 
-enum WireJsonKind <: Equatable<WireJsonKind> {
+@Derive[Equatable]
+enum WireJsonKind {
     Null | Boolean | Number | Text | List | Object
-
-    public operator func ==(other: WireJsonKind): Bool {
-        match ((this, other)) {
-            case (Null, Null) | (Boolean, Boolean) | (Number, Number) |
-                 (Text, Text) | (List, List) | (Object, Object) => true
-            case _ => false
-        }
-    }
 }
 
 class WireJsonField {

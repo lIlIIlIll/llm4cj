@@ -46,7 +46,11 @@ public class LlmWireTextBlock {
 
 public class LlmWireReasoningBlock {
     public let text: String
-    public init(text: String) { this.text = text }
+    public let replayDialectId: String
+    public init(text: String, replayDialectId!: String = "") {
+        this.text = text
+        this.replayDialectId = replayDialectId
+    }
 }
 
 public enum LlmWireToolArguments {

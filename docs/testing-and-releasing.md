@@ -6,15 +6,18 @@
 scripts/check.sh
 scripts/coverage.sh
 scripts/check_contract.py
+scripts/benchmark_streaming.sh
 ```
 
 CI required contexts 固定为：
 
-- `CI / verify (minimum-1.1.0)`；
-- `CI / verify (stable-latest)`；
-- `CI / coverage`；
-- `CI / contract`。
+- `verify (minimum-1.1.0)`；
+- `verify (stable-latest)`；
+- `coverage`；
+- `contract`。
 
-nightly 是定时 advisory，不阻塞发布。provider smoke 是手动 workflow，必须显式提供 secrets；日志与 artifact 只能保留 provider、dialect、状态和已脱敏错误，不得写出 key、request body 或原始 response body。
+nightly 是定时 advisory，不阻塞发布。provider smoke 是手动 workflow，必须显式提供 secrets；每个响应会先通过 `support/protocol_probe` 的 public codec 解码，artifact 只保留 provider、dialect、状态和 HTTP status，不写出 key、request body 或原始 response body。
 
-覆盖率门槛是 project line 90%、project branch 80%、patch line 95%、patch branch 90%。release gate 还验证 public API snapshot、错误码 inventory、fixture digest、全部文档程序和 exact candidate commit 的 external consumer。
+覆盖率门槛是 project line 90%、project branch 80%、patch line 95%、patch branch 90%。`scripts/check.sh` 会让六份 provider fixture 通过真实 codec，而不仅核对 digest；SSE 测试还会穷举每个字节分片边界。
+
+发布使用手动 `Release` workflow：输入已存在的 tag 和同一 candidate SHA 的成功 Provider Smoke run ID。工作流依次运行 candidate release gate、从远端 tag 安装的 external consumer gate，并把 `release-manifest.json` 与 `SHA256SUMS` 上传为 GitHub Release assets。创建 tag/release 仍是显式发布动作，不由普通 CI 自动执行。
