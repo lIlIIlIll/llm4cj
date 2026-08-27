@@ -11,4 +11,8 @@
 
 provider 的合法错误响应属于 wire outcome，不会伪装成 JSON 或 transport exception。格式错误、错误字段类型和溢出才抛出 `LlmTransportError`。
 
-tool arguments 不再被压成一个字符串状态：`Complete` 保存对象与原始 JSON，`InvalidJson` 保存非法文本，`InvalidShape` 保存非对象 JSON，`Partial` 只用于尚未完成的流。
+tool arguments 不再被压成一个字符串状态：`Complete` 只保存 canonical JSON 对象，`InvalidJson` 保存非法文本，`InvalidShape` 保存非对象 JSON，`Partial` 只用于尚未完成的流。encoder 从 canonical `JsonNode` 生成 wire text，不存在可与对象内容冲突的第二份 raw truth。
+
+usage counter 使用 `Option<Int64>`。`None` 表示 provider 没有返回该字段，`Some(0)` 才表示 provider 明确报告零。
+
+`LlmWireReply.toContinuationInput()` 只投影可安全继续发送的 text、tool call 和 native replay block。display reasoning、refusal 与未知诊断 block 不会被静默转换成普通输入文本。

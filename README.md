@@ -38,7 +38,7 @@ main(): Int64 {
         )]
     )
     let payload = codec.encodeRequest(request)
-    if (!payload.contains("demo-model")) { return 1 }
+    if (!payload.body.contains("demo-model")) { return 1 }
 
     let state = codec.decodeResponse(
         "{\"id\":\"resp_demo\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"你好，仓颉！\"}]}],\"usage\":{}}"
