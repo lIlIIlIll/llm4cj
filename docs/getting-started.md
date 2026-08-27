@@ -1,10 +1,10 @@
 # 安装与首个程序
 
-在 `cjpm.toml` 中固定发布 tag：
+当前 `main` 是 `v0.2.0` 候选源码，尚无对应 release tag。开发验证使用相邻 checkout 的固定路径：
 
 ```toml
 [dependencies]
-llm4cj = { git = "https://github.com/lIlIIlIll/llm4cj.git", tag = "v0.2.0" }
+llm4cj = { path = "../llm4cj" }
 ```
 
 下面是离线、确定性的完整程序，也是 release external-consumer gate 使用的源码。

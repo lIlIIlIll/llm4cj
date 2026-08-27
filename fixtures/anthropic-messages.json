@@ -1,1 +1,1 @@
-{"fixture":"anthropic.messages.v1","source":"https://docs.anthropic.com/en/api/messages","captured":"2026-08-27","response":{"id":"msg_fixture","model":"claude-fixture","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}}
+{"fixture":"anthropic.messages.v1","source":"https://docs.anthropic.com/en/api/messages","captured":"2026-08-27","response":{"id":"msg_fixture","type":"message","role":"assistant","model":"claude-fixture","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}}

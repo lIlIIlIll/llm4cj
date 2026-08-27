@@ -14,11 +14,11 @@
 
 ## 快速开始
 
-稳定使用者应依赖 `v0.2.0`；manifest 要求 Cangjie `>= 1.1.0`。
+当前 `main` 是 `v0.2.0` 候选源码，尚未发布对应 tag；manifest 要求 Cangjie `>= 1.1.0`。在 tag 发布前，从相邻 checkout 以固定本地路径验证：
 
 ```toml
 [dependencies]
-llm4cj = { git = "https://github.com/lIlIIlIll/llm4cj.git", tag = "v0.2.0" }
+llm4cj = { path = "../llm4cj" }
 ```
 
 下面的完整程序完全离线。它从推荐的 Responses dialect 开始，编码请求、解码成功终态并打印文本。
@@ -71,6 +71,7 @@ main(): Int64 {
 - Messages 的 `thinking`、`redacted_thinking` 及未知原生 block 以 opaque 数据完整保存，只能在同一 dialect 中回放。
 - SSE 以字节为输入，支持 CR、LF、CRLF、BOM、空 `data`、持久 `id`/`retry`、完整事件限额和 EOF 丢弃未结束事件。
 - tool arguments 区分完整对象、非法 JSON、非法 shape 与流式 partial；严格模式拒绝孤立、重复和未来匹配的 tool result。
+- Responses 流维护 `item_id` 到 `call_id`/name 的状态映射；DeepSeek Chat 将 provider-native `reasoning_content` 与同一 assistant message 的 text/tool calls 一起回放。
 
 内置 dialect：`openai.responses.v1`、`openai.chat.v1`、`anthropic.messages.v1`、`deepseek.responses.v1`、`deepseek.chat.v1`、`deepseek.messages.v1`。model 是否真正支持 thinking、tools 或 structured output，仍应由调用方提供 capability。
 

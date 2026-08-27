@@ -1,0 +1,10 @@
+[package]
+cjc-version = "1.1.0"
+name = "llm4cj_stream_benchmark"
+organization = ""
+description = "Streaming decoder microbenchmarks for llm4cj"
+version = "0.2.0"
+output-type = "executable"
+
+[dependencies]
+llm4cj = { path = "../.." }

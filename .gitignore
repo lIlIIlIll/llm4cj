@@ -1,4 +1,5 @@
 /target/
+**/target/
 /dist/
 /coverage/
 /cov_output/

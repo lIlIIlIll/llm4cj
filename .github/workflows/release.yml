@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag, for example v0.2.0
+        required: true
+      provider_smoke_run_id:
+        description: Successful Provider Smoke workflow run ID for the same commit
+        required: true
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - name: Verify tag and version
+        id: candidate
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$(git rev-parse HEAD)"
+          echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Setup latest stable Cangjie
+        uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
+        with:
+          channel: sts
+          version: latest
+      - name: Download provider smoke evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.provider_smoke_run_id }}
+          pattern: provider-smoke-*
+          path: ${{ runner.temp }}/provider-smoke
+          merge-multiple: true
+      - name: Run candidate and tag-resolution gates
+        env:
+          PROVIDER_SMOKE_EVIDENCE_DIR: ${{ runner.temp }}/provider-smoke
+        run: |
+          scripts/release_gate.sh '${{ steps.candidate.outputs.version }}'
+          scripts/tag_consumer_gate.sh '${{ steps.candidate.outputs.version }}'
+      - name: Publish immutable release evidence
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/release-manifest.json dist/SHA256SUMS --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/release-manifest.json dist/SHA256SUMS --verify-tag --generate-notes --title "llm4cj $RELEASE_TAG"
+          fi

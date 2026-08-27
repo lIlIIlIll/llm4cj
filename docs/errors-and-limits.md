@@ -1,6 +1,6 @@
 # 错误与限制
 
-`LlmTransportErrorKind` 区分 HTTP、SSE、JSON、InvalidWire、Provider、Timeout、Cancelled、BodyLimit、InvalidRequest、Unsupported 与 InvalidState。错误码是稳定诊断键，消息用于人类阅读。
+`LlmTransportErrorKind` 区分 `InvalidWire`、`InvalidRequest`、`Unsupported`、`InvalidState`、`Http`、`BodyLimit`、`Sse`、`Cancelled`、`Deadline` 与 `Transport`。wire-valid provider failure 进入 `LlmWireTerminal.Failed(LlmWireFailure)`，不会伪装成 JSON 或传输异常。错误码是稳定诊断键，消息用于人类阅读。
 
 已知字段缺失、类型不符、整数非法或溢出会失败；未知事件类型可忽略以保持前向兼容。这两类行为不可混用。
 

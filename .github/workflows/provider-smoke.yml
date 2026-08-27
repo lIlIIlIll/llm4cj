@@ -24,6 +24,11 @@ jobs:
           ref: ${{ inputs.candidate_sha }}
       - name: Verify exact candidate
         run: test "$(git rev-parse HEAD)" = "${{ inputs.candidate_sha }}"
+      - name: Setup latest stable Cangjie
+        uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
+        with:
+          channel: sts
+          version: latest
       - name: Run secret-safe provider smoke
         env:
           DIALECT: ${{ matrix.dialect }}
