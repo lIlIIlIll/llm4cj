@@ -3,10 +3,17 @@ package llm4cj
 import std.collection.*
 import std.convert.*
 import std.io.*
+import std.deriving.Derive
 
+@Derive[Equatable]
 public enum LlmTransportErrorKind {
     InvalidWire | InvalidRequest | Unsupported | InvalidState |
     Http | BodyLimit | LimitExceeded | Sse | Cancelled | Deadline | Transport
+}
+
+@Derive[Equatable]
+public enum LlmTransportPhase {
+    Encode | Request | ResponseHeaders | StreamFraming | WireDecode | SemanticAssembly | Transport
 }
 
 public class LlmTransportError <: Exception {
@@ -19,12 +26,22 @@ public class LlmTransportError <: Exception {
     public let providerErrorCode: String
     public let providerErrorType: String
     public let diagnosticJson: ?String
+    public let phase: ?LlmTransportPhase
+    public let protocol: ?LlmWireProtocol
+    public let dialectId: String
+    public let eventType: String
+    public let blockIndex: Int64
+    public let toolCallId: String
+    public let providerRequestId: String
     public init(
         kind: LlmTransportErrorKind, code: String, message: String,
         retryable!: Bool = false, httpStatus!: ?Int64 = None,
         retryAfterMillis!: ?Int64 = None, provider!: String = "",
         providerErrorCode!: String = "", providerErrorType!: String = "",
-        diagnosticJson!: ?String = None
+        diagnosticJson!: ?String = None, phase!: ?LlmTransportPhase = None,
+        protocol!: ?LlmWireProtocol = None, dialectId!: String = "",
+        eventType!: String = "", blockIndex!: Int64 = -1,
+        toolCallId!: String = "", providerRequestId!: String = ""
     ) {
         super(message)
         this.kind = kind; this.code = code; this.retryable = retryable
@@ -32,6 +49,9 @@ public class LlmTransportError <: Exception {
         this.provider = provider; this.providerErrorCode = providerErrorCode
         this.providerErrorType = providerErrorType
         this.diagnosticJson = diagnosticJson
+        this.phase = phase; this.protocol = protocol; this.dialectId = dialectId
+        this.eventType = eventType; this.blockIndex = blockIndex; this.toolCallId = toolCallId
+        this.providerRequestId = providerRequestId
     }
 }
 

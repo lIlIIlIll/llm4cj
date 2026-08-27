@@ -5,7 +5,7 @@ import std.convert.*
 import yjson.*
 
 func invalidWire(code: String, message: String, provider!: String = ""): Nothing {
-    throw LlmTransportError(LlmTransportErrorKind.InvalidWire, code, message, provider: provider)
+    throw LlmTransportError(LlmTransportErrorKind.InvalidWire, code, message, provider: provider, phase: Some(LlmTransportPhase.WireDecode))
 }
 
 func wireObject(value: JsonNode, name: String, provider!: String = ""): JsonNode {
@@ -212,7 +212,7 @@ func validatePromptCache(codec: LlmWireCodec, value: LlmWirePromptCache, routing
 }
 
 func unsupportedRequest(code: String, message: String): Nothing {
-    throw LlmTransportError(LlmTransportErrorKind.Unsupported, code, message)
+    throw LlmTransportError(LlmTransportErrorKind.Unsupported, code, message, phase: Some(LlmTransportPhase.Encode))
 }
 
 func validateBlockForReplay(codec: LlmWireCodec, request: LlmWireRequest, message: LlmWireMessage, block: LlmWireBlock, blockIndex: Int64): Unit {
@@ -275,7 +275,15 @@ func validateBlockShape(block: LlmWireBlock): Unit {
 func validateConversation(messages: Array<LlmWireMessage>): Unit {
     let known = HashSet<String>()
     let pending = HashSet<String>()
-    for (message in messages) { for (block in message.blocks) {
+    for (message in messages) {
+        if (!pending.isEmpty()) {
+            if (message.role != LlmWireRole.User) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_conversation_out_of_phase", "only tool results may follow unresolved tool calls", phase: Some(LlmTransportPhase.Encode)) }
+            for (block in message.blocks) { match (block) {
+                case LlmWireBlock.ToolResult(_) => ()
+                case _ => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_conversation_out_of_phase", "ordinary content cannot appear while tool calls are unresolved", phase: Some(LlmTransportPhase.Encode))
+            } }
+        }
+        for (block in message.blocks) {
         match (block) {
             case LlmWireBlock.ToolCall(call) =>
                 if (message.role != LlmWireRole.Assistant) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_call_role_invalid", "tool calls must belong to assistant messages") }
@@ -288,6 +296,10 @@ func validateConversation(messages: Array<LlmWireMessage>): Unit {
                 pending.remove(result.callId)
             case _ => ()
         }
-    } }
+        }
+        if (message.role == LlmWireRole.User && !pending.isEmpty()) {
+            throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_results_incomplete", "one tool-result message must close every pending parallel tool call", phase: Some(LlmTransportPhase.Encode))
+        }
+    }
     if (!pending.isEmpty()) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_call_unresolved", "every tool call must have exactly one later result") }
 }

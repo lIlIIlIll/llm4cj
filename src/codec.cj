@@ -327,32 +327,31 @@ func responsesReply(codec: LlmWireCodec, root: JsonNode): LlmWireReply {
             let kind = wireRequiredString(item, "type", provider: codec.provider)
             match (kind) {
                 case "message" => match (wireOptionalArray(item, "content", provider: codec.provider)) {
-                    case Some(content) => for (rawBlock in content) { decodeResponsesContent(codec, wireObject(rawBlock, "Responses content block", provider: codec.provider), blocks) }
+                    case Some(content) => for (contentIndex in 0..content.size) { decodeResponsesContent(codec, wireObject(content[contentIndex], "Responses content block", provider: codec.provider), blocks, contentIndex) }
                     case None => invalidWire("llm.field_missing", "Responses message output is missing content", provider: codec.provider)
                 }
                 case "function_call" =>
                     let rawArguments = wireRequiredString(item, "arguments", provider: codec.provider)
                     blocks.add(LlmWireBlock.ToolCall(LlmWireToolCallBlock(wireRequiredString(item, "call_id", provider: codec.provider), wireRequiredString(item, "name", provider: codec.provider), classifyToolArguments(rawArguments))))
                 case "reasoning" => blocks.add(LlmWireBlock.NativeReplay(nativeFromNative(codec, item, kind, responsesReasoningDisplay(item, codec.provider), optionalStringOrNone(root, "model", codec.provider), blocks.size)))
-                case _ => blocks.add(LlmWireBlock.Opaque(opaqueFromNative(item, kind)))
+                case _ => unsupportedSemantic(codec, kind, item, "llm.responses_block_unsupported", blockIndex: itemIndex)
             }
         }
         case None => ()
     }
-    LlmWireReply(
-        responseId: optionalStringOrEmpty(root, "id", codec.provider),
-        model: optionalStringOrEmpty(root, "model", codec.provider),
-        blocks: blocks.toArray(), usage: decodeResponsesUsage(codec, root),
-        rawStopReason: wireRequiredString(root, "status", provider: codec.provider)
+    assembleCanonicalReply(
+        optionalStringOrEmpty(root, "id", codec.provider), optionalStringOrEmpty(root, "model", codec.provider),
+        blocks.toArray(), decodeResponsesUsage(codec, root), wireRequiredString(root, "status", provider: codec.provider),
+        requireExecutableToolCalls: wireRequiredString(root, "status", provider: codec.provider) == "completed"
     )
 }
 
-func decodeResponsesContent(codec: LlmWireCodec, block: JsonNode, output: ArrayList<LlmWireBlock>): Unit {
+func decodeResponsesContent(codec: LlmWireCodec, block: JsonNode, output: ArrayList<LlmWireBlock>, blockIndex: Int64): Unit {
     let kind = wireRequiredString(block, "type", provider: codec.provider)
     match (kind) {
         case "output_text" => output.add(LlmWireBlock.Text(LlmWireTextBlock(wireRequiredString(block, "text", provider: codec.provider))))
         case "refusal" => output.add(LlmWireBlock.Refusal(LlmWireRefusalBlock(wireRequiredString(block, "refusal", provider: codec.provider))))
-        case _ => output.add(LlmWireBlock.Opaque(opaqueFromNative(block, kind)))
+        case _ => unsupportedSemantic(codec, kind, block, "llm.responses_block_unsupported", blockIndex: blockIndex)
     }
 }
 
@@ -364,6 +363,7 @@ func decodeChatResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseSta
     let choice = wireObject(choices[0], "Chat choice", provider: codec.provider)
     match (wireOptionalInt(choice, "index", provider: codec.provider)) { case Some(0) | None => (); case Some(_) => unsupportedRequest("llm.chat_choice_index_unsupported", "only Chat choice index 0 is supported") }
     let message = match (wireOptionalObject(choice, "message", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "Chat choice is missing message", provider: codec.provider) }
+    rejectUnsupportedChatSemantic(codec, message, "message")
     let blocks = ArrayList<LlmWireBlock>()
     match (wireOptionalString(message, "content", provider: codec.provider)) { case Some(value) => if (value != "") { blocks.add(LlmWireBlock.Text(LlmWireTextBlock(value))) }; case None => () }
     match (wireOptionalString(message, "reasoning_content", provider: codec.provider)) {
@@ -383,13 +383,32 @@ func decodeChatResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseSta
         case None => ()
     }
     let stop = wireRequiredString(choice, "finish_reason", provider: codec.provider)
-    let reply = LlmWireReply(responseId: optionalStringOrEmpty(root, "id", codec.provider), model: optionalStringOrEmpty(root, "model", codec.provider), blocks: blocks.toArray(), usage: decodeChatUsage(codec, root), rawStopReason: stop)
+    let reply = assembleCanonicalReply(
+        optionalStringOrEmpty(root, "id", codec.provider), optionalStringOrEmpty(root, "model", codec.provider),
+        blocks.toArray(), decodeChatUsage(codec, root), stop,
+        requireExecutableToolCalls: stop != "length" && stop != "content_filter"
+    )
     match (stop) {
         case "stop" | "tool_calls" | "function_call" => LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply))
         case "length" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.Length))
         case "content_filter" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.ContentFilter))
         case "insufficient_system_resource" => LlmWireResponseState.Terminal(LlmWireTerminal.Failed(LlmWireFailure(LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true)))
         case _ => throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.chat_finish_reason_unsupported", "unknown Chat finish reason: " + stop, provider: codec.provider)
+    }
+}
+
+func rejectUnsupportedChatSemantic(codec: LlmWireCodec, value: JsonNode, eventType: String): Unit {
+    for (field in ["function_call", "audio"]) {
+        match (value.field(field)) {
+            case Some(payload) => if (payload.wireKind != WireJsonKind.Null) {
+                unsupportedSemantic(codec, field, payload, "llm.chat_semantic_unsupported", eventType: eventType)
+            }
+            case None => ()
+        }
+    }
+    match (wireOptionalArray(value, "annotations", provider: codec.provider)) {
+        case Some(items) => if (!items.isEmpty()) { unsupportedSemantic(codec, "annotations", value["annotations"], "llm.chat_semantic_unsupported", eventType: eventType) }
+        case None => ()
     }
 }
 
@@ -413,11 +432,15 @@ func decodeMessagesResponse(codec: LlmWireCodec, root: JsonNode): LlmWireRespons
                 blocks.add(LlmWireBlock.ToolCall(LlmWireToolCallBlock(wireRequiredString(block, "id", provider: codec.provider), wireRequiredString(block, "name", provider: codec.provider), arguments)))
             case "thinking" => blocks.add(LlmWireBlock.NativeReplay(nativeFromNative(codec, block, kind, wireOptionalString(block, "thinking", provider: codec.provider), modelConstraint, blockIndex)))
             case "redacted_thinking" => blocks.add(LlmWireBlock.NativeReplay(nativeFromNative(codec, block, kind, None, modelConstraint, blockIndex)))
-            case _ => blocks.add(LlmWireBlock.Opaque(opaqueFromNative(block, kind)))
+            case _ => unsupportedSemantic(codec, kind, block, "llm.messages_block_unsupported", blockIndex: blockIndex)
         }
     }
     let stop = wireRequiredString(root, "stop_reason", provider: codec.provider)
-    let reply = LlmWireReply(responseId: optionalStringOrEmpty(root, "id", codec.provider), model: optionalStringOrEmpty(root, "model", codec.provider), blocks: blocks.toArray(), usage: decodeMessagesUsage(codec, root), rawStopReason: stop)
+    let reply = assembleCanonicalReply(
+        optionalStringOrEmpty(root, "id", codec.provider), optionalStringOrEmpty(root, "model", codec.provider),
+        blocks.toArray(), decodeMessagesUsage(codec, root), stop,
+        requireExecutableToolCalls: stop != "max_tokens" && stop != "model_context_window_exceeded" && stop != "pause_turn"
+    )
     match (stop) {
         case "end_turn" | "stop_sequence" | "tool_use" | "refusal" => LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply))
         case "max_tokens" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.MaxTokens))
@@ -434,8 +457,6 @@ func classifyToolArguments(raw: String): LlmWireToolArguments {
         else { LlmWireToolArguments.InvalidShape(value) }
     } catch (_: LlmTransportError) { LlmWireToolArguments.InvalidJson(raw) }
 }
-
-func opaqueFromNative(payload: JsonNode, nativeType: String): LlmWireOpaqueBlock { LlmWireOpaqueBlock(nativeType, payload) }
 
 func nativeFromNative(codec: LlmWireCodec, payload: JsonNode, nativeType: String, display: ?String, modelConstraint: ?String, blockOrder: Int64): LlmWireNativeReplayBlock {
     nativeReplayFromPayload(codec.protocol, codec.dialect.compatibilityId, nativeType, payload, modelConstraint: modelConstraint, blockOrder: blockOrder, displayReasoning: display)

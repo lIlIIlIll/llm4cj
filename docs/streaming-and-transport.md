@@ -8,6 +8,10 @@ SSE parser 接受 CR、LF、CRLF 与首行 BOM，保留空 `data`，并让 `id` 
 
 `codec.newStreamDecoder(limits: LlmWireStreamLimits(...))` 对跨多个小事件累计的语义数据设置总量、文本、reasoning、tool arguments、block、tool call 与事件数上限。首次超限会 poison decoder，后续 feed 不再继续消费。
 
+stream decoder 是同步、单消费者对象，不承诺线程安全，也不创建 callback queue。每次 `push` 完成后才返回，因此 backpressure 由调用方的读取循环自然传递；若 adapter 另建队列，该队列必须自行有界。拥有 HTTP reader 的 adapter 负责在取消、deadline 或 consumer 提前退出时关闭连接，并保证取消后不再调用 decoder。llm4cj 不拥有 socket、连接池或重试生命周期。
+
 Chat 的 `finish_reason` 只结束 choice；usage-only 尾块仍可在 `[DONE]` 前更新 usage。固定和流式 Chat 都只接受单个 index 0 choice。tool call 的 id/name 首次建立后不可变，最终按 tool-call index 排序。Messages 按 message phase、block index 与 native block type 校验 delta；Responses 分开保存 `item_id` 与 `call_id`，并在 arguments done 时协调 name 与完整参数。
+
+usage 的流式值不能被统一求和。`LlmWireDialectContract.usageMergeStyle` 明确选择 present-field replacement、monotonic absolute counters 或 delta accumulation；monotonic 回退、负数和溢出都会失败。固定与流式终态最终都通过同一 canonical assembler，内置六种 dialect 有逐字段等价回归。
 
 `parseRetryAfterMillis` 支持 delta-seconds、IMF-fixdate、RFC 850 和 asctime；多个 `Retry-After` 由 `extractRetryAfterMillis` 选择较大的有效值。
