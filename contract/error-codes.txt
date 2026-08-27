@@ -34,6 +34,8 @@ llm.responses_arguments_mismatch
 llm.responses_arguments_without_item
 llm.responses_block_unsupported
 llm.responses_call_name_mismatch
+llm.responses_delta_after_done
+llm.responses_done_duplicate
 llm.responses_item_duplicate
 llm.responses_output_index_mismatch
 llm.responses_status_unsupported

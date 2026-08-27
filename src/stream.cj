@@ -86,6 +86,7 @@ class ResponseStreamCall {
     let callId: String
     let name: String
     let arguments = StringBuilder()
+    var completed = false
     init(outputIndex: Int64, itemId: String, callId: String, name: String) {
         this.outputIndex = outputIndex
         this.itemId = itemId
@@ -126,11 +127,17 @@ class ResponsesStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
                 } else { LlmWireStreamUpdate() }
             case "response.function_call_arguments.delta" =>
                 let call = responseCallForEvent(codec, calls, root)
+                if (call.completed) {
+                    invalidWire("llm.responses_delta_after_done", "Responses function-call arguments delta appeared after done", provider: codec.provider)
+                }
                 let fragment = wireRequiredString(root, "delta", provider: codec.provider)
                 call.arguments.append(fragment)
                 LlmWireStreamUpdate(events: [LlmWireEvent(LlmWireEventKind.ToolArgumentsDelta, text: fragment, outputIndex: call.outputIndex, itemId: call.itemId, callId: call.callId, name: call.name)])
             case "response.function_call_arguments.done" =>
                 let call = responseCallForEvent(codec, calls, root)
+                if (call.completed) {
+                    invalidWire("llm.responses_done_duplicate", "Responses function-call arguments completed twice", provider: codec.provider)
+                }
                 let arguments = wireRequiredString(root, "arguments", provider: codec.provider)
                 if (call.arguments.toString() != arguments) {
                     invalidWire("llm.responses_arguments_mismatch", "Responses final function arguments do not match accumulated deltas", provider: codec.provider)
@@ -139,6 +146,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
                 if (name != call.name) {
                     invalidWire("llm.responses_call_name_mismatch", "Responses function-call name changed during streaming", provider: codec.provider)
                 }
+                call.completed = true
                 LlmWireStreamUpdate(events: [LlmWireEvent(LlmWireEventKind.ContentBlockCompleted, text: arguments, outputIndex: call.outputIndex, itemId: call.itemId, callId: call.callId, name: call.name)])
             case "response.completed" | "response.incomplete" | "response.failed" =>
                 let state = decodeResponsesResponse(codec, wireObject(wireRequiredField(root, "response", provider: codec.provider), "Responses terminal response", provider: codec.provider))
@@ -219,7 +227,10 @@ class ChatStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
             match (wireOptionalObject(choice, "delta", provider: codec.provider)) {
                 case Some(delta) =>
                     match (wireOptionalString(delta, "content", provider: codec.provider)) { case Some(value) => text.append(value); events.add(LlmWireEvent(LlmWireEventKind.TextDelta, text: value, choiceIndex: choiceIndex)); case None => () }
-                    match (wireOptionalString(delta, "reasoning_content", provider: codec.provider)) { case Some(value) => reasoning.append(value); events.add(LlmWireEvent(LlmWireEventKind.ReasoningDelta, text: value, choiceIndex: choiceIndex)); case None => () }
+                    match (codec.dialect.chatReasoningField) {
+                        case Some(field) => match (wireOptionalString(delta, field, provider: codec.provider)) { case Some(value) => reasoning.append(value); events.add(LlmWireEvent(LlmWireEventKind.ReasoningDelta, text: value, choiceIndex: choiceIndex)); case None => () }
+                        case None => ()
+                    }
                     match (wireOptionalArray(delta, "tool_calls", provider: codec.provider)) { case Some(values) => for (entry in values) { decodeChatCallDelta(codec, choiceIndex, wireObject(entry, "Chat tool call delta", provider: codec.provider), calls, events) }; case None => () }
                 case None => ()
             }
