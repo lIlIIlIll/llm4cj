@@ -1308,4 +1308,59 @@ class Llm4CjV02Tests {
         match (SseDecoder(maxEventBytes: 10).push("data:x\r\n\r\n")) { case LlmResult.Ok(values) => @Expect(values.size, 1); case _ => @Fail("exact CRLF event limit") }
         @Expect(parseRetryAfterMillis("Sunday, 06-Nov-94 08:49:37 GMT", Int64.Max), None)
     }
+
+    @TestCase
+    func t049ThinkingCombinationsAndContinuationProjectionFailClosed() {
+        let tool = LlmWireTool("lookup", "lookup", parseWireJson("{}"))
+        let anthropic = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), capabilities: allCapabilities())
+        expectLlmError("llm.thinking_tool_choice_unsupported", { => let _ = anthropic.encodeRequest(LlmWireRequest(
+            "claude", validMessages(), tools: [tool], thinking: LlmWireThinkingControl.Budget(1024),
+            maxOutputTokens: Some(2048), toolChoice: LlmWireToolChoice.Required
+        )) })
+        @Expect(anthropic.encodeRequest(LlmWireRequest(
+            "claude", validMessages(), tools: [tool], thinking: LlmWireThinkingControl.Adaptive(None),
+            maxOutputTokens: Some(2048), toolChoice: LlmWireToolChoice.Required
+        )).contains("\"type\":\"any\""), true)
+
+        let deepSeek = LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect(), capabilities: allCapabilities())
+        expectLlmError("llm.thinking_tool_choice_unsupported", { => let _ = deepSeek.encodeRequest(LlmWireRequest(
+            "deepseek-v4-flash", validMessages(), tools: [tool], thinking: LlmWireThinkingControl.Enabled,
+            toolChoice: LlmWireToolChoice.Auto
+        )) })
+        @Expect(deepSeek.encodeRequest(LlmWireRequest(
+            "deepseek-v4-flash", validMessages(), tools: [tool], thinking: LlmWireThinkingControl.Disabled,
+            toolChoice: LlmWireToolChoice.Required
+        )).contains("\"tool_choice\":\"required\""), true)
+
+        expectIllegalArgument({ => let _ = LlmWireStandardDialect(LlmWireDialectContract(
+            "custom.thinking.chat", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat,
+            LlmWireOutputTokenField.MaxCompletionTokens,
+            thinkingControls: [LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Effort(LlmWireThinkingLevel.High)],
+            thinkingLevels: [LlmWireThinkingLevel.High]
+        )) })
+        expectLlmError("llm.dialect_thinking_replay_unsupported", { => let _ = LlmWireCodec(
+            LlmWireProtocol.ChatCompletions,
+            MutableTestDialect(LlmWireDialectContract(
+                "custom.direct.thinking", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat,
+                LlmWireOutputTokenField.MaxCompletionTokens,
+                thinkingControls: [LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Enabled]
+            ))
+        ) })
+        expectLlmError("llm.dialect_identity_reserved", { => let _ = LlmWireCodec(
+            LlmWireProtocol.ChatCompletions,
+            MutableTestDialect(LlmWireDialectContract(
+                "openai.chat.v1", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat,
+                LlmWireOutputTokenField.MaxCompletionTokens
+            ))
+        ) })
+
+        let replay = LlmWireNativeReplayBlock.restore(
+            "{\"protocol\":\"messages\",\"dialect_id\":\"anthropic.messages.v1\",\"native_type\":\"thinking\",\"schema_version\":1,\"scope\":\"assistant_turn\",\"assistant_turn_index\":0,\"block_order\":1,\"complete\":true,\"payload\":{\"type\":\"thinking\",\"thinking\":\"why\",\"signature\":\"sig\"}}"
+        )
+        let reply = LlmWireReply(blocks: [
+            LlmWireBlock.Refusal(LlmWireRefusalBlock("no")),
+            LlmWireBlock.NativeReplay(replay)
+        ])
+        expectLlmError("llm.native_replay_projection_order_invalid", { => let _ = reply.toContinuationInput() })
+    }
 }

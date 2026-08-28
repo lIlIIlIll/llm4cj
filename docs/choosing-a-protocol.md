@@ -4,7 +4,9 @@ protocol 定义 envelope；dialect 定义 provider 对同一 envelope 的字段�
 
 `LlmWireStandardDialect` 只扩展现有三种协议族。自定义 contract 不能使用六个内置 compatibility ID；generation speed、structured output、cache、tool choice 等声明若没有对应 request-style 映射，会在 contract 构造或请求校验阶段失败，不能成为静默 no-op。新 envelope、JSON/SSE parser 或 terminal 规则不属于 dialect 扩展面。
 
-codec 构造时会冻结 dialect contract、protocol 与 compatibility identity；后续修改自定义 `LlmWireDialect` 实现不会改变既有 codec。provider-native reasoning replay 仅对六个内置 dialect 开放；自定义 dialect 遇到需要原样续轮的 native reasoning 时返回 `Unsupported`，避免产生无法安全 snapshot/restore 的状态。
+codec 构造时会冻结 dialect contract、protocol 与 compatibility identity；后续修改自定义 `LlmWireDialect` 实现不会改变既有 codec。provider-native reasoning replay 仅对六个内置 dialect 开放；`LlmWireStandardDialect` 因此只能声明 `ProviderDefault` thinking，带 thinking control 或 effort level 的自定义 contract 会在 dialect 构造时失败。直接实现 `LlmWireDialect` 也不能绕过该限制或冒用内置 compatibility ID，codec 构造会再次 fail-closed，避免出现请求可编码、响应却无法安全续轮的半闭合扩展。
+
+请求还会执行 dialect 组合校验。Anthropic 的手动 budget thinking 不允许 `Required` tool choice；adaptive thinking 不受该限制。DeepSeek Chat 显式启用 thinking 或 effort 时不得同时发送显式 `tool_choice`。DeepSeek Responses 的 tool choice 能力独立处理，不套用 Chat 限制。
 
 | protocol | 首选内置 dialect | 其他内置 dialect |
 | --- | --- | --- |

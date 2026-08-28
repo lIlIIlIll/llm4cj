@@ -23,7 +23,9 @@ llm.chat_tool_call_index_gap
 llm.chat_tool_call_index_invalid
 llm.chat_tool_call_name_mismatch
 llm.dialect_identity_mismatch
+llm.dialect_identity_reserved
 llm.dialect_protocol_mismatch
+llm.dialect_thinking_replay_unsupported
 llm.envelope_identity_mismatch
 llm.feature_requirement_unresolved
 llm.feature_requirement_unsatisfied
@@ -73,6 +75,7 @@ llm.native_replay_incomplete
 llm.native_replay_model_mismatch
 llm.native_replay_order_mismatch
 llm.native_replay_payload_invalid
+llm.native_replay_projection_order_invalid
 llm.native_replay_protocol_invalid
 llm.native_replay_role_invalid
 llm.native_replay_scope_invalid
@@ -161,6 +164,7 @@ llm.thinking_budget_exceeds_output
 llm.thinking_budget_invalid
 llm.thinking_level_unsupported
 llm.thinking_not_representable
+llm.thinking_tool_choice_unsupported
 llm.thinking_unsupported
 llm.tool_arguments_json_invalid
 llm.tool_arguments_not_executable

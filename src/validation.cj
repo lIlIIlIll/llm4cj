@@ -95,6 +95,7 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
             if (request.messages.isEmpty()) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.messages_required", "Messages requires at least one message") }
     }
     validateThinking(codec, request)
+    validateRequestCombinations(codec, request)
     validateToolsAndSchemas(request)
     var usesTools = !request.tools.isEmpty()
     for (message in request.messages) { for (block in message.blocks) { match (block) { case LlmWireBlock.ToolCall(_) | LlmWireBlock.ToolResult(_) => usesTools = true; case _ => () } } }
@@ -138,6 +139,26 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
         }
     }
     validateConversation(request.messages)
+}
+
+func validateRequestCombinations(codec: LlmWireCodec, request: LlmWireRequest): Unit {
+    match (codec.dialect.contract.requestStyle) {
+        case LlmWireRequestStyle.AnthropicMessages =>
+            if (let LlmWireThinkingControl.Budget(_) <- request.thinking) {
+                if (request.toolChoice == LlmWireToolChoice.Required) {
+                    unsupportedRequest("llm.thinking_tool_choice_unsupported", "manual Anthropic thinking supports only automatic or disabled tool choice")
+                }
+            }
+        case LlmWireRequestStyle.DeepSeekChat =>
+            match (request.thinking) {
+                case LlmWireThinkingControl.Enabled | LlmWireThinkingControl.Effort(_) =>
+                    if (request.toolChoice != LlmWireToolChoice.ProviderDefault) {
+                        unsupportedRequest("llm.thinking_tool_choice_unsupported", "DeepSeek Chat thinking mode does not accept an explicit tool_choice")
+                    }
+                case _ => ()
+            }
+        case _ => ()
+    }
 }
 
 func validateImageCapability(codec: LlmWireCodec, message: LlmWireMessage, value: LlmWireImageBlock): Unit {

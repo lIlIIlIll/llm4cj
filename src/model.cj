@@ -364,7 +364,12 @@ public class LlmWireReply {
     public func toContinuationInput(): Array<LlmWireMessage> {
         let replayable = ArrayList<LlmWireBlock>()
         for (block in blocks) { match (block) {
-            case LlmWireBlock.Text(_) | LlmWireBlock.NativeReplay(_) => replayable.add(block)
+            case LlmWireBlock.Text(_) => replayable.add(block)
+            case LlmWireBlock.NativeReplay(value) =>
+                if (value.blockOrder != replayable.size) {
+                    throw LlmTransportError(LlmTransportErrorKind.InvalidState, "llm.native_replay_projection_order_invalid", "continuation projection would change provider-native block order")
+                }
+                replayable.add(block)
             case LlmWireBlock.ToolCall(value) => match (value.arguments) {
                 case LlmWireToolArguments.Complete(_) => replayable.add(block)
                 case _ => throw LlmTransportError(LlmTransportErrorKind.InvalidState, "llm.tool_arguments_not_executable", "diagnostic or partial tool arguments cannot be projected into continuation input")

@@ -223,11 +223,22 @@ public class LlmWireStandardDialect <: LlmWireDialect {
         if (isBuiltinCompatibilityId(contract.compatibilityId)) {
             throw IllegalArgumentException("built-in compatibility IDs are reserved")
         }
+        if (!customDialectThinkingIsReplaySafe(contract)) {
+            throw IllegalArgumentException("custom dialects cannot declare provider-native thinking without a replay schema")
+        }
         this.value = contract
     }
     public prop contract: LlmWireDialectContract { get() { value } }
     public prop compatibilityId: String { get() { value.compatibilityId } }
     public prop protocol: LlmWireProtocol { get() { value.protocol } }
+}
+
+func customDialectThinkingIsReplaySafe(contract: LlmWireDialectContract): Bool {
+    if (!contract.thinkingLevels.isEmpty()) { return false }
+    for (control in contract.thinkingControls) {
+        if (control != LlmWireThinkingControl.ProviderDefault) { return false }
+    }
+    true
 }
 
 class BuiltinWireDialect <: LlmWireDialect {
@@ -269,6 +280,12 @@ public class LlmWireCodec {
         let declaredContract = dialect.contract
         if (protocol != declaredProtocol || protocol != declaredContract.protocol) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.dialect_protocol_mismatch", "dialect protocol does not match codec protocol") }
         if (declaredIdentity != declaredContract.compatibilityId) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.dialect_identity_mismatch", "dialect identity does not match its contract") }
+        if (isBuiltinCompatibilityId(declaredIdentity) && !(dialect is BuiltinWireDialect)) {
+            throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.dialect_identity_reserved", "built-in compatibility IDs may only be used by built-in dialects")
+        }
+        if (!isBuiltinCompatibilityId(declaredIdentity) && !customDialectThinkingIsReplaySafe(declaredContract)) {
+            throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.dialect_thinking_replay_unsupported", "custom dialect thinking requires a replay schema that v0.2 does not expose")
+        }
         let frozen = snapshotDialectContract(declaredContract)
         this.protocol = protocol; this.dialect = FrozenWireDialect(frozen); this.capabilities = capabilities; this.provider = provider
     }

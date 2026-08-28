@@ -18,6 +18,7 @@ All notable changes are recorded here.
 - Count every provider stream event, preserve failed/incomplete Responses classification, and count both CRLF bytes against SSE event limits.
 - Require `[DONE]` for built-in Chat transport completion, coalesce pre-identity tool fragments, enforce Responses value-done ordering, and use current OpenAI prompt-cache TTL mapping.
 - Verify Provider Smoke workflow provenance and artifact digests before release, and record them in the release manifest.
+- Reject unrepresentable custom thinking dialects and invalid thinking/tool-choice combinations, and fail continuation projection before native replay order can change.
 
 This release intentionally breaks the v0.1 API. See [the migration guide](docs/migrating-from-v0.1.md).
 
