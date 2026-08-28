@@ -19,6 +19,7 @@ All notable changes are recorded here.
 - Require `[DONE]` for built-in Chat transport completion, coalesce pre-identity tool fragments, enforce Responses value-done ordering, and use current OpenAI prompt-cache TTL mapping.
 - Verify Provider Smoke workflow provenance and artifact digests before release, and record them in the release manifest.
 - Reject unrepresentable custom thinking dialects and invalid thinking/tool-choice combinations, and fail continuation projection before native replay order can change.
+- Encode Chat Files API blocks per dialect, support Anthropic automatic cache prewarming, reject unmodeled provider semantics, and make SSE retained-byte accounting incremental.
 
 This release intentionally breaks the v0.1 API. See [the migration guide](docs/migrating-from-v0.1.md).
 

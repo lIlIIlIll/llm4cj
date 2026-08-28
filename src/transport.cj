@@ -78,8 +78,11 @@ public class SseDecoder {
     private let maxOutputBytesPerPush: Int64
     private let line = ArrayList<Byte>()
     private let dataLines = ArrayList<String>()
+    private var dataLinesBytes: Int64 = 0
     private var eventType = ""
+    private var eventTypeBytes: Int64 = 0
     private var lastEventId = ""
+    private var lastEventIdBytes: Int64 = 0
     private var lastRetry: ?Int64 = None
     private var hasDataField = false
     private var eventBytes: Int64 = 0
@@ -170,9 +173,9 @@ public class SseDecoder {
         }
         if (value.startsWith(" ")) { value = value[1..] }
         match (name) {
-            case "data" => hasDataField = true; dataLines.add(value)
-            case "event" => eventType = value
-            case "id" => if (!value.contains("\u{0000}")) { lastEventId = value }
+            case "data" => hasDataField = true; dataLines.add(value); dataLinesBytes += Int64(value.toArray().size)
+            case "event" => eventType = value; eventTypeBytes = Int64(value.toArray().size)
+            case "id" => if (!value.contains("\u{0000}")) { lastEventId = value; lastEventIdBytes = Int64(value.toArray().size) }
             case "retry" => match (parseSseRetryMillis(value)) { case Some(found) => lastRetry = Some(found); case None => () }
             case _ => ()
         }
@@ -182,15 +185,14 @@ public class SseDecoder {
     private func enforceLimits(output: ArrayList<SseEvent>): Unit {
         if (eventBytes > maxEventBytes) { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, "llm.sse_event_too_large", "SSE event exceeds configured limit") }
         if (line.size > maxLineBytes) { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, "llm.sse_line_too_large", "SSE line exceeds configured limit") }
-        var retained = Int64(line.size + eventType.toArray().size + lastEventId.toArray().size)
-        for (value in dataLines) { retained += value.toArray().size }
+        let retained = Int64(line.size) + dataLinesBytes + eventTypeBytes + lastEventIdBytes
         if (retained > maxBufferedBytes) { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, "llm.sse_buffer_too_large", "SSE parser retention exceeds configured limit") }
         if (output.size > maxEventsPerPush) { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, "llm.sse_output_too_large", "SSE push produced too many events") }
         if (pushOutputBytes > maxOutputBytesPerPush) { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, "llm.sse_output_bytes_too_large", "SSE push produced too many output bytes") }
     }
 
     private func resetEvent(): Unit {
-        dataLines.clear(); eventType = ""
+        dataLines.clear(); dataLinesBytes = 0; eventType = ""; eventTypeBytes = 0
         hasDataField = false; eventBytes = 0
     }
 }

@@ -20,4 +20,8 @@ codec 构造时会冻结 dialect contract、protocol 与 compatibility identity�
 
 图片能力按模型声明，不按 provider 一刀切。`deepseek-v4-flash-vision-exp` 可在 Chat、Responses 与 Messages 中使用 URL、JPEG/PNG/GIF/WebP base64 或 Files API `file_id`；调用方必须在 `LlmWireCapabilities.inputModalities` 中声明 `Image`。未声明时统一返回 `llm.image_input_unsupported`。Messages 的 file source 会自动加入 `anthropic-beta: files-api-2025-04-14`。普通 DeepSeek Flash/Pro 不应声明该能力。
 
+Chat Files API 的 wire shape 属于 dialect：OpenAI Chat 使用嵌套的 `{"type":"file","file":{"file_id":"..."}}`，DeepSeek Chat 使用 `{"type":"file","file_id":"..."}`。codec 不会因为两者共享 Chat envelope 而混用内容块结构。
+
+Anthropic Messages 的 automatic prompt cache 编码为顶层 `cache_control`。`ProviderDefault` 与 `FiveMinutes` 使用默认 5 分钟 TTL，`OneHour` 显式写入 `ttl: "1h"`；其他 lifetime 在发送前拒绝。automatic cache 请求允许 `maxOutputTokens=0` 用于 cache prewarm，其他 dialect 或未启用 cache 的零输出上限仍是非法请求。
+
 DeepSeek Messages compatibility 仍不支持 `redacted_thinking`；合法但无法安全回放的响应返回 `Unsupported`。

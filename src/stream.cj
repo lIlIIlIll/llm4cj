@@ -243,6 +243,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
                 let item = wireObject(wireRequiredField(root, "item", provider: codec.provider), "Responses output item", provider: codec.provider)
                 let itemType = wireRequiredString(item, "type", provider: codec.provider)
                 let outputIndex = requiredIndex(root, "output_index", codec.provider)
+                rejectResponsesItemSemantic(codec, item, outputIndex)
                 let itemId = wireRequiredString(item, "id", provider: codec.provider)
                 if (outputIndex != items.size || findResponseItem(items, itemId).isSome() || findResponseItemAt(items, outputIndex).isSome()) { invalidWire("llm.responses_output_item_order_invalid", "Responses output item indexes must be contiguous and identities unique", provider: codec.provider) }
                 budget.retain(itemId); budget.retain(itemType)
@@ -326,6 +327,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
         let item = responseItemForEvent(codec, items, root)
         let part = wireObject(wireRequiredField(root, "part", provider: codec.provider), "Responses content part", provider: codec.provider)
         let nativeType = wireRequiredString(part, "type", provider: codec.provider)
+        rejectResponsesContentSemantic(codec, part, requiredIndex(root, if (summary) { "summary_index" } else { "content_index" }, codec.provider), wireRequiredString(root, "type", provider: codec.provider))
         validateResponsePartType(codec, nativeType, summary, part, root)
         let parentCompatible = if (summary) {
             item.nativeType == "reasoning"
@@ -363,6 +365,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
         if (!part.valueCompleted) { invalidWire("llm.responses_content_value_incomplete", "Responses content_part.done arrived before its value done event", provider: codec.provider) }
         let payload = wireObject(wireRequiredField(root, "part", provider: codec.provider), "Responses content part", provider: codec.provider)
         let nativeType = wireRequiredString(payload, "type", provider: codec.provider)
+        rejectResponsesContentSemantic(codec, payload, part.index, wireRequiredString(root, "type", provider: codec.provider))
         if (nativeType != part.nativeType) { invalidWire("llm.responses_done_type_mismatch", "Responses content part type changed at completion", provider: codec.provider) }
         part.completed = true
         LlmWireStreamUpdate(events: [LlmWireEvent(LlmWireEventKind.ContentBlockCompleted, outputIndex: requiredIndex(root, "output_index", codec.provider), contentIndex: if (summary) { -1 } else { part.index }, summaryIndex: if (summary) { part.index } else { -1 }, itemId: wireRequiredString(root, "item_id", provider: codec.provider))])
@@ -505,6 +508,7 @@ class StreamCall {
     let toolCallIndex: Int64
     var callId = ""
     var name = ""
+    var nativeType = ""
     var started = false
     let arguments = StringBuilder()
     init(choiceIndex: Int64, toolCallIndex: Int64) { this.choiceIndex = choiceIndex; this.toolCallIndex = toolCallIndex }
@@ -601,6 +605,7 @@ class ChatStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
         let denied = refusal.toString(); if (denied != "") { blocks.add(LlmWireBlock.Refusal(LlmWireRefusalBlock(denied))) }
         for (toolCallIndex in 0..calls.size) {
             let call = match (findExistingChatCall(calls, 0, toolCallIndex)) { case Some(value) => value; case None => invalidWire("llm.chat_tool_call_index_gap", "Chat tool call indexes must be contiguous", provider: codec.provider) }
+            if (reason != "length" && reason != "content_filter" && call.nativeType == "") { invalidWire("llm.chat_tool_call_type_missing", "completed Chat tool call never declared its type", provider: codec.provider) }
             if (reason != "length" && reason != "content_filter" && (call.callId == "" || call.name == "")) { invalidWire("llm.chat_tool_call_incomplete", "completed Chat tool call is missing id or name", provider: codec.provider) }
             let raw = call.arguments.toString()
             let arguments = if (reason == "length" || reason == "content_filter") { LlmWireToolArguments.Partial(raw) } else { classifyToolArguments(raw) }
@@ -629,6 +634,12 @@ func decodeChatCallDelta(codec: LlmWireCodec, choiceIndex: Int64, item: JsonNode
     let index = match (wireOptionalInt(item, "index", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "Chat tool call delta is missing index", provider: codec.provider) }
     if (index < 0) { invalidWire("llm.chat_tool_call_index_invalid", "Chat tool call index must be non-negative", provider: codec.provider) }
     let call = findChatCall(calls, choiceIndex, index)
+    match (wireOptionalString(item, "type", provider: codec.provider)) {
+        case Some(value) =>
+            if (value != "function") { unsupportedSemantic(codec, value, item, "llm.chat_tool_type_unsupported", blockIndex: index, eventType: "chat.delta.tool_calls") }
+            if (call.nativeType == "") { budget.retain(value); call.nativeType = value }
+        case None => ()
+    }
     let id = optionalStringOrEmpty(item, "id", codec.provider)
     if (id != "") {
         if (call.callId != "" && call.callId != id) { invalidWire("llm.chat_tool_call_id_mismatch", "Chat tool call ID changed during streaming", provider: codec.provider) }
@@ -653,7 +664,7 @@ func decodeChatCallDelta(codec: LlmWireCodec, choiceIndex: Int64, item: JsonNode
 }
 
 func maybeStartChatCall(call: StreamCall, events: ArrayList<LlmWireEvent>): Unit {
-    if (call.started || call.callId == "" || call.name == "") { return }
+    if (call.started || call.nativeType != "function" || call.callId == "" || call.name == "") { return }
     call.started = true
     events.add(LlmWireEvent(LlmWireEventKind.ToolCallStarted, choiceIndex: call.choiceIndex, toolCallIndex: call.toolCallIndex, callId: call.callId, name: call.name))
     let pending = call.arguments.toString()
@@ -719,12 +730,15 @@ class MessagesStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
                 }
                 for (block in blocks where !block.completed) { invalidWire("llm.messages_content_block_incomplete", "Messages message_delta arrived before all content blocks stopped", provider: codec.provider) }
                 let delta = wireObject(wireRequiredField(root, "delta", provider: codec.provider), "Messages message delta", provider: codec.provider)
+                var observedStopReason = ""
                 match (wireOptionalString(delta, "stop_reason", provider: codec.provider)) {
                     case Some(value) =>
                         if (stopReason != "" && stopReason != value) { invalidWire("llm.messages_stop_reason_mismatch", "Messages stop reason changed across message_delta events", provider: codec.provider) }
+                        observedStopReason = value
                         stopReason = value
                     case None => ()
                 }
+                rejectMessagesStopSemantic(codec, delta, observedStopReason, "message_delta")
                 phase = MessagesStreamPhase.AcceptingMessageDeltas
                 match (wireOptionalObject(root, "usage", provider: codec.provider)) {
                     case Some(value) => usage = mergeWireUsage(usage, LlmWireUsage(outputTokens: wireOptionalUsageInt(value, "output_tokens", codec.provider)), codec.dialect.contract.usageMergeStyle); LlmWireStreamUpdate(events: [LlmWireEvent(LlmWireEventKind.UsageDelta, rawStopReason: stopReason, usage: Some(usage))])
@@ -755,6 +769,7 @@ class MessagesStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
             unsupportedSemantic(codec, nativeType, root, "llm.messages_stream_block_unsupported", blockIndex: index, eventType: "content_block_start")
         }
         let block = MessageStreamBlock(index, nativeType)
+        if (nativeType == "text") { rejectNonEmptySemanticArray(codec, payload, "citations", "llm.messages_semantic_unsupported", index, "content_block_start") }
         budget.block(); if (nativeType == "tool_use") { budget.toolCall() }
         block.initialPayload = Some(payload); block.callId = optionalStringOrEmpty(payload, "id", codec.provider); block.name = optionalStringOrEmpty(payload, "name", codec.provider)
         if (nativeType == "tool_use" && (block.callId == "" || block.name == "")) { invalidWire("llm.messages_tool_call_incomplete", "Messages tool_use start is missing id or name", provider: codec.provider) }
@@ -779,6 +794,7 @@ class MessagesStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
             case ("thinking", "thinking_delta") => let value = wireRequiredString(delta, "thinking", provider: codec.provider); budget.semantic(value, "reasoning"); block.text.append(value); LlmWireStreamUpdate(events: [LlmWireEvent(LlmWireEventKind.ReasoningDelta, text: value, blockIndex: index)])
             case ("thinking", "signature_delta") => let value = wireRequiredString(delta, "signature", provider: codec.provider); budget.retain(value); block.signature.append(value); LlmWireStreamUpdate()
             case ("tool_use", "input_json_delta") => let value = wireRequiredString(delta, "partial_json", provider: codec.provider); budget.semantic(value, "tool"); block.arguments.append(value); LlmWireStreamUpdate(events: [LlmWireEvent(LlmWireEventKind.ToolArgumentsDelta, text: value, blockIndex: index, callId: block.callId, name: block.name)])
+            case ("text", "citations_delta") => unsupportedSemantic(codec, "citations_delta", delta, "llm.messages_semantic_unsupported", blockIndex: index, eventType: "content_block_delta")
             case _ => invalidWire("llm.messages_delta_type_mismatch", "Messages delta type does not match the started native block", provider: codec.provider)
         }
     }

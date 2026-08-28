@@ -80,7 +80,10 @@ func wireRequiredInt(value: JsonNode, name: String, provider!: String = ""): Int
 func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
     if (request.model == "") { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.model_missing", "model must not be empty") }
     match (request.maxOutputTokens) {
-        case Some(value) => if (value < 1) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.max_output_tokens_invalid", "maxOutputTokens must be positive") }
+        case Some(value) =>
+            if (value < 0 || value == 0 && !isAnthropicCachePrewarm(codec, request)) {
+                throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.max_output_tokens_invalid", "maxOutputTokens must be positive except for Anthropic cache pre-warming")
+            }
         case None => ()
     }
     if (codec.dialect.contract.requireMaxOutputTokens && request.maxOutputTokens.isNone()) {
@@ -139,6 +142,14 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
         }
     }
     validateConversation(request.messages)
+}
+
+func isAnthropicCachePrewarm(codec: LlmWireCodec, request: LlmWireRequest): Bool {
+    if (codec.dialect.contract.requestStyle != LlmWireRequestStyle.AnthropicMessages) { return false }
+    match (request.promptCache) {
+        case LlmWirePromptCache.Automatic(_) => true
+        case LlmWirePromptCache.ProviderDefault => false
+    }
 }
 
 func validateRequestCombinations(codec: LlmWireCodec, request: LlmWireRequest): Unit {

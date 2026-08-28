@@ -6,6 +6,8 @@
 
 SSE parser 接受 CR、LF、CRLF 与首行 BOM，保留空 `data`，并让 `id` 与 `retry` 跨事件生效。`maxEventBytes` 按实际输入字节计数，CRLF 的两个字节都计入；chunk 末尾的 CR 会保留到下一字节或 `finish` 后再确定行终止。`maxEventBytes`、`maxLineBytes`、`maxBufferedBytes`、`maxEventsPerPush` 与 `maxOutputBytesPerPush` 是互相独立的限额；超限属于 `LimitExceeded`。响应体另由 `readLlmHttpBody` 做总量限制。
 
+SSE retained-byte 限额由增量计数维护，不会在每个输入字节上重新遍历全部 `data:` 行。Messages 的 `citations_delta`、streaming refusal details，以及 Responses 的 annotations/logprobs/phase 在 canonical event API 能无损承载前返回 `Unsupported`；固定与流式路径使用相同的 fail-closed 规则。
+
 `codec.newStreamDecoder(limits: LlmWireStreamLimits(...))` 对跨多个小事件累计的语义数据设置总量、文本、reasoning、tool arguments、block、tool call 与输入 provider event 数上限。`maxEvents` 在每次 `push` 时增加，因此 heartbeat、空 choice 或重复 metadata 事件不能绕过 CPU 工作量上限。首次超限会 poison decoder，后续 feed 不再继续消费。
 
 stream decoder 是同步、单消费者对象，不承诺线程安全，也不创建 callback queue。每次 `push` 完成后才返回，因此 backpressure 由调用方的读取循环自然传递；若 adapter 另建队列，该队列必须自行有界。拥有 HTTP reader 的 adapter 负责在取消、deadline 或 consumer 提前退出时关闭连接，并保证取消后不再调用 decoder。llm4cj 不拥有 socket、连接池或重试生命周期。
