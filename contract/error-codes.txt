@@ -10,8 +10,11 @@ llm.chat_choice_terminal_missing
 llm.chat_choices_empty
 llm.chat_event_after_choice_finished
 llm.chat_finish_reason_unsupported
+llm.chat_id_mismatch
 llm.chat_image_unsupported
 llm.chat_legacy_function_call_unsupported
+llm.chat_messages_required
+llm.chat_model_mismatch
 llm.chat_multiple_choices_unsupported
 llm.chat_opaque_unsupported
 llm.chat_semantic_unsupported
@@ -48,6 +51,7 @@ llm.messages_delta_after_stop
 llm.messages_delta_out_of_phase
 llm.messages_delta_type_mismatch
 llm.messages_delta_without_start
+llm.messages_required
 llm.messages_start_duplicate
 llm.messages_stop_out_of_phase
 llm.messages_stop_reason_mismatch
@@ -82,11 +86,13 @@ llm.required_header_conflict
 llm.responses_arguments_without_item
 llm.responses_block_unsupported
 llm.responses_content_index_invalid
+llm.responses_content_parent_mismatch
 llm.responses_content_part_done_duplicate
 llm.responses_content_part_incomplete
 llm.responses_delta_out_of_phase
 llm.responses_done_type_mismatch
 llm.responses_event_after_item_done
+llm.responses_event_before_start
 llm.responses_event_without_content_part
 llm.responses_event_without_item
 llm.responses_function_arguments_mismatch
@@ -97,6 +103,7 @@ llm.responses_function_done_duplicate
 llm.responses_function_name_mismatch
 llm.responses_function_name_missing
 llm.responses_id_mismatch
+llm.responses_input_required
 llm.responses_model_mismatch
 llm.responses_output_index_mismatch
 llm.responses_output_item_done_duplicate
@@ -149,6 +156,8 @@ llm.tool_arguments_not_executable
 llm.tool_arguments_partial
 llm.tool_arguments_shape_invalid
 llm.tool_call_duplicate
+llm.tool_call_id_duplicate
+llm.tool_call_id_missing
 llm.tool_call_name_invalid
 llm.tool_call_role_invalid
 llm.tool_call_unresolved
@@ -156,6 +165,7 @@ llm.tool_choice_without_tools
 llm.tool_conversation_out_of_phase
 llm.tool_name_duplicate
 llm.tool_name_invalid
+llm.tool_result_error_semantics_unsupported
 llm.tool_result_role_invalid
 llm.tool_result_unmatched
 llm.tool_results_incomplete

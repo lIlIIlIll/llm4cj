@@ -9,6 +9,7 @@ class CanonicalReplyAssembler {
     private let rawStopReason: String
     private let requireExecutableToolCalls: Bool
     private let blocks = ArrayList<LlmWireBlock>()
+    private let toolCallIds = HashSet<String>()
     private var usage: LlmWireUsage
 
     init(responseId: String, model: String, rawStopReason: String, usage!: LlmWireUsage = LlmWireUsage(), requireExecutableToolCalls!: Bool = true) {
@@ -19,11 +20,15 @@ class CanonicalReplyAssembler {
         match (block) {
             case LlmWireBlock.ToolCall(call) =>
                 if (requireExecutableToolCalls) {
+                    if (call.callId == "") { invalidWire("llm.tool_call_id_missing", "a successful reply contains an empty tool call ID") }
+                    if (toolCallIds.contains(call.callId)) { invalidWire("llm.tool_call_id_duplicate", "a successful reply contains duplicate tool call IDs") }
+                    if (!validToolName(call.name)) { invalidWire("llm.tool_call_name_invalid", "a successful reply contains an invalid tool name") }
                     match (call.arguments) {
                         case LlmWireToolArguments.Complete(value) =>
                             if (value.wireKind != WireJsonKind.Object) { invalidWire("llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object") }
                         case _ => invalidWire("llm.tool_arguments_not_executable", "a successful reply contains tool arguments that are not a complete JSON object")
                     }
+                    toolCallIds.add(call.callId)
                 }
                 blocks.add(block)
             case LlmWireBlock.NativeReplay(value) =>

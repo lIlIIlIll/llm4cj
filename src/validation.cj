@@ -86,6 +86,14 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
     if (codec.dialect.contract.requireMaxOutputTokens && request.maxOutputTokens.isNone()) {
         throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.max_output_tokens_required", "this dialect requires maxOutputTokens")
     }
+    match (codec.protocol) {
+        case LlmWireProtocol.Responses =>
+            if (request.messages.isEmpty() && request.system == "") { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.responses_input_required", "Responses requires input messages or instructions") }
+        case LlmWireProtocol.ChatCompletions =>
+            if (request.messages.isEmpty()) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.chat_messages_required", "Chat Completions requires at least one message") }
+        case LlmWireProtocol.Messages =>
+            if (request.messages.isEmpty()) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.messages_required", "Messages requires at least one message") }
+    }
     validateThinking(codec, request)
     validateToolsAndSchemas(request)
     var usesTools = !request.tools.isEmpty()
@@ -113,6 +121,13 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
         for (blockIndex in 0..message.blocks.size) {
             validateBlockForReplay(codec, request, message, message.blocks[blockIndex], blockIndex)
             validateBlockShape(message.blocks[blockIndex])
+            match (message.blocks[blockIndex]) {
+                case LlmWireBlock.ToolResult(value) =>
+                    if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.DeepSeekMessages && value.isError) {
+                        unsupportedRequest("llm.tool_result_error_semantics_unsupported", "DeepSeek Messages does not preserve tool-result error semantics")
+                    }
+                case _ => ()
+            }
         }
     }
     validateConversation(request.messages)
@@ -212,6 +227,10 @@ func validatePromptCache(codec: LlmWireCodec, value: LlmWirePromptCache, routing
 
 func unsupportedRequest(code: String, message: String): Nothing {
     throw LlmTransportError(LlmTransportErrorKind.Unsupported, code, message, phase: Some(LlmTransportPhase.Encode))
+}
+
+func unsupportedWire(code: String, message: String, provider!: String = ""): Nothing {
+    throw LlmTransportError(LlmTransportErrorKind.Unsupported, code, message, provider: provider, phase: Some(LlmTransportPhase.WireDecode))
 }
 
 func validateBlockForReplay(codec: LlmWireCodec, request: LlmWireRequest, message: LlmWireMessage, block: LlmWireBlock, blockIndex: Int64): Unit {

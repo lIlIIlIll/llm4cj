@@ -2,11 +2,11 @@
 
 All notable changes are recorded here.
 
-## [0.2.0] - 2026-08-27
+## [Unreleased]
 
-- Replace protocol-only entry points with `LlmWireCodec`, explicit provider dialects, model capabilities, and strict/lenient validation policy.
+- Replace protocol-only entry points with `LlmWireCodec`, explicit provider dialects, model capabilities, and strict-only validation.
 - Make thinking provider-default by default and reject unsupported or unrepresentable controls.
-- Preserve provider-native thinking, redacted thinking, and unknown Messages blocks as dialect-bound opaque replay data.
+- Preserve supported provider-native thinking as dialect-bound `NativeReplay`; reject unknown semantic blocks as `Unsupported` with bounded diagnostics.
 - Distinguish pending, succeeded, incomplete, and failed response states, including structured provider failures.
 - Add stateful incremental decoders with stable block, item, call, choice, and tool-call identities.
 - Preserve DeepSeek `reasoning_content` across tool continuation and Responses native/message ordering.

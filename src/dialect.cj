@@ -110,13 +110,13 @@ public class LlmWireDialectContract {
     public let requestStyle: LlmWireRequestStyle
     public let outputTokenField: LlmWireOutputTokenField
     public let requireMaxOutputTokens: Bool
-    public let thinkingControls: Array<LlmWireThinkingControl>
-    public let thinkingLevels: Array<LlmWireThinkingLevel>
-    public let structuredOutputModes: Array<LlmWireStructuredOutputMode>
-    public let serviceTiers: Array<LlmWireServiceTier>
-    public let generationSpeeds: Array<LlmWireGenerationSpeed>
+    private let thinkingControlsValue: Array<LlmWireThinkingControl>
+    private let thinkingLevelsValue: Array<LlmWireThinkingLevel>
+    private let structuredOutputModesValue: Array<LlmWireStructuredOutputMode>
+    private let serviceTiersValue: Array<LlmWireServiceTier>
+    private let generationSpeedsValue: Array<LlmWireGenerationSpeed>
     public let promptCacheStyle: LlmWirePromptCacheStyle
-    public let promptCacheLifetimes: Array<LlmWirePromptCacheLifetime>
+    private let promptCacheLifetimesValue: Array<LlmWirePromptCacheLifetime>
     public let promptCacheRoutingKey: Bool
     public let parallelToolStyle: LlmWireParallelToolStyle
     public let tools: Bool
@@ -131,26 +131,34 @@ public class LlmWireDialectContract {
         parallelToolStyle!: LlmWireParallelToolStyle = LlmWireParallelToolStyle.Unsupported, tools!: Bool = true,
         usageMergeStyle!: LlmWireUsageMergeStyle = LlmWireUsageMergeStyle.ReplacePresent
     ) {
-        if (compatibilityId == "") { throw IllegalArgumentException("dialect compatibility ID must not be empty") }
+        if (!validCompatibilityId(compatibilityId)) { throw IllegalArgumentException("dialect compatibility ID must use 1-128 lowercase ASCII letters, digits, dot, underscore, or hyphen") }
         validateContractShape(
             protocol, requestStyle, outputTokenField, promptCacheStyle, parallelToolStyle,
-            structuredOutputModes, generationSpeeds
+            thinkingControls, thinkingLevels, structuredOutputModes, serviceTiers, generationSpeeds,
+            promptCacheLifetimes, promptCacheRoutingKey
         )
         this.compatibilityId = compatibilityId; this.protocol = protocol; this.requestStyle = requestStyle; this.outputTokenField = outputTokenField
-        this.requireMaxOutputTokens = requireMaxOutputTokens; this.thinkingControls = thinkingControls; this.thinkingLevels = thinkingLevels
-        this.structuredOutputModes = structuredOutputModes; this.serviceTiers = serviceTiers; this.generationSpeeds = generationSpeeds
-        this.promptCacheStyle = promptCacheStyle; this.promptCacheLifetimes = promptCacheLifetimes; this.promptCacheRoutingKey = promptCacheRoutingKey
+        rejectDuplicateContractValues(thinkingControls, thinkingLevels, structuredOutputModes, serviceTiers, generationSpeeds, promptCacheLifetimes)
+        this.requireMaxOutputTokens = requireMaxOutputTokens; this.thinkingControlsValue = copyValues(thinkingControls); this.thinkingLevelsValue = copyValues(thinkingLevels)
+        this.structuredOutputModesValue = copyValues(structuredOutputModes); this.serviceTiersValue = copyValues(serviceTiers); this.generationSpeedsValue = copyValues(generationSpeeds)
+        this.promptCacheStyle = promptCacheStyle; this.promptCacheLifetimesValue = copyValues(promptCacheLifetimes); this.promptCacheRoutingKey = promptCacheRoutingKey
         this.parallelToolStyle = parallelToolStyle; this.tools = tools; this.usageMergeStyle = usageMergeStyle
     }
+    public prop thinkingControls: Array<LlmWireThinkingControl> { get() { copyValues(thinkingControlsValue) } }
+    public prop thinkingLevels: Array<LlmWireThinkingLevel> { get() { copyValues(thinkingLevelsValue) } }
+    public prop structuredOutputModes: Array<LlmWireStructuredOutputMode> { get() { copyValues(structuredOutputModesValue) } }
+    public prop serviceTiers: Array<LlmWireServiceTier> { get() { copyValues(serviceTiersValue) } }
+    public prop generationSpeeds: Array<LlmWireGenerationSpeed> { get() { copyValues(generationSpeedsValue) } }
+    public prop promptCacheLifetimes: Array<LlmWirePromptCacheLifetime> { get() { copyValues(promptCacheLifetimesValue) } }
 }
 
 public class LlmWireCapabilities {
-    public let thinkingControls: Array<LlmWireThinkingControl>
-    public let thinkingLevels: Array<LlmWireThinkingLevel>
-    public let structuredOutputModes: Array<LlmWireStructuredOutputMode>
-    public let serviceTiers: Array<LlmWireServiceTier>
-    public let generationSpeeds: Array<LlmWireGenerationSpeed>
-    public let promptCacheLifetimes: Array<LlmWirePromptCacheLifetime>
+    private let thinkingControlsValue: Array<LlmWireThinkingControl>
+    private let thinkingLevelsValue: Array<LlmWireThinkingLevel>
+    private let structuredOutputModesValue: Array<LlmWireStructuredOutputMode>
+    private let serviceTiersValue: Array<LlmWireServiceTier>
+    private let generationSpeedsValue: Array<LlmWireGenerationSpeed>
+    private let promptCacheLifetimesValue: Array<LlmWirePromptCacheLifetime>
     public let tools: Bool
     public let parallelToolCalls: Bool
     public let nativeExplicitCacheBreakpoints: Bool
@@ -160,10 +168,43 @@ public class LlmWireCapabilities {
         generationSpeeds!: Array<LlmWireGenerationSpeed> = [], promptCacheLifetimes!: Array<LlmWirePromptCacheLifetime> = [],
         tools!: Bool = false, parallelToolCalls!: Bool = false, nativeExplicitCacheBreakpoints!: Bool = false
     ) {
-        this.thinkingControls = thinkingControls; this.thinkingLevels = thinkingLevels; this.structuredOutputModes = structuredOutputModes
-        this.serviceTiers = serviceTiers; this.generationSpeeds = generationSpeeds; this.promptCacheLifetimes = promptCacheLifetimes
+        rejectDuplicateContractValues(thinkingControls, thinkingLevels, structuredOutputModes, serviceTiers, generationSpeeds, promptCacheLifetimes)
+        this.thinkingControlsValue = copyValues(thinkingControls); this.thinkingLevelsValue = copyValues(thinkingLevels); this.structuredOutputModesValue = copyValues(structuredOutputModes)
+        this.serviceTiersValue = copyValues(serviceTiers); this.generationSpeedsValue = copyValues(generationSpeeds); this.promptCacheLifetimesValue = copyValues(promptCacheLifetimes)
         this.tools = tools; this.parallelToolCalls = parallelToolCalls; this.nativeExplicitCacheBreakpoints = nativeExplicitCacheBreakpoints
     }
+    public prop thinkingControls: Array<LlmWireThinkingControl> { get() { copyValues(thinkingControlsValue) } }
+    public prop thinkingLevels: Array<LlmWireThinkingLevel> { get() { copyValues(thinkingLevelsValue) } }
+    public prop structuredOutputModes: Array<LlmWireStructuredOutputMode> { get() { copyValues(structuredOutputModesValue) } }
+    public prop serviceTiers: Array<LlmWireServiceTier> { get() { copyValues(serviceTiersValue) } }
+    public prop generationSpeeds: Array<LlmWireGenerationSpeed> { get() { copyValues(generationSpeedsValue) } }
+    public prop promptCacheLifetimes: Array<LlmWirePromptCacheLifetime> { get() { copyValues(promptCacheLifetimesValue) } }
+}
+
+func copyValues<T>(values: Array<T>): Array<T> {
+    let output = ArrayList<T>(); for (value in values) { output.add(value) }; output.toArray()
+}
+
+func validCompatibilityId(value: String): Bool {
+    let bytes = value.toArray(); if (bytes.isEmpty() || bytes.size > 128) { return false }
+    for (byte in bytes) {
+        let allowed = (byte >= 97u8 && byte <= 122u8) || (byte >= 48u8 && byte <= 57u8) || byte == 46u8 || byte == 95u8 || byte == 45u8
+        if (!allowed) { return false }
+    }
+    true
+}
+
+func rejectDuplicateContractValues(
+    controls: Array<LlmWireThinkingControl>, levels: Array<LlmWireThinkingLevel>, modes: Array<LlmWireStructuredOutputMode>,
+    tiers: Array<LlmWireServiceTier>, speeds: Array<LlmWireGenerationSpeed>, lifetimes: Array<LlmWirePromptCacheLifetime>
+): Unit {
+    if (hasDuplicate(controls) || hasDuplicate(levels) || hasDuplicate(modes) || hasDuplicate(tiers) || hasDuplicate(speeds) || hasDuplicate(lifetimes)) {
+        throw IllegalArgumentException("dialect and capability declarations must not contain duplicate values")
+    }
+}
+
+func hasDuplicate<T>(values: Array<T>): Bool where T <: Equatable<T> {
+    for (left in 0..values.size) { for (right in left + 1..values.size) { if (values[left] == values[right]) { return true } } }; false
 }
 
 public interface LlmWireDialect { prop contract: LlmWireDialectContract; prop compatibilityId: String; prop protocol: LlmWireProtocol }
@@ -229,7 +270,10 @@ func withCodecContext(error: LlmTransportError, codec: LlmWireCodec, defaultPhas
 func validateContractShape(
     protocol: LlmWireProtocol, style: LlmWireRequestStyle, tokenField: LlmWireOutputTokenField,
     cacheStyle: LlmWirePromptCacheStyle, parallelStyle: LlmWireParallelToolStyle,
-    structuredModes: Array<LlmWireStructuredOutputMode>, generationSpeeds: Array<LlmWireGenerationSpeed>
+    thinkingControls: Array<LlmWireThinkingControl>, thinkingLevels: Array<LlmWireThinkingLevel>,
+    structuredModes: Array<LlmWireStructuredOutputMode>, serviceTiers: Array<LlmWireServiceTier>,
+    generationSpeeds: Array<LlmWireGenerationSpeed>, cacheLifetimes: Array<LlmWirePromptCacheLifetime>,
+    cacheRoutingKey: Bool
 ): Unit {
     let valid = match (style) {
         case LlmWireRequestStyle.OpenAiResponses | LlmWireRequestStyle.DeepSeekResponses => protocol == LlmWireProtocol.Responses && tokenField == LlmWireOutputTokenField.MaxOutputTokens
@@ -238,8 +282,30 @@ func validateContractShape(
         case LlmWireRequestStyle.AnthropicMessages | LlmWireRequestStyle.DeepSeekMessages => protocol == LlmWireProtocol.Messages && tokenField == LlmWireOutputTokenField.MaxTokens
     }
     if (!valid) { throw IllegalArgumentException("dialect protocol, request style, and output token field are inconsistent") }
-    if (parallelStyle == LlmWireParallelToolStyle.AnthropicToolChoice && protocol != LlmWireProtocol.Messages) { throw IllegalArgumentException("Anthropic tool choice requires Messages") }
-    if (cacheStyle == LlmWirePromptCacheStyle.Anthropic && protocol != LlmWireProtocol.Messages) { throw IllegalArgumentException("Anthropic prompt cache requires Messages") }
+    let parallelRepresentable = match ((protocol, parallelStyle)) {
+        case (_, LlmWireParallelToolStyle.Unsupported) |
+             (LlmWireProtocol.Responses, LlmWireParallelToolStyle.OpenAiTopLevel) |
+             (LlmWireProtocol.ChatCompletions, LlmWireParallelToolStyle.OpenAiTopLevel) |
+             (LlmWireProtocol.Messages, LlmWireParallelToolStyle.AnthropicToolChoice) => true
+        case _ => false
+    }
+    if (!parallelRepresentable) { throw IllegalArgumentException("parallel tool style has no encoding for this protocol") }
+    let cacheRepresentable = match ((style, cacheStyle)) {
+        case (_, LlmWirePromptCacheStyle.Unsupported) |
+             (LlmWireRequestStyle.OpenAiResponses, LlmWirePromptCacheStyle.OpenAi) |
+             (LlmWireRequestStyle.OpenAiChat, LlmWirePromptCacheStyle.OpenAi) |
+             (LlmWireRequestStyle.AnthropicMessages, LlmWirePromptCacheStyle.Anthropic) |
+             (LlmWireRequestStyle.DeepSeekResponses, LlmWirePromptCacheStyle.ProviderAutomatic) |
+             (LlmWireRequestStyle.DeepSeekChat, LlmWirePromptCacheStyle.ProviderAutomatic) |
+             (LlmWireRequestStyle.DeepSeekMessages, LlmWirePromptCacheStyle.ProviderAutomatic) => true
+        case _ => false
+    }
+    if (!cacheRepresentable) { throw IllegalArgumentException("prompt cache style has no encoding for this request style") }
+    if (cacheStyle == LlmWirePromptCacheStyle.Unsupported && !cacheLifetimes.isEmpty()) { throw IllegalArgumentException("unsupported prompt cache cannot declare cache lifetimes") }
+    if (cacheRoutingKey && style != LlmWireRequestStyle.OpenAiResponses && style != LlmWireRequestStyle.OpenAiChat) { throw IllegalArgumentException("prompt cache routing key has no encoding for this request style") }
+    if (!serviceTiers.isEmpty() && style != LlmWireRequestStyle.OpenAiResponses && style != LlmWireRequestStyle.OpenAiChat && style != LlmWireRequestStyle.AnthropicMessages) {
+        throw IllegalArgumentException("service tier has no encoding for this request style")
+    }
     if (!generationSpeeds.isEmpty() && style != LlmWireRequestStyle.AnthropicMessages) {
         throw IllegalArgumentException("generation speed has no encoding for this request style")
     }
@@ -253,6 +319,30 @@ func validateContractShape(
         }
         if (!representable) { throw IllegalArgumentException("structured output mode has no encoding for this request style") }
     }
+    for (control in thinkingControls) {
+        let representable = match ((style, control)) {
+            case (_, LlmWireThinkingControl.ProviderDefault) => true
+            case (LlmWireRequestStyle.OpenAiResponses, LlmWireThinkingControl.Effort(_)) |
+                 (LlmWireRequestStyle.OpenAiChat, LlmWireThinkingControl.Disabled) |
+                 (LlmWireRequestStyle.OpenAiChat, LlmWireThinkingControl.Enabled) |
+                 (LlmWireRequestStyle.OpenAiChat, LlmWireThinkingControl.Effort(_)) |
+                 (LlmWireRequestStyle.DeepSeekResponses, LlmWireThinkingControl.Disabled) |
+                 (LlmWireRequestStyle.DeepSeekResponses, LlmWireThinkingControl.Enabled) |
+                 (LlmWireRequestStyle.DeepSeekResponses, LlmWireThinkingControl.Effort(_)) |
+                 (LlmWireRequestStyle.DeepSeekChat, LlmWireThinkingControl.Disabled) |
+                 (LlmWireRequestStyle.DeepSeekChat, LlmWireThinkingControl.Enabled) |
+                 (LlmWireRequestStyle.DeepSeekChat, LlmWireThinkingControl.Effort(_)) |
+                 (LlmWireRequestStyle.DeepSeekMessages, LlmWireThinkingControl.Disabled) |
+                 (LlmWireRequestStyle.DeepSeekMessages, LlmWireThinkingControl.Enabled) |
+                 (LlmWireRequestStyle.DeepSeekMessages, LlmWireThinkingControl.Effort(_)) |
+                 (LlmWireRequestStyle.AnthropicMessages, LlmWireThinkingControl.Disabled) |
+                 (LlmWireRequestStyle.AnthropicMessages, LlmWireThinkingControl.Budget(_)) |
+                 (LlmWireRequestStyle.AnthropicMessages, LlmWireThinkingControl.Adaptive(_)) => true
+            case _ => false
+        }
+        if (!representable) { throw IllegalArgumentException("thinking control has no encoding for this request style") }
+    }
+    if (thinkingControls.isEmpty() && !thinkingLevels.isEmpty()) { throw IllegalArgumentException("thinking levels require an encodable thinking control") }
 }
 
 public func openAiResponsesDialect(): LlmWireDialect { BuiltinWireDialect(builtinContract(LlmWireBuiltinDialect.OpenAiResponses)) }
@@ -269,12 +359,13 @@ func isBuiltinCompatibilityId(value: String): Bool {
 
 func builtinContract(value: LlmWireBuiltinDialect): LlmWireDialectContract {
     let levels = [LlmWireThinkingLevel.Minimal, LlmWireThinkingLevel.Low, LlmWireThinkingLevel.Medium, LlmWireThinkingLevel.High, LlmWireThinkingLevel.XHigh, LlmWireThinkingLevel.Max]
+    let deepSeekMessageLevels = [LlmWireThinkingLevel.Low, LlmWireThinkingLevel.Medium, LlmWireThinkingLevel.High, LlmWireThinkingLevel.XHigh, LlmWireThinkingLevel.Max]
     match (value) {
         case LlmWireBuiltinDialect.OpenAiResponses => LlmWireDialectContract("openai.responses.v1", LlmWireProtocol.Responses, LlmWireRequestStyle.OpenAiResponses, LlmWireOutputTokenField.MaxOutputTokens, thinkingControls: [LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Medium)], thinkingLevels: levels, structuredOutputModes: [LlmWireStructuredOutputMode.Text, LlmWireStructuredOutputMode.JsonObject, LlmWireStructuredOutputMode.JsonSchema], serviceTiers: [LlmWireServiceTier.Auto, LlmWireServiceTier.Default, LlmWireServiceTier.Flex, LlmWireServiceTier.Priority, LlmWireServiceTier.Fast, LlmWireServiceTier.Ultrafast], promptCacheStyle: LlmWirePromptCacheStyle.OpenAi, promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.TwentyFourHours], promptCacheRoutingKey: true, parallelToolStyle: LlmWireParallelToolStyle.OpenAiTopLevel)
         case LlmWireBuiltinDialect.OpenAiChat => LlmWireDialectContract("openai.chat.v1", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens, thinkingControls: [LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Enabled, LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Medium)], thinkingLevels: levels, structuredOutputModes: [LlmWireStructuredOutputMode.Text, LlmWireStructuredOutputMode.JsonObject, LlmWireStructuredOutputMode.JsonSchema], serviceTiers: [LlmWireServiceTier.Auto, LlmWireServiceTier.Default, LlmWireServiceTier.Flex, LlmWireServiceTier.Priority, LlmWireServiceTier.Fast, LlmWireServiceTier.Ultrafast], promptCacheStyle: LlmWirePromptCacheStyle.OpenAi, promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.TwentyFourHours], promptCacheRoutingKey: true, parallelToolStyle: LlmWireParallelToolStyle.OpenAiTopLevel)
         case LlmWireBuiltinDialect.AnthropicMessages => LlmWireDialectContract("anthropic.messages.v1", LlmWireProtocol.Messages, LlmWireRequestStyle.AnthropicMessages, LlmWireOutputTokenField.MaxTokens, requireMaxOutputTokens: true, thinkingControls: [LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Budget(1024), LlmWireThinkingControl.Adaptive(None)], thinkingLevels: levels, structuredOutputModes: [LlmWireStructuredOutputMode.JsonSchema], serviceTiers: [LlmWireServiceTier.Auto, LlmWireServiceTier.StandardOnly], generationSpeeds: [LlmWireGenerationSpeed.Standard, LlmWireGenerationSpeed.Fast], parallelToolStyle: LlmWireParallelToolStyle.AnthropicToolChoice, usageMergeStyle: LlmWireUsageMergeStyle.Monotonic)
         case LlmWireBuiltinDialect.DeepSeekResponses => LlmWireDialectContract("deepseek.responses.v1", LlmWireProtocol.Responses, LlmWireRequestStyle.DeepSeekResponses, LlmWireOutputTokenField.MaxOutputTokens, thinkingControls: [LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Enabled, LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Medium)], thinkingLevels: levels, structuredOutputModes: [LlmWireStructuredOutputMode.Text, LlmWireStructuredOutputMode.JsonObject, LlmWireStructuredOutputMode.JsonSchema], promptCacheStyle: LlmWirePromptCacheStyle.ProviderAutomatic, promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault])
-        case LlmWireBuiltinDialect.DeepSeekChat => LlmWireDialectContract("deepseek.chat.v1", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.DeepSeekChat, LlmWireOutputTokenField.MaxTokens, thinkingControls: [LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Enabled, LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Medium)], thinkingLevels: levels, structuredOutputModes: [LlmWireStructuredOutputMode.Text, LlmWireStructuredOutputMode.JsonObject], promptCacheStyle: LlmWirePromptCacheStyle.ProviderAutomatic, promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault])
-        case LlmWireBuiltinDialect.DeepSeekMessages => LlmWireDialectContract("deepseek.messages.v1", LlmWireProtocol.Messages, LlmWireRequestStyle.DeepSeekMessages, LlmWireOutputTokenField.MaxTokens, requireMaxOutputTokens: true, thinkingControls: [LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Enabled, LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Medium)], thinkingLevels: levels, promptCacheStyle: LlmWirePromptCacheStyle.ProviderAutomatic, promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault], usageMergeStyle: LlmWireUsageMergeStyle.Monotonic)
+        case LlmWireBuiltinDialect.DeepSeekChat => LlmWireDialectContract("deepseek.chat.v1", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.DeepSeekChat, LlmWireOutputTokenField.MaxTokens, thinkingControls: [LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Enabled, LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Medium)], thinkingLevels: deepSeekMessageLevels, structuredOutputModes: [LlmWireStructuredOutputMode.Text, LlmWireStructuredOutputMode.JsonObject], promptCacheStyle: LlmWirePromptCacheStyle.ProviderAutomatic, promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault])
+        case LlmWireBuiltinDialect.DeepSeekMessages => LlmWireDialectContract("deepseek.messages.v1", LlmWireProtocol.Messages, LlmWireRequestStyle.DeepSeekMessages, LlmWireOutputTokenField.MaxTokens, requireMaxOutputTokens: true, thinkingControls: [LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Enabled, LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Medium)], thinkingLevels: deepSeekMessageLevels, promptCacheStyle: LlmWirePromptCacheStyle.ProviderAutomatic, promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault], usageMergeStyle: LlmWireUsageMergeStyle.Monotonic)
     }
 }
