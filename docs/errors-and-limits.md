@@ -6,7 +6,7 @@
 
 `LlmTransportError` 可携带 phase、protocol、dialect ID、provider request ID、event type、block index 和 tool call ID。未知语义的 diagnostic 只保存结构化上下文；原始片段最多保留 2 KiB，超出时只记录长度和 `truncated=true`。库不会自动复制 Authorization、cookie、完整 prompt、tool result 或完整 provider body。
 
-默认 JSON 与字符串上限是 8 MiB，深度上限是 256。默认 SSE 单事件上限是 8 MiB，buffer 与单次 push 输出上限是 16 MiB。协议流另由 `LlmWireStreamLimits` 限制累计语义字节、文本、reasoning、tool arguments、block、tool call 和事件数量。HTTP body 必须由调用方传入正数上限。达到 deadline 或取消后，应用应停止网络读取；本库不拥有 socket 生命周期。
+默认 JSON 与字符串上限是 8 MiB，深度上限是 256。默认 SSE 单事件上限是 8 MiB，buffer 与单次 push 输出上限是 16 MiB；CRLF 的两个原始字节都计入事件上限。协议流另由 `LlmWireStreamLimits` 限制累计语义字节、文本、reasoning、tool arguments、block、tool call 和输入 provider event 数量。HTTP body 必须由调用方传入正数上限。达到 deadline 或取消后，应用应停止网络读取；本库不拥有 socket 生命周期。
 
 协议流还通过 `maxRetainedStateBytes` 限制 decoder 实际保留的 metadata、native payload 与累计内容。终态完整 body 或 done-only arguments 不得绕过更小的 text/tool/total semantic limit。
 

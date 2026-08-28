@@ -38,7 +38,9 @@ parser.add_argument("--yjson-commit", required=True)
 parser.add_argument("--cjc-version", required=True)
 parser.add_argument("--cjpm-version", required=True)
 parser.add_argument("--smoke-evidence", type=Path, required=True)
+parser.add_argument("--smoke-provenance", type=Path, required=True)
 args = parser.parse_args()
+smoke_provenance = json.loads(args.smoke_provenance.read_text(encoding="utf-8"))
 
 evidence = {
     "package": "llm4cj",
@@ -56,6 +58,10 @@ evidence = {
     "providerSmoke": {
         "candidateCommit": args.source_commit,
         "artifactCount": len(list(args.smoke_evidence.glob("*.json"))),
+        "runId": smoke_provenance["runId"],
+        "workflowId": smoke_provenance["workflowId"],
+        "workflowPath": smoke_provenance["workflowPath"],
+        "artifactDigests": smoke_provenance["artifactDigests"],
     },
     "gates": ["check", "coverage", "contract", "exact Git consumer", "provider smoke"],
 }

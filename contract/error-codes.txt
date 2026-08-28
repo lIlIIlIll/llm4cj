@@ -11,7 +11,6 @@ llm.chat_choices_empty
 llm.chat_event_after_choice_finished
 llm.chat_finish_reason_unsupported
 llm.chat_id_mismatch
-llm.chat_image_unsupported
 llm.chat_legacy_function_call_unsupported
 llm.chat_messages_required
 llm.chat_model_mismatch
@@ -25,6 +24,7 @@ llm.chat_tool_call_index_invalid
 llm.chat_tool_call_name_mismatch
 llm.dialect_identity_mismatch
 llm.dialect_protocol_mismatch
+llm.envelope_identity_mismatch
 llm.feature_requirement_unresolved
 llm.feature_requirement_unsatisfied
 llm.field_missing
@@ -32,6 +32,11 @@ llm.field_type_invalid
 llm.generation_speed_unsupported
 llm.header_invalid
 llm.image_base64_invalid
+llm.image_file_invalid
+llm.image_file_shape_invalid
+llm.image_input_unsupported
+llm.image_media_type_unsupported
+llm.image_role_unsupported
 llm.image_url_invalid
 llm.integer_invalid
 llm.json_duplicate_key
@@ -60,7 +65,9 @@ llm.messages_stop_reason_unsupported
 llm.messages_stream_block_unsupported
 llm.messages_stream_event_unsupported
 llm.messages_tool_call_incomplete
+llm.messages_tool_input_start_nonempty
 llm.model_missing
+llm.native_replay_cardinality_invalid
 llm.native_replay_dialect_mismatch
 llm.native_replay_incomplete
 llm.native_replay_model_mismatch
@@ -89,6 +96,7 @@ llm.responses_content_index_invalid
 llm.responses_content_parent_mismatch
 llm.responses_content_part_done_duplicate
 llm.responses_content_part_incomplete
+llm.responses_content_value_incomplete
 llm.responses_delta_out_of_phase
 llm.responses_done_type_mismatch
 llm.responses_event_after_item_done
@@ -104,12 +112,14 @@ llm.responses_function_name_mismatch
 llm.responses_function_name_missing
 llm.responses_id_mismatch
 llm.responses_input_required
+llm.responses_message_status_invalid
 llm.responses_model_mismatch
 llm.responses_output_index_mismatch
 llm.responses_output_item_done_duplicate
 llm.responses_output_item_incomplete
 llm.responses_output_item_mismatch
 llm.responses_output_item_order_invalid
+llm.responses_start_duplicate
 llm.responses_status_unsupported
 llm.responses_stream_block_unsupported
 llm.responses_stream_event_unsupported
@@ -120,6 +130,7 @@ llm.responses_terminal_mismatch
 llm.responses_terminal_output_mismatch
 llm.responses_terminal_output_missing
 llm.responses_text_mismatch
+llm.responses_value_done_duplicate
 llm.semantic_block_unsupported
 llm.service_tier_unsupported
 llm.sse_buffer_too_large
@@ -160,6 +171,7 @@ llm.tool_call_id_duplicate
 llm.tool_call_id_missing
 llm.tool_call_name_invalid
 llm.tool_call_role_invalid
+llm.tool_call_stop_mismatch
 llm.tool_call_unresolved
 llm.tool_choice_without_tools
 llm.tool_conversation_out_of_phase
@@ -170,6 +182,7 @@ llm.tool_result_role_invalid
 llm.tool_result_unmatched
 llm.tool_results_incomplete
 llm.tool_schema_invalid
+llm.tool_stop_without_call
 llm.tools_unsupported
 llm.usage_decreased
 llm.usage_negative

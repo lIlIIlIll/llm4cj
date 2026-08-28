@@ -88,10 +88,12 @@ func encodeChatRequest(codec: LlmWireCodec, request: LlmWireRequest, requirement
     if (request.system != "") { messages.add(wireJsonObject([WireJsonField("role", wireJsonString("system")), WireJsonField("content", wireJsonString(request.system))])) }
     for (message in request.messages) {
         let content = StringBuilder()
+        let contentParts = wireJsonArray([])
+        var hasImage = false
         let calls = wireJsonArray([])
         var reasoningContent: ?String = None
         for (block in message.blocks) { match (block) {
-            case LlmWireBlock.Text(value) => content.append(value.text)
+            case LlmWireBlock.Text(value) => content.append(value.text); contentParts.add(wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(value.text))]))
             case LlmWireBlock.ToolResult(result) => messages.add(wireJsonObject([WireJsonField("role", wireJsonString("tool")), WireJsonField("tool_call_id", wireJsonString(result.callId)), WireJsonField("content", wireJsonString(result.content))]))
             case LlmWireBlock.ToolCall(call) => calls.add(wireJsonObject([WireJsonField("id", wireJsonString(call.callId)), WireJsonField("type", wireJsonString("function")), WireJsonField("function", wireJsonObject([WireJsonField("name", wireJsonString(call.name)), WireJsonField("arguments", wireJsonString(toolArgumentsRaw(call.arguments)))]))]))
             case LlmWireBlock.NativeReplay(value) =>
@@ -99,11 +101,11 @@ func encodeChatRequest(codec: LlmWireCodec, request: LlmWireRequest, requirement
                 reasoningContent = Some(wireRequiredString(value.payload(), "reasoning_content", provider: codec.provider))
             case LlmWireBlock.Opaque(_) => unsupportedRequest("llm.chat_opaque_unsupported", "Chat Completions cannot replay diagnostic blocks")
             case LlmWireBlock.Reasoning(_) | LlmWireBlock.Refusal(_) => unsupportedRequest("llm.chat_block_unsupported", "display-only blocks cannot be encoded as request input")
-            case LlmWireBlock.Image(_) => unsupportedRequest("llm.chat_image_unsupported", "Chat image encoding requires a multipart content block")
+            case LlmWireBlock.Image(value) => hasImage = true; contentParts.add(encodeChatImage(value))
         } }
         let text = content.toString()
-        if (text != "" || !calls.items.isEmpty() || reasoningContent.isSome()) {
-            let encoded = wireJsonObject([WireJsonField("role", wireJsonString(roleName(message.role))), WireJsonField("content", wireJsonString(text))])
+        if (text != "" || hasImage || !calls.items.isEmpty() || reasoningContent.isSome()) {
+            let encoded = wireJsonObject([WireJsonField("role", wireJsonString(roleName(message.role))), WireJsonField("content", if (hasImage) { contentParts } else { wireJsonString(text) })])
             match (reasoningContent) { case Some(value) => encoded.put("reasoning_content", wireJsonString(value)); case None => () }
             if (!calls.items.isEmpty()) { encoded.put("tool_calls", calls) }
             messages.add(encoded)
@@ -143,6 +145,7 @@ func encodeMessagesRequest(codec: LlmWireCodec, request: LlmWireRequest, headers
         case _ => ()
     }
     encodePromptCache(codec, root, request.promptCache, requirements)
+    if (requestHasFileImage(request)) { headers.add(LlmWireHeader("anthropic-beta", "files-api-2025-04-14")) }
     let messages = wireJsonArray([])
     for (message in request.messages) { let content = wireJsonArray([]); for (block in message.blocks) { content.add(encodeMessagesContent(block)) }; messages.add(wireJsonObject([WireJsonField("role", wireJsonString(roleName(message.role))), WireJsonField("content", content)])) }
     root.put("messages", messages)
@@ -197,7 +200,7 @@ func encodePromptCache(codec: LlmWireCodec, root: JsonNode, value: LlmWirePrompt
         case LlmWirePromptCache.ProviderDefault => ()
         case LlmWirePromptCache.Automatic(lifetime) => match (codec.dialect.contract.promptCacheStyle) {
             case LlmWirePromptCacheStyle.OpenAi =>
-                if (lifetime != LlmWirePromptCacheLifetime.ProviderDefault) { root.put("prompt_cache_retention", wireJsonString(cacheLifetimeName(lifetime))) }
+                if (lifetime != LlmWirePromptCacheLifetime.ProviderDefault) { root.put("prompt_cache_options", wireJsonObject([WireJsonField("ttl", wireJsonString(cacheLifetimeName(lifetime)))])) }
                 else { requirements.add(LlmWireFeatureRequirement("openai.prompt_cache_automatic", LlmWireRequirementState.Satisfied)) }
             case LlmWirePromptCacheStyle.Anthropic => unsupportedRequest("llm.cache_unsupported", "Anthropic cache breakpoints require provider-native content blocks")
             case LlmWirePromptCacheStyle.ProviderAutomatic => requirements.add(LlmWireFeatureRequirement("provider.prompt_cache_automatic", LlmWireRequirementState.Satisfied))
@@ -235,7 +238,10 @@ func addChatTools(root: JsonNode, values: Array<LlmWireTool>): Unit {
 func encodeResponsesContent(block: LlmWireBlock): JsonNode {
     match (block) {
         case LlmWireBlock.Text(value) => wireJsonObject([WireJsonField("type", wireJsonString("input_text")), WireJsonField("text", wireJsonString(value.text))])
-        case LlmWireBlock.Image(value) => wireJsonObject([WireJsonField("type", wireJsonString("input_image")), WireJsonField("image_url", wireJsonString(imageUrl(value))), WireJsonField("detail", wireJsonString(imageDetail(value.detail)))])
+        case LlmWireBlock.Image(value) => match (value.sourceKind) {
+            case LlmWireImageSourceKind.File => wireJsonObject([WireJsonField("type", wireJsonString("input_image")), WireJsonField("file_id", wireJsonString(value.data))])
+            case _ => wireJsonObject([WireJsonField("type", wireJsonString("input_image")), WireJsonField("image_url", wireJsonString(imageUrl(value))), WireJsonField("detail", wireJsonString(imageDetail(value.detail)))])
+        }
         case LlmWireBlock.Reasoning(value) => wireJsonObject([WireJsonField("type", wireJsonString("input_text")), WireJsonField("text", wireJsonString(value.text))])
         case LlmWireBlock.Refusal(value) => wireJsonObject([WireJsonField("type", wireJsonString("input_text")), WireJsonField("text", wireJsonString(value.text))])
         case _ => unsupportedRequest("llm.responses_block_unsupported", "block cannot be encoded as Responses message content")
@@ -249,6 +255,7 @@ func encodeMessagesContent(block: LlmWireBlock): JsonNode {
             let source = match (value.sourceKind) {
                 case LlmWireImageSourceKind.Url => wireJsonObject([WireJsonField("type", wireJsonString("url")), WireJsonField("url", wireJsonString(value.data))])
                 case LlmWireImageSourceKind.Base64 => wireJsonObject([WireJsonField("type", wireJsonString("base64")), WireJsonField("media_type", wireJsonString(value.mediaType)), WireJsonField("data", wireJsonString(value.data))])
+                case LlmWireImageSourceKind.File => wireJsonObject([WireJsonField("type", wireJsonString("file")), WireJsonField("file_id", wireJsonString(value.data))])
             }
             wireJsonObject([WireJsonField("type", wireJsonString("image")), WireJsonField("source", source)])
         case LlmWireBlock.ToolCall(value) => wireJsonObject([
@@ -284,7 +291,22 @@ func toolArgumentsObject(arguments: LlmWireToolArguments): JsonNode {
 
 func roleName(role: LlmWireRole): String { match (role) { case LlmWireRole.User => "user"; case LlmWireRole.Assistant => "assistant" } }
 func imageDetail(value: LlmWireImageDetail): String { match (value) { case LlmWireImageDetail.Auto => "auto"; case LlmWireImageDetail.Low => "low"; case LlmWireImageDetail.High => "high" } }
-func imageUrl(value: LlmWireImageBlock): String { match (value.sourceKind) { case LlmWireImageSourceKind.Url => value.data; case LlmWireImageSourceKind.Base64 => "data:" + value.mediaType + ";base64," + value.data } }
+func imageUrl(value: LlmWireImageBlock): String { match (value.sourceKind) { case LlmWireImageSourceKind.Url => value.data; case LlmWireImageSourceKind.Base64 => "data:" + value.mediaType + ";base64," + value.data; case LlmWireImageSourceKind.File => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.image_file_shape_invalid", "file images require a provider-native file_id field") } }
+
+func encodeChatImage(value: LlmWireImageBlock): JsonNode {
+    match (value.sourceKind) {
+        case LlmWireImageSourceKind.File => wireJsonObject([WireJsonField("type", wireJsonString("file")), WireJsonField("file_id", wireJsonString(value.data))])
+        case _ => wireJsonObject([WireJsonField("type", wireJsonString("image_url")), WireJsonField("image_url", wireJsonObject([WireJsonField("url", wireJsonString(imageUrl(value))), WireJsonField("detail", wireJsonString(imageDetail(value.detail)))]))])
+    }
+}
+
+func requestHasFileImage(request: LlmWireRequest): Bool {
+    for (message in request.messages) { for (block in message.blocks) { match (block) {
+        case LlmWireBlock.Image(value) => if (value.sourceKind == LlmWireImageSourceKind.File) { return true }
+        case _ => ()
+    } } }
+    false
+}
 
 func decodeWireResponse(codec: LlmWireCodec, source: String): LlmWireResponseState {
     let root = wireObject(parseWireJson(source), "provider response", provider: codec.provider)
@@ -297,6 +319,7 @@ func decodeWireResponse(codec: LlmWireCodec, source: String): LlmWireResponseSta
 
 func decodeResponsesResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseState {
     match (wireOptionalObject(root, "error", provider: codec.provider)) { case Some(error) => return LlmWireResponseState.Terminal(LlmWireTerminal.Failed(providerFailure(codec, error))); case None => () }
+    validateOptionalIdentity(codec, root, "object", "response")
     let status = wireRequiredString(root, "status", provider: codec.provider)
     if (status == "completed" || status == "incomplete") {
         let _ = match (wireOptionalArray(root, "output", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "terminal Responses response is missing output", provider: codec.provider) }
@@ -321,7 +344,10 @@ func responsesReply(codec: LlmWireCodec, root: JsonNode): LlmWireReply {
             let item = wireObject(raw, "Responses output item", provider: codec.provider)
             let kind = wireRequiredString(item, "type", provider: codec.provider)
             match (kind) {
-                case "message" => match (wireOptionalArray(item, "content", provider: codec.provider)) {
+                case "message" =>
+                    validateOptionalIdentity(codec, item, "role", "assistant")
+                    match (wireOptionalString(item, "status", provider: codec.provider)) { case Some(value) => if (value != "completed" && value != "incomplete" && value != "in_progress") { invalidWire("llm.responses_message_status_invalid", "Responses message output has an invalid status", provider: codec.provider) }; case None => () }
+                    match (wireOptionalArray(item, "content", provider: codec.provider)) {
                     case Some(content) => for (contentIndex in 0..content.size) { decodeResponsesContent(codec, wireObject(content[contentIndex], "Responses content block", provider: codec.provider), blocks, contentIndex) }
                     case None => invalidWire("llm.field_missing", "Responses message output is missing content", provider: codec.provider)
                 }
@@ -352,6 +378,7 @@ func decodeResponsesContent(codec: LlmWireCodec, block: JsonNode, output: ArrayL
 
 func decodeChatResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseState {
     match (wireOptionalObject(root, "error", provider: codec.provider)) { case Some(error) => return LlmWireResponseState.Terminal(LlmWireTerminal.Failed(providerFailure(codec, error))); case None => () }
+    validateOptionalIdentity(codec, root, "object", "chat.completion")
     let choices = match (wireOptionalArray(root, "choices", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "Chat response is missing choices", provider: codec.provider) }
     if (choices.isEmpty()) { invalidWire("llm.chat_choices_empty", "Chat response choices must not be empty", provider: codec.provider) }
     if (choices.size != 1) { unsupportedWire("llm.chat_multiple_choices_unsupported", "only one Chat choice is supported", provider: codec.provider) }
@@ -362,6 +389,7 @@ func decodeChatResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseSta
         return LlmWireResponseState.Terminal(LlmWireTerminal.Failed(LlmWireFailure(LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true)))
     }
     let message = match (wireOptionalObject(choice, "message", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "Chat choice is missing message", provider: codec.provider) }
+    validateOptionalIdentity(codec, message, "role", "assistant")
     rejectUnsupportedChatSemantic(codec, message, "message")
     let blocks = ArrayList<LlmWireBlock>()
     match (wireOptionalString(message, "content", provider: codec.provider)) { case Some(value) => if (value != "") { blocks.add(LlmWireBlock.Text(LlmWireTextBlock(value))) }; case None => () }
@@ -386,6 +414,7 @@ func decodeChatResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseSta
         blocks.toArray(), decodeChatUsage(codec, root), stop,
         requireExecutableToolCalls: stop != "length" && stop != "content_filter"
     )
+    if (stop == "stop" || stop == "tool_calls") { validateReplyToolStop(reply, stop, "tool_calls", ["stop"]) }
     match (stop) {
         case "stop" | "tool_calls" => LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply))
         case "function_call" => throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.chat_legacy_function_call_unsupported", "legacy Chat function_call responses are not supported", provider: codec.provider)
@@ -415,6 +444,8 @@ func decodeMessagesResponse(codec: LlmWireCodec, root: JsonNode): LlmWireRespons
         let error = match (root.field("error")) { case Some(value) => value; case None => root }
         return LlmWireResponseState.Terminal(LlmWireTerminal.Failed(providerFailure(codec, error)))
     }
+    validateOptionalIdentity(codec, root, "type", "message")
+    validateOptionalIdentity(codec, root, "role", "assistant")
     let content = match (wireOptionalArray(root, "content", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "Messages response is missing content", provider: codec.provider) }
     let blocks = ArrayList<LlmWireBlock>()
     let modelConstraint = optionalStringOrNone(root, "model", codec.provider)
@@ -439,12 +470,20 @@ func decodeMessagesResponse(codec: LlmWireCodec, root: JsonNode): LlmWireRespons
         blocks.toArray(), decodeMessagesUsage(codec, root), stop,
         requireExecutableToolCalls: stop != "max_tokens" && stop != "model_context_window_exceeded" && stop != "pause_turn"
     )
+    if (stop == "tool_use" || stop == "end_turn" || stop == "stop_sequence" || stop == "refusal") { validateReplyToolStop(reply, stop, "tool_use", ["end_turn", "stop_sequence", "refusal"]) }
     match (stop) {
         case "end_turn" | "stop_sequence" | "tool_use" | "refusal" => LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply))
         case "max_tokens" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.MaxTokens))
         case "model_context_window_exceeded" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.ModelContextWindowExceeded))
         case "pause_turn" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.PauseTurn))
         case _ => throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.messages_stop_reason_unsupported", "unknown Messages stop reason: " + stop, provider: codec.provider)
+    }
+}
+
+func validateOptionalIdentity(codec: LlmWireCodec, value: JsonNode, field: String, expected: String): Unit {
+    match (wireOptionalString(value, field, provider: codec.provider)) {
+        case Some(actual) => if (actual != expected) { invalidWire("llm.envelope_identity_mismatch", "provider response identity field " + field + " did not match " + expected, provider: codec.provider) }
+        case None => ()
     }
 }
 
@@ -457,14 +496,14 @@ func classifyToolArguments(raw: String): LlmWireToolArguments {
 }
 
 func nativeFromNative(codec: LlmWireCodec, payload: JsonNode, nativeType: String, display: ?String, modelConstraint: ?String, blockOrder: Int64): LlmWireNativeReplayBlock {
-    nativeReplayFromPayload(codec.protocol, codec.dialect.compatibilityId, nativeType, payload, requestStyle: Some(codec.dialect.contract.requestStyle), modelConstraint: modelConstraint, blockOrder: blockOrder, displayReasoning: display)
+    nativeReplayFromPayload(codec.protocol, codec.dialect.compatibilityId, nativeType, payload, modelConstraint: modelConstraint, blockOrder: blockOrder, displayReasoning: display)
 }
 
 func chatReasoningReplay(codec: LlmWireCodec, text: String, modelConstraint: ?String, blockOrder: Int64): LlmWireNativeReplayBlock {
     nativeReplayFromPayload(
         LlmWireProtocol.ChatCompletions, codec.dialect.compatibilityId, "reasoning_content",
         wireJsonObject([WireJsonField("type", wireJsonString("reasoning_content")), WireJsonField("reasoning_content", wireJsonString(text))]),
-        requestStyle: Some(codec.dialect.contract.requestStyle), modelConstraint: modelConstraint, blockOrder: blockOrder, displayReasoning: Some(text)
+        modelConstraint: modelConstraint, blockOrder: blockOrder, displayReasoning: Some(text)
     )
 }
 

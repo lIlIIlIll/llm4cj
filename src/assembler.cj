@@ -53,6 +53,13 @@ func assembleCanonicalReply(
     assembler.finish()
 }
 
+func validateReplyToolStop(reply: LlmWireReply, stop: String, toolStop: String, ordinaryStops: Array<String>): Unit {
+    var hasToolCall = false
+    for (block in reply.blocks) { match (block) { case LlmWireBlock.ToolCall(_) => hasToolCall = true; case _ => () } }
+    if (stop == toolStop && !hasToolCall) { invalidWire("llm.tool_stop_without_call", "provider reported a tool-call stop without a tool call") }
+    for (ordinary in ordinaryStops where stop == ordinary && hasToolCall) { invalidWire("llm.tool_call_stop_mismatch", "provider returned a tool call under a non-tool stop reason") }
+}
+
 func mergeWireUsage(current: LlmWireUsage, next: LlmWireUsage, style: LlmWireUsageMergeStyle): LlmWireUsage {
     LlmWireUsage(
         inputTokens: mergeUsageValue(current.inputTokens, next.inputTokens, style),

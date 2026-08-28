@@ -37,6 +37,7 @@ enum LlmWireGenerationSpeed
 enum LlmWireImageDetail
 enum LlmWireImageSourceKind
 enum LlmWireIncompleteReason
+enum LlmWireInputModality
 enum LlmWireNativeReplayScope
 enum LlmWireOpaqueCompletion
 enum LlmWireOutputTokenField

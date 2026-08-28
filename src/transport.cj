@@ -106,10 +106,16 @@ public class SseDecoder {
             for (byte in chunk) {
                 if (sawCarriageReturn) {
                     sawCarriageReturn = false
-                    if (byte == 10) { continue }
+                    if (byte == 10) {
+                        eventBytes++
+                        enforceLimits(output)
+                        processLine(output)
+                        continue
+                    }
+                    processLine(output)
                 }
-                if (byte == 13) { processLine(output); sawCarriageReturn = true }
-                else if (byte == 10) { processLine(output) }
+                if (byte == 13) { eventBytes++; enforceLimits(output); sawCarriageReturn = true }
+                else if (byte == 10) { eventBytes++; enforceLimits(output); processLine(output) }
                 else { line.add(byte); eventBytes++; enforceLimits(output) }
             }
             LlmResult.Ok(output.toArray())
@@ -120,14 +126,18 @@ public class SseDecoder {
     public func finish(): LlmResult<Array<SseEvent>> {
         if (failed) { return llmFailure<Array<SseEvent>>(LlmTransportErrorKind.InvalidState, "llm.sse_failed", "SSE decoder is poisoned by an earlier error") }
         if (closed) { return llmFailure<Array<SseEvent>>(LlmTransportErrorKind.InvalidState, "llm.sse_closed", "SSE decoder is closed") }
-        closed = true
-        line.clear()
-        resetEvent()
-        LlmResult.Ok([])
+        let output = ArrayList<SseEvent>()
+        try {
+            if (sawCarriageReturn) { sawCarriageReturn = false; processLine(output) }
+            closed = true
+            line.clear()
+            resetEvent()
+            LlmResult.Ok(output.toArray())
+        } catch (error: LlmTransportError) { failed = true; LlmResult.Err(error) }
+        catch (error: Exception) { failed = true; llmFailure<Array<SseEvent>>(LlmTransportErrorKind.Sse, "llm.sse_utf8_invalid", error.message) }
     }
 
     private func processLine(output: ArrayList<SseEvent>): Unit {
-        eventBytes++
         enforceLimits(output)
         var raw = String.fromUtf8(line.toArray())
         line.clear()
@@ -287,13 +297,15 @@ func parseRfc850Date(rest: String, nowEpochMillis: Int64): ?Int64 {
 
 func yearAtEpochMillis(epochMillis: Int64): Int64 {
     if (epochMillis <= 0) { return 1970 }
-    var days = epochMillis / 1000 / 86400
-    var year: Int64 = 1970
-    while (true) {
-        let yearDays: Int64 = if (isLeapYear(year)) { 366 } else { 365 }
-        if (days < yearDays) { return year }
-        days -= yearDays; year++
-    }
+    let z = epochMillis / 1000 / 86400 + 719468
+    let era = z / 146097
+    let dayOfEra = z - era * 146097
+    let yearOfEra = (dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146096) / 365
+    var year = yearOfEra + era * 400
+    let dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100)
+    let monthPrime = (5 * dayOfYear + 2) / 153
+    let month = monthPrime + if (monthPrime < 10) { 3 } else { -9 }
+    if (month <= 2) { year++ }
     year
 }
 

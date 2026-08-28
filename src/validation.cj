@@ -115,6 +115,7 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
     validatePromptCache(codec, request.promptCache, request.promptCacheRoutingKey)
     for (messageIndex in 0..request.messages.size) {
         let message = request.messages[messageIndex]
+        var deepSeekReasoningBlocks: Int64 = 0
         if (!messageHasContent(message)) {
             throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.message_empty", "canonical messages must contain at least one non-empty block")
         }
@@ -122,6 +123,12 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
             validateBlockForReplay(codec, request, message, message.blocks[blockIndex], blockIndex)
             validateBlockShape(message.blocks[blockIndex])
             match (message.blocks[blockIndex]) {
+                case LlmWireBlock.Image(value) => validateImageCapability(codec, message, value)
+                case LlmWireBlock.NativeReplay(value) =>
+                    if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.DeepSeekChat && value.nativeType == "reasoning_content") {
+                        deepSeekReasoningBlocks++
+                        if (deepSeekReasoningBlocks > 1) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.native_replay_cardinality_invalid", "DeepSeek Chat assistant turns may contain only one reasoning_content replay block") }
+                    }
                 case LlmWireBlock.ToolResult(value) =>
                     if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.DeepSeekMessages && value.isError) {
                         unsupportedRequest("llm.tool_result_error_semantics_unsupported", "DeepSeek Messages does not preserve tool-result error semantics")
@@ -131,6 +138,26 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
         }
     }
     validateConversation(request.messages)
+}
+
+func validateImageCapability(codec: LlmWireCodec, message: LlmWireMessage, value: LlmWireImageBlock): Unit {
+    var supported = false
+    for (modality in codec.capabilities.inputModalities where modality == LlmWireInputModality.Image) { supported = true }
+    if (!supported) { unsupportedRequest("llm.image_input_unsupported", "image input requires an explicit model capability") }
+    let deepSeek = match (codec.dialect.contract.requestStyle) {
+        case LlmWireRequestStyle.DeepSeekResponses | LlmWireRequestStyle.DeepSeekChat | LlmWireRequestStyle.DeepSeekMessages => true
+        case _ => false
+    }
+    if (deepSeek && message.role != LlmWireRole.User) { unsupportedRequest("llm.image_role_unsupported", "DeepSeek image input is supported only in user messages") }
+    if (deepSeek) { match (value.sourceKind) {
+        case LlmWireImageSourceKind.Base64 =>
+            if (!supportedDeepSeekImageMediaType(value.mediaType)) { unsupportedRequest("llm.image_media_type_unsupported", "DeepSeek image input supports JPEG, PNG, GIF, and WebP") }
+        case _ => ()
+    } }
+}
+
+func supportedDeepSeekImageMediaType(value: String): Bool {
+    value == "image/jpeg" || value == "image/png" || value == "image/gif" || value == "image/webp"
 }
 
 func validateThinking(codec: LlmWireCodec, request: LlmWireRequest): Unit {
@@ -296,6 +323,7 @@ func validateBlockShape(block: LlmWireBlock): Unit {
         case LlmWireBlock.Image(value) => match (value.sourceKind) {
             case LlmWireImageSourceKind.Url => if (value.data.trimAscii() == "") { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.image_url_invalid", "image URL must not be empty") }
             case LlmWireImageSourceKind.Base64 => if (value.data == "" || value.mediaType == "" || !value.mediaType.contains("/")) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.image_base64_invalid", "base64 images require data and a media type") }
+            case LlmWireImageSourceKind.File => if (value.data.trimAscii() == "") { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.image_file_invalid", "file images require a file ID") }
         }
         case _ => ()
     }

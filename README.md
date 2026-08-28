@@ -65,7 +65,7 @@ main(): Int64 {
 
 ## 设计要点
 
-- `LlmWireCodec` 同时绑定 protocol、dialect、capabilities、provider 名称和校验策略，避免只看 envelope 就猜 provider 语义。
+- `LlmWireCodec` 同时绑定 protocol、dialect、model capabilities 和 provider 名称；请求始终严格校验，避免只看 envelope 就猜 provider 语义。
 - thinking 默认是 `ProviderDefault`，不会主动发送字段；显式能力若未声明或 dialect 无法表达，会直接报错。
 - 固定响应和流式响应都区分 `Succeeded`、`Incomplete` 与 `Failed`。
 - Messages 的已知 `thinking` 与 `redacted_thinking` 以 dialect-bound native state 完整保存，只能在同一 dialect 中回放；未知语义 block 返回 `Unsupported`，不会伪装成成功结果。

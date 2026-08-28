@@ -37,6 +37,20 @@ jobs:
         with:
           channel: sts
           version: latest
+      - name: Verify provider smoke run provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SMOKE_RUN_ID: ${{ inputs.provider_smoke_run_id }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SMOKE_RUN_ID}" > "${RUNNER_TEMP}/provider-smoke-run.json"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SMOKE_RUN_ID}/artifacts" > "${RUNNER_TEMP}/provider-smoke-artifacts.json"
+          scripts/verify_provider_smoke_run.py \
+            --run "${RUNNER_TEMP}/provider-smoke-run.json" \
+            --artifacts "${RUNNER_TEMP}/provider-smoke-artifacts.json" \
+            --run-id "${SMOKE_RUN_ID}" \
+            --candidate "${CANDIDATE_SHA}" \
+            --output "${RUNNER_TEMP}/provider-smoke-provenance.json"
       - name: Download provider smoke evidence
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -48,6 +62,7 @@ jobs:
       - name: Run candidate and tag-resolution gates
         env:
           PROVIDER_SMOKE_EVIDENCE_DIR: ${{ runner.temp }}/provider-smoke
+          PROVIDER_SMOKE_PROVENANCE: ${{ runner.temp }}/provider-smoke-provenance.json
         run: |
           scripts/release_gate.sh '${{ steps.candidate.outputs.version }}'
           scripts/tag_consumer_gate.sh '${{ steps.candidate.outputs.version }}'
