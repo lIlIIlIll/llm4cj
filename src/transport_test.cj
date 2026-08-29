@@ -1492,4 +1492,427 @@ class Llm4CjV02Tests {
         let _ = repeatedTypeStream.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}"))
         let _ = repeatedTypeStream.push(event("[DONE]"))
     }
+
+    @TestCase
+    func t051PayloadEnumsHeadersAndRequirementsCoverEverySemanticBranch() {
+        let requirementStates = [
+            LlmWireRequirementState.Satisfied,
+            LlmWireRequirementState.Unsatisfied("a"),
+            LlmWireRequirementState.Unsatisfied("b"),
+            LlmWireRequirementState.Unknown("a"),
+            LlmWireRequirementState.Unknown("b")
+        ]
+        for (left in 0..requirementStates.size) {
+            for (right in 0..requirementStates.size) {
+                @Expect(requirementStates[left] == requirementStates[right], left == right)
+            }
+        }
+        let thinkingControls = [
+            LlmWireThinkingControl.ProviderDefault,
+            LlmWireThinkingControl.Disabled,
+            LlmWireThinkingControl.Enabled,
+            LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low),
+            LlmWireThinkingControl.Effort(LlmWireThinkingLevel.High),
+            LlmWireThinkingControl.Budget(1),
+            LlmWireThinkingControl.Budget(2),
+            LlmWireThinkingControl.Adaptive(None),
+            LlmWireThinkingControl.Adaptive(Some(LlmWireThinkingLevel.Low)),
+            LlmWireThinkingControl.Adaptive(Some(LlmWireThinkingLevel.High))
+        ]
+        for (left in 0..thinkingControls.size) {
+            for (right in 0..thinkingControls.size) {
+                @Expect(thinkingControls[left] == thinkingControls[right], left == right)
+            }
+        }
+        let tiers = [
+            LlmWireServiceTier.ProviderDefault, LlmWireServiceTier.Auto, LlmWireServiceTier.Default,
+            LlmWireServiceTier.StandardOnly, LlmWireServiceTier.Flex, LlmWireServiceTier.Priority,
+            LlmWireServiceTier.Fast, LlmWireServiceTier.Ultrafast
+        ]
+        for (left in 0..tiers.size) { for (right in 0..tiers.size) { @Expect(tiers[left] == tiers[right], left == right) } }
+        let scopes = [LlmWireNativeReplayScope.AssistantTurn, LlmWireNativeReplayScope.Conversation]
+        for (left in 0..scopes.size) { for (right in 0..scopes.size) { @Expect(scopes[left] == scopes[right], left == right) } }
+        let messagePhases = [MessagesStreamPhase.AwaitingMessageStart, MessagesStreamPhase.AcceptingBlocks, MessagesStreamPhase.AcceptingMessageDeltas]
+        for (left in 0..messagePhases.size) { for (right in 0..messagePhases.size) { @Expect(messagePhases[left] == messagePhases[right], left == right) } }
+
+        @Expect(LlmWireHeader("X-Test", " value ").name, "x-test")
+        @Expect(LlmWireHeader("!#$%&'*+-.^_`|~", "\tvalue").value, "value")
+        for (invalid in ["", "bad name", "bad:name", "bad\u{007f}", "bad\u{0001}"]) {
+            expectLlmError("llm.header_invalid", { => let _ = LlmWireHeader(invalid, "x") })
+        }
+        for (invalidValue in ["bad\rvalue", "bad\nvalue", "bad\u{0001}value", "bad\u{007f}value"]) {
+            expectLlmError("llm.header_invalid", { => let _ = LlmWireHeader("x-test", invalidValue) })
+        }
+        let merged = LlmWireEncodedRequest("{}", requiredHeaders: [
+            LlmWireHeader("anthropic-beta", "one,, two"), LlmWireHeader("x-test", "same")
+        ]).mergeHeaders([
+            LlmWireHeader("Anthropic-Beta", "two,three"), LlmWireHeader("X-Test", "same")
+        ])
+        @Expect(merged[0].value, "one,two,three")
+        expectLlmError("llm.required_header_conflict", { => let _ = LlmWireEncodedRequest(
+            "{}", requiredHeaders: [LlmWireHeader("x-test", "one")]
+        ).mergeHeaders([LlmWireHeader("x-test", "two")]) })
+
+        LlmWireEncodedRequest("{}", featureRequirements: [
+            LlmWireFeatureRequirement("ready", LlmWireRequirementState.Satisfied),
+            LlmWireFeatureRequirement("resolve", LlmWireRequirementState.Unknown("resolve me"))
+        ]).validateForSend(SatisfiedRequirementResolver())
+        expectLlmError("llm.feature_requirement_unsatisfied", { => LlmWireEncodedRequest(
+            "{}", featureRequirements: [LlmWireFeatureRequirement("blocked", LlmWireRequirementState.Unsatisfied("blocked"))]
+        ).validateForSend(SatisfiedRequirementResolver()) })
+        expectLlmError("llm.feature_requirement_unresolved", { => LlmWireEncodedRequest(
+            "{}", featureRequirements: [LlmWireFeatureRequirement("unknown", LlmWireRequirementState.Unknown("unknown"))]
+        ).validateForSend(UnknownRequirementResolver()) })
+    }
+
+    @TestCase
+    func t052DialectContractMatrixRejectsEveryUnrepresentableDeclaration() {
+        for (invalidId in ["", "UPPER", "bad/id", "bad id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]) {
+            expectIllegalArgument({ => let _ = LlmWireDialectContract(
+                invalidId, LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens
+            ) })
+        }
+        expectIllegalArgument({ => let _ = LlmWireDialectContract(
+            "test.bad.protocol", LlmWireProtocol.Messages, LlmWireRequestStyle.OpenAiResponses, LlmWireOutputTokenField.MaxOutputTokens
+        ) })
+        expectIllegalArgument({ => let _ = LlmWireDialectContract(
+            "test.bad.token", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.DeepSeekChat, LlmWireOutputTokenField.MaxCompletionTokens
+        ) })
+        expectIllegalArgument({ => let _ = LlmWireDialectContract(
+            "test.bad.parallel", LlmWireProtocol.Messages, LlmWireRequestStyle.AnthropicMessages, LlmWireOutputTokenField.MaxTokens,
+            parallelToolStyle: LlmWireParallelToolStyle.OpenAiTopLevel
+        ) })
+        expectIllegalArgument({ => let _ = LlmWireDialectContract(
+            "test.bad.cache", LlmWireProtocol.Messages, LlmWireRequestStyle.AnthropicMessages, LlmWireOutputTokenField.MaxTokens,
+            promptCacheStyle: LlmWirePromptCacheStyle.OpenAi
+        ) })
+        expectIllegalArgument({ => let _ = LlmWireDialectContract(
+            "test.bad.cache.life", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens,
+            promptCacheStyle: LlmWirePromptCacheStyle.Unsupported, promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault]
+        ) })
+        for (lifetime in [LlmWirePromptCacheLifetime.FiveMinutes, LlmWirePromptCacheLifetime.OneHour, LlmWirePromptCacheLifetime.TwentyFourHours]) {
+            expectIllegalArgument({ => let _ = LlmWireDialectContract(
+                "test.bad.openai.life", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens,
+                promptCacheStyle: LlmWirePromptCacheStyle.OpenAi, promptCacheLifetimes: [lifetime]
+            ) })
+        }
+        expectIllegalArgument({ => let _ = LlmWireDialectContract(
+            "test.bad.routing", LlmWireProtocol.Messages, LlmWireRequestStyle.AnthropicMessages, LlmWireOutputTokenField.MaxTokens,
+            promptCacheRoutingKey: true
+        ) })
+        expectIllegalArgument({ => let _ = LlmWireDialectContract(
+            "test.bad.tier", LlmWireProtocol.Messages, LlmWireRequestStyle.DeepSeekMessages, LlmWireOutputTokenField.MaxTokens,
+            serviceTiers: [LlmWireServiceTier.Auto]
+        ) })
+        expectIllegalArgument({ => let _ = LlmWireDialectContract(
+            "test.bad.speed", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens,
+            generationSpeeds: [LlmWireGenerationSpeed.Fast]
+        ) })
+        for (mode in [LlmWireStructuredOutputMode.JsonSchema, LlmWireStructuredOutputMode.JsonObject]) {
+            expectIllegalArgument({ => let _ = LlmWireDialectContract(
+                "test.bad.structured", LlmWireProtocol.Messages, LlmWireRequestStyle.DeepSeekMessages, LlmWireOutputTokenField.MaxTokens,
+                structuredOutputModes: [mode]
+            ) })
+        }
+        for (control in [LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Enabled, LlmWireThinkingControl.Budget(1), LlmWireThinkingControl.Adaptive(None)]) {
+            expectIllegalArgument({ => let _ = LlmWireDialectContract(
+                "test.bad.thinking", LlmWireProtocol.Responses, LlmWireRequestStyle.OpenAiResponses, LlmWireOutputTokenField.MaxOutputTokens,
+                thinkingControls: [control]
+            ) })
+        }
+        expectIllegalArgument({ => let _ = LlmWireDialectContract(
+            "test.bad.levels", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens,
+            thinkingControls: [], thinkingLevels: [LlmWireThinkingLevel.Low]
+        ) })
+        expectIllegalArgument({ => let _ = LlmWireCapabilities(inputModalities: [LlmWireInputModality.Text, LlmWireInputModality.Text]) })
+        expectIllegalArgument({ => let _ = LlmWireCapabilities(thinkingControls: [LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Disabled]) })
+        expectIllegalArgument({ => let _ = LlmWireCapabilities(thinkingLevels: [LlmWireThinkingLevel.Low, LlmWireThinkingLevel.Low]) })
+        expectIllegalArgument({ => let _ = LlmWireCapabilities(structuredOutputModes: [LlmWireStructuredOutputMode.Text, LlmWireStructuredOutputMode.Text]) })
+        expectIllegalArgument({ => let _ = LlmWireCapabilities(serviceTiers: [LlmWireServiceTier.Auto, LlmWireServiceTier.Auto]) })
+        expectIllegalArgument({ => let _ = LlmWireCapabilities(generationSpeeds: [LlmWireGenerationSpeed.Fast, LlmWireGenerationSpeed.Fast]) })
+        expectIllegalArgument({ => let _ = LlmWireCapabilities(promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.ProviderDefault]) })
+    }
+
+    @TestCase
+    func t053RequestDescriptorHelpersAndOptionMappingsAreExhaustive() {
+        @Expect(outputTokenName(LlmWireOutputTokenField.MaxOutputTokens), "max_output_tokens")
+        @Expect(outputTokenName(LlmWireOutputTokenField.MaxCompletionTokens), "max_completion_tokens")
+        @Expect(outputTokenName(LlmWireOutputTokenField.MaxTokens), "max_tokens")
+        for ((tier, name) in [
+            (LlmWireServiceTier.ProviderDefault, ""), (LlmWireServiceTier.Auto, "auto"),
+            (LlmWireServiceTier.Default, "default"), (LlmWireServiceTier.StandardOnly, "standard_only"),
+            (LlmWireServiceTier.Flex, "flex"), (LlmWireServiceTier.Priority, "priority"),
+            (LlmWireServiceTier.Fast, "fast"), (LlmWireServiceTier.Ultrafast, "ultrafast")
+        ]) { @Expect(serviceTierName(tier), name) }
+        for ((speed, name) in [
+            (LlmWireGenerationSpeed.ProviderDefault, ""), (LlmWireGenerationSpeed.Standard, "standard"), (LlmWireGenerationSpeed.Fast, "fast")
+        ]) { @Expect(generationSpeedName(speed), name) }
+        for ((lifetime, name) in [
+            (LlmWirePromptCacheLifetime.ProviderDefault, ""), (LlmWirePromptCacheLifetime.FiveMinutes, "5m"),
+            (LlmWirePromptCacheLifetime.ThirtyMinutes, "30m"), (LlmWirePromptCacheLifetime.OneHour, "1h"),
+            (LlmWirePromptCacheLifetime.TwentyFourHours, "24h")
+        ]) { @Expect(cacheLifetimeName(lifetime), name) }
+        let capabilities = allCapabilities()
+        let openAi = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: capabilities)
+        for (tier in [LlmWireServiceTier.Auto, LlmWireServiceTier.Default, LlmWireServiceTier.Flex, LlmWireServiceTier.Priority, LlmWireServiceTier.Fast, LlmWireServiceTier.Ultrafast]) {
+            @Expect(openAi.encodeRequest(LlmWireRequest("m", validMessages(), serviceTier: tier)).contains("service_tier"), true)
+        }
+        for (choice in [LlmWireToolChoice.Auto, LlmWireToolChoice.NoTools, LlmWireToolChoice.Required]) {
+            @Expect(openAi.encodeRequest(LlmWireRequest(
+                "m", validMessages(), tools: [LlmWireTool("lookup", "lookup", parseWireJson("{}"))], toolChoice: choice
+            )).contains("tool_choice"), true)
+        }
+        @Expect(openAi.encodeRequest(LlmWireRequest(
+            "m", validMessages(), tools: [LlmWireTool("lookup", "lookup", parseWireJson("{}"))],
+            streaming: Some(false), parallelToolCalls: Some(false), promptCacheRoutingKey: Some("route"),
+            promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ThirtyMinutes)
+        )).contains("prompt_cache_options"), true)
+        let automatic = openAi.encodeRequest(LlmWireRequest(
+            "m", validMessages(), promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault)
+        ))
+        automatic.validateForSend(SatisfiedRequirementResolver())
+        let schema = LlmWireJsonSchema("answer", parseWireJson("{}"), description: "desc", strict: false)
+        for (format in [LlmWireStructuredOutput.Text, LlmWireStructuredOutput.JsonObject, LlmWireStructuredOutput.JsonSchema(schema)]) {
+            @Expect(openAi.encodeRequest(LlmWireRequest("m", validMessages(), structuredOutput: format)).contains("format"), true)
+        }
+        let anthropic = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), capabilities: capabilities)
+        for (speed in [LlmWireGenerationSpeed.Standard, LlmWireGenerationSpeed.Fast]) {
+            let plan = anthropic.encodeRequest(LlmWireRequest("m", validMessages(), maxOutputTokens: Some(8), generationSpeed: speed))
+            @Expect(plan.contains("speed"), true)
+        }
+        for (lifetime in [LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.FiveMinutes, LlmWirePromptCacheLifetime.OneHour]) {
+            @Expect(anthropic.encodeRequest(LlmWireRequest(
+                "m", validMessages(), maxOutputTokens: Some(8), promptCache: LlmWirePromptCache.Automatic(lifetime)
+            )).contains("cache_control"), true)
+        }
+        for (parallel in [true, false]) {
+            @Expect(anthropic.encodeRequest(LlmWireRequest(
+                "m", validMessages(), tools: [LlmWireTool("lookup", "lookup", parseWireJson("{}"))],
+                maxOutputTokens: Some(8), parallelToolCalls: Some(parallel)
+            )).contains("disable_parallel_tool_use"), true)
+        }
+        let deepSeek = LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect(), capabilities: capabilities)
+        deepSeek.encodeRequest(LlmWireRequest(
+            "m", validMessages(), promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault)
+        )).validateForSend(SatisfiedRequirementResolver())
+        let unsupportedCache = LlmWireCodec(LlmWireProtocol.ChatCompletions, LlmWireStandardDialect(LlmWireDialectContract(
+            "test.no.cache", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens
+        )))
+        expectLlmError("llm.cache_unsupported", { => encodePromptCache(
+            unsupportedCache, wireJsonObject([]), LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault), ArrayList<LlmWireFeatureRequirement>()
+        ) })
+    }
+
+    @TestCase
+    func t054AssemblerUsageAndNativeReplayInputDomainsAreClosed() {
+        @Expect(mergeUsageValue(None, None, LlmWireUsageMergeStyle.ReplacePresent), None)
+        @Expect(mergeUsageValue(Some(1), None, LlmWireUsageMergeStyle.Monotonic), Some(1))
+        @Expect(mergeUsageValue(None, Some(2), LlmWireUsageMergeStyle.Monotonic), Some(2))
+        @Expect(mergeUsageValue(Some(1), Some(2), LlmWireUsageMergeStyle.Monotonic), Some(2))
+        @Expect(mergeUsageValue(None, Some(2), LlmWireUsageMergeStyle.Delta), Some(2))
+        @Expect(mergeUsageValue(Some(1), Some(2), LlmWireUsageMergeStyle.Delta), Some(3))
+        @Expect(mergeUsageValue(Some(1), Some(2), LlmWireUsageMergeStyle.ReplacePresent), Some(2))
+        expectLlmError("llm.usage_decreased", { => let _ = mergeUsageValue(Some(2), Some(1), LlmWireUsageMergeStyle.Monotonic) })
+        expectLlmError("llm.usage_overflow", { => let _ = mergeUsageValue(Some(Int64.Max), Some(1), LlmWireUsageMergeStyle.Delta) })
+        let mergedUsage = mergeWireUsage(
+            LlmWireUsage(inputTokens: Some(1), outputTokens: Some(1), reasoningTokens: Some(1), cacheReadTokens: Some(1), cacheWriteTokens: Some(1)),
+            LlmWireUsage(inputTokens: Some(2), outputTokens: Some(2), reasoningTokens: Some(2), cacheReadTokens: Some(2), cacheWriteTokens: Some(2)),
+            LlmWireUsageMergeStyle.ReplacePresent
+        )
+        @Expect(mergedUsage.cacheWriteTokens, Some(2))
+
+        let diagnosticTool = LlmWireBlock.ToolCall(LlmWireToolCallBlock("", "bad name", LlmWireToolArguments.Partial("{")))
+        @Expect(assembleCanonicalReply("", "", [diagnosticTool], LlmWireUsage(), "length", requireExecutableToolCalls: false).blocks.size, 1)
+        expectLlmError("llm.tool_stop_without_call", { => validateReplyToolStop(LlmWireReply(), "tool_calls", "tool_calls", ["stop"]) })
+        expectLlmError("llm.tool_call_stop_mismatch", { => validateReplyToolStop(
+            LlmWireReply(blocks: [LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(parseWireJson("{}"))))]),
+            "stop", "tool_calls", ["stop"]
+        ) })
+
+        let validThinking = parseWireJson("{\"type\":\"thinking\",\"thinking\":\"why\",\"signature\":\"sig\"}")
+        let partialReplay = nativeReplayFromPayload(
+            LlmWireProtocol.Messages, "anthropic.messages.v1", "thinking", validThinking,
+            completion: LlmWireOpaqueCompletion.Partial
+        )
+        expectLlmError("llm.native_replay_incomplete", { => let _ = assembleCanonicalReply(
+            "", "", [LlmWireBlock.NativeReplay(partialReplay)], LlmWireUsage(), "end_turn"
+        ) })
+        let opaque = LlmWireOpaqueBlock("future", parseWireJson("{}"))
+        @Expect(opaque.payload().wireKind, WireJsonKind.Object)
+        expectLlmError("llm.semantic_block_unsupported", { => let _ = assembleCanonicalReply(
+            "", "", [LlmWireBlock.Opaque(opaque)], LlmWireUsage(), "stop"
+        ) })
+        expectLlmError("llm.opaque_payload_invalid", { => let _ = LlmWireOpaqueBlock("", parseWireJson("{}")) })
+        expectLlmError("llm.opaque_payload_invalid", { => let _ = LlmWireOpaqueBlock("future", parseWireJson("[]")) })
+
+        expectLlmError("llm.native_replay_payload_invalid", { => let _ = nativeReplayFromPayload(LlmWireProtocol.Messages, "", "thinking", validThinking) })
+        expectLlmError("llm.native_replay_payload_invalid", { => let _ = nativeReplayFromPayload(LlmWireProtocol.Messages, "anthropic.messages.v1", "", validThinking) })
+        expectLlmError("llm.native_replay_payload_invalid", { => let _ = nativeReplayFromPayload(LlmWireProtocol.Messages, "anthropic.messages.v1", "thinking", validThinking, schemaVersion: 2) })
+        expectLlmError("llm.native_replay_payload_invalid", { => let _ = nativeReplayFromPayload(LlmWireProtocol.Messages, "anthropic.messages.v1", "thinking", validThinking, assistantTurnIndex: 1) })
+        expectLlmError("llm.native_replay_payload_invalid", { => let _ = nativeReplayFromPayload(LlmWireProtocol.Messages, "anthropic.messages.v1", "thinking", validThinking, blockOrder: -1) })
+        expectLlmError("llm.native_replay_payload_invalid", { => let _ = nativeReplayFromPayload(LlmWireProtocol.Messages, "anthropic.messages.v1", "thinking", parseWireJson("[]")) })
+        expectLlmError("llm.native_replay_scope_unsupported", { => let _ = nativeReplayFromPayload(
+            LlmWireProtocol.Messages, "anthropic.messages.v1", "thinking", validThinking, scope: LlmWireNativeReplayScope.Conversation
+        ) })
+        expectLlmError("llm.native_replay_type_missing", { => let _ = nativeReplayFromPayload(
+            LlmWireProtocol.Messages, "anthropic.messages.v1", "thinking", parseWireJson("{\"thinking\":\"why\",\"signature\":\"sig\"}")
+        ) })
+        expectLlmError("llm.native_replay_type_mismatch", { => let _ = nativeReplayFromPayload(
+            LlmWireProtocol.Messages, "anthropic.messages.v1", "thinking", parseWireJson("{\"type\":1,\"thinking\":\"why\",\"signature\":\"sig\"}")
+        ) })
+        expectLlmError("llm.native_replay_type_mismatch", { => let _ = nativeReplayFromPayload(
+            LlmWireProtocol.Messages, "anthropic.messages.v1", "thinking", parseWireJson("{\"type\":\"other\",\"thinking\":\"why\",\"signature\":\"sig\"}")
+        ) })
+        expectLlmError("llm.native_replay_payload_invalid", { => let _ = nativeReplayFromPayload(
+            LlmWireProtocol.Responses, "openai.responses.v1", "reasoning", parseWireJson("{\"type\":\"reasoning\",\"id\":\"r\"}")
+        ) })
+        expectLlmError("llm.field_type_invalid", { => let _ = nativeReplayFromPayload(
+            LlmWireProtocol.Responses, "openai.responses.v1", "reasoning", parseWireJson("{\"type\":\"reasoning\",\"id\":\"r\",\"summary\":{}}")
+        ) })
+        expectLlmError("llm.field_type_invalid", { => let _ = nativeReplayFromPayload(
+            LlmWireProtocol.Responses, "openai.responses.v1", "reasoning", parseWireJson("{\"type\":\"reasoning\",\"id\":\"r\",\"content\":{}}")
+        ) })
+    }
+
+    @TestCase
+    func t055TransportPrimitiveBranchesAreBoundedAndDeterministic() {
+        for (limits in [
+            (0, 1, 1, 1, 1), (1, 0, 1, 1, 1), (1, 1, 0, 1, 1),
+            (1, 1, 1, 0, 1), (1, 1, 1, 1, 0)
+        ]) {
+            expectIllegalArgument({ => let _ = SseDecoder(
+                maxEventBytes: limits[0], maxLineBytes: limits[1], maxBufferedBytes: limits[2],
+                maxEventsPerPush: limits[3], maxOutputBytesPerPush: limits[4]
+            ) })
+        }
+        let grammar = SseDecoder(maxEventBytes: 512)
+        match (grammar.push(": heartbeat\rdata:first\rdata: second\nevent\nid: ok\nretry: 7\r\r")) {
+            case LlmResult.Ok(values) => @Expect(values.size, 0)
+            case _ => @Fail("mixed SSE grammar must decode")
+        }
+        match (grammar.finish()) {
+            case LlmResult.Ok(values) => @Expect(values.size, 1); @Expect(values[0].data, "first\nsecond"); @Expect(values[0].retryMillis, Some(7))
+            case _ => @Fail("SSE finish")
+        }
+        let finishEvent = SseDecoder(maxOutputBytesPerPush: 16)
+        let _ = finishEvent.push("data: x\r\r")
+        match (finishEvent.finish()) { case LlmResult.Ok(values) => @Expect(values.size, 1); case _ => @Fail("trailing CR must dispatch") }
+        let outputBytes = SseDecoder(maxOutputBytesPerPush: 1)
+        match (outputBytes.push("data: xx\n\n")) { case LlmResult.Err(error) => @Expect(error.code, "llm.sse_output_bytes_too_large"); case _ => @Fail("output bytes limit") }
+        match (outputBytes.finish()) { case LlmResult.Err(error) => @Expect(error.code, "llm.sse_failed"); case _ => @Fail("failed finish") }
+
+        @Expect(parseUnsignedDecimal("0"), Some(0)); @Expect(parseUnsignedDecimal("-1"), None)
+        @Expect(parseUnsignedDecimal("a"), None); @Expect(parseUnsignedDecimal("١"), None)
+        @Expect(extractRetryAfterMillis("x: 1\nRetry-After: bad", 0), None)
+        @Expect(extractRetryAfterMillis("Retry-After: 1\r\nretry-after: 2", 0), Some(2000))
+        @Expect(sseDataLine("data:"), Some("")); @Expect(sseDataLine("data:x"), Some("x"))
+
+        @Expect(parseImfDate("01 Jan 2024 00:00:00 UTC"), None)
+        @Expect(parseImfDate("01 Jan 2024"), None)
+        @Expect(parseRfc850Date("06-Nov-94 08:49:37 UTC", 0), None)
+        @Expect(parseRfc850Date("06/Nov/94 08:49:37 GMT", 0), None)
+        @Expect(parseRfc850Date("06-Nov--1 08:49:37 GMT", 0), None)
+        @Expect(parseRfc850Date("06-Nov-100 08:49:37 GMT", 0), None)
+        @Expect(parseAsctimeDate("Sun Nov 6 08:49:37"), None)
+        for ((year, month, day, clock) in [
+            (1969, 1, 1, "00:00:00"), (10000, 1, 1, "00:00:00"),
+            (2024, 0, 1, "00:00:00"), (2024, 13, 1, "00:00:00"),
+            (2024, 1, 0, "00:00:00"), (2023, 2, 29, "00:00:00"),
+            (2024, 1, 1, "00:00"), (2024, 1, 1, "-1:00:00"),
+            (2024, 1, 1, "24:00:00"), (2024, 1, 1, "00:-1:00"),
+            (2024, 1, 1, "00:60:00"), (2024, 1, 1, "00:00:-1"),
+            (2024, 1, 1, "00:00:60")
+        ]) { @Expect(dateEpochMillis(year, month, day, clock), None) }
+        @Expect(dateEpochMillis(1970, 1, 1, "00:00:00"), Some(0))
+        @Expect(dateEpochMillis(2000, 2, 29, "23:59:59").isSome(), true)
+        @Expect(yearAtEpochMillis(-1), 1970); @Expect(yearAtEpochMillis(0), 1970)
+        @Expect(yearAtEpochMillis(951782400000), 2000); @Expect(yearAtEpochMillis(978307200000), 2001)
+        for ((year, leap) in [(1900, false), (2000, true), (2004, true), (2001, false)]) { @Expect(isLeapYear(year), leap) }
+        @Expect(daysInMonth(2024, 2), 29); @Expect(daysInMonth(2023, 2), 28)
+        for (month in [4, 6, 9, 11]) { @Expect(daysInMonth(2024, month), 30) }
+        @Expect(daysInMonth(2024, 1), 31)
+    }
+
+    @TestCase
+    func t056ValidationPredicatesCoverIndependentCapabilityAndShapeFailures() {
+        let full = allCapabilities()
+        let openAi = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: full)
+        let noCapabilities = LlmWireCapabilities()
+        let limited = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: noCapabilities)
+        @Expect(supportedDeepSeekImageMediaType("image/jpeg"), true)
+        @Expect(supportedDeepSeekImageMediaType("image/png"), true)
+        @Expect(supportedDeepSeekImageMediaType("image/gif"), true)
+        @Expect(supportedDeepSeekImageMediaType("image/webp"), true)
+        @Expect(supportedDeepSeekImageMediaType("image/bmp"), false)
+        for (name in ["A", "z", "0", "_", "-", "Az09_-"]) { @Expect(validToolName(name), true) }
+        for (name in ["", "bad name", "bad.", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]) { @Expect(validToolName(name), false) }
+        @Expect(messageHasContent(LlmWireMessage(LlmWireRole.User, [])), false)
+        @Expect(messageHasContent(LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock(""))])), false)
+        @Expect(messageHasContent(LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("x"))])), true)
+
+        for (control in [
+            LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Enabled,
+            LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low), LlmWireThinkingControl.Budget(1024), LlmWireThinkingControl.Adaptive(None)
+        ]) { @Expect(supportsThinkingControl([control], control), true) }
+        @Expect(supportsThinkingControl([LlmWireThinkingControl.Disabled], LlmWireThinkingControl.Enabled), false)
+        @Expect(supportsThinkingControl([], LlmWireThinkingControl.Disabled), false)
+        @Expect(supportsThinkingLevel([LlmWireThinkingLevel.Low], LlmWireThinkingLevel.Low), true)
+        @Expect(supportsThinkingLevel([LlmWireThinkingLevel.Low], LlmWireThinkingLevel.High), false)
+        @Expect(supportsStructuredMode([LlmWireStructuredOutputMode.Text], LlmWireStructuredOutputMode.Text), true)
+        @Expect(supportsStructuredMode([], LlmWireStructuredOutputMode.Text), false)
+
+        expectLlmError("llm.thinking_unsupported", { => limited.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low))) })
+        let effortOnly = LlmWireCapabilities(thinkingControls: [LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low)], thinkingLevels: [LlmWireThinkingLevel.High])
+        expectLlmError("llm.thinking_level_unsupported", { => LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: effortOnly).encodeRequest(
+            LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low))
+        ) })
+        expectLlmError("llm.structured_output_unsupported", { => limited.encodeRequest(LlmWireRequest("m", validMessages(), structuredOutput: LlmWireStructuredOutput.Text)) })
+        expectLlmError("llm.service_tier_unsupported", { => limited.encodeRequest(LlmWireRequest("m", validMessages(), serviceTier: LlmWireServiceTier.Auto)) })
+        expectLlmError("llm.prompt_cache_routing_key_invalid", { => openAi.encodeRequest(LlmWireRequest("m", validMessages(), promptCacheRoutingKey: Some(""))) })
+        expectLlmError("llm.cache_lifetime_unsupported", { => limited.encodeRequest(LlmWireRequest(
+            "m", validMessages(), promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ThirtyMinutes)
+        )) })
+        for (block in [
+            LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.Url, " ")),
+            LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.Base64, "", mediaType: "image/png")),
+            LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.Base64, "x", mediaType: "")),
+            LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.Base64, "x", mediaType: "image")),
+            LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.File, " "))
+        ]) { try { validateBlockShape(block); @Fail("invalid image shape") } catch (_: LlmTransportError) { () } }
+        validateBlockShape(LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.Url, "https://example.invalid")))
+        validateBlockShape(LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.Base64, "x", mediaType: "image/png")))
+        validateBlockShape(LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.File, "file-1")))
+    }
+
+    @TestCase
+    func t057ResponsesContentLifecyclesReconcileWithoutSemanticLoss() {
+        let codec = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
+        let text = codec.newStreamDecoder()
+        let _ = text.push(event("{\"type\":\"response.created\",\"response\":{\"id\":\"r\",\"model\":\"m\"}}"))
+        let _ = text.push(event("{\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"i\",\"type\":\"message\"}}"))
+        let _ = text.push(event("{\"type\":\"response.content_part.added\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\"}}"))
+        let _ = text.push(event("{\"type\":\"response.output_text.delta\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"delta\":\"ok\"}"))
+        let _ = text.push(event("{\"type\":\"response.output_text.done\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"text\":\"ok\"}"))
+        let completed = text.push(event("{\"type\":\"response.content_part.done\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"ok\"}}"))
+        @Expect(completed.events[0].kind, LlmWireEventKind.ContentBlockCompleted)
+        let _ = text.push(event("{\"type\":\"response.output_item.done\",\"item_id\":\"i\",\"output_index\":0,\"item\":{\"id\":\"i\",\"type\":\"message\"}}"))
+        let textTerminal = text.push(event("{\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"model\":\"m\",\"status\":\"completed\",\"output\":[{\"id\":\"i\",\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}]}}"))
+        @Expect(succeededReply(textTerminal).blocks.size, 1)
+
+        let refusal = codec.newStreamDecoder()
+        let _ = refusal.push(event("{\"type\":\"response.created\",\"response\":{}}"))
+        let _ = refusal.push(event("{\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"i\",\"type\":\"message\"}}"))
+        let _ = refusal.push(event("{\"type\":\"response.content_part.added\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"refusal\",\"refusal\":\"\"}}"))
+        let _ = refusal.push(event("{\"type\":\"response.refusal.delta\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"delta\":\"no\"}"))
+        let _ = refusal.push(event("{\"type\":\"response.refusal.done\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"text\":\"no\"}"))
+        let _ = refusal.push(event("{\"type\":\"response.content_part.done\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"refusal\",\"refusal\":\"no\"}}"))
+        let _ = refusal.push(event("{\"type\":\"response.output_item.done\",\"item_id\":\"i\",\"output_index\":0,\"item\":{\"id\":\"i\",\"type\":\"message\"}}"))
+        let refusalTerminal = refusal.push(event("{\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"id\":\"i\",\"type\":\"message\",\"content\":[{\"type\":\"refusal\",\"refusal\":\"no\"}]}]}}"))
+        @Expect(succeededReply(refusalTerminal).blocks.size, 1)
+
+        @Expect(responsesEventMatchesTerminal("response.completed", LlmWireTerminal.Succeeded(LlmWireReply())), true)
+        @Expect(responsesEventMatchesTerminal("response.incomplete", LlmWireTerminal.Incomplete(LlmWireReply(), LlmWireIncompleteReason.Other("x"))), true)
+        @Expect(responsesEventMatchesTerminal("response.failed", LlmWireTerminal.Failed(LlmWireFailure(LlmWireFailureKind.ProviderError, "x"))), true)
+        @Expect(responsesEventMatchesTerminal("response.completed", LlmWireTerminal.Incomplete(LlmWireReply(), LlmWireIncompleteReason.Other("x"))), false)
+    }
 }
