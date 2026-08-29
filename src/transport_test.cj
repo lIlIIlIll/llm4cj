@@ -8,22 +8,26 @@ import yjson.*
 
 func allCapabilities(): LlmWireCapabilities {
     LlmWireCapabilities(
-        inputModalities: [LlmWireInputModality.Text, LlmWireInputModality.Image],
-        thinkingControls: [LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Enabled, LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Medium), LlmWireThinkingControl.Budget(1024), LlmWireThinkingControl.Adaptive(None)],
-        thinkingLevels: [LlmWireThinkingLevel.Minimal, LlmWireThinkingLevel.Low, LlmWireThinkingLevel.Medium, LlmWireThinkingLevel.High, LlmWireThinkingLevel.XHigh, LlmWireThinkingLevel.Max],
-        structuredOutputModes: [LlmWireStructuredOutputMode.Text, LlmWireStructuredOutputMode.JsonObject, LlmWireStructuredOutputMode.JsonSchema],
-        serviceTiers: [LlmWireServiceTier.Auto, LlmWireServiceTier.Default, LlmWireServiceTier.StandardOnly, LlmWireServiceTier.Flex, LlmWireServiceTier.Priority, LlmWireServiceTier.Fast, LlmWireServiceTier.Ultrafast],
-        generationSpeeds: [LlmWireGenerationSpeed.Standard, LlmWireGenerationSpeed.Fast],
-        promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.FiveMinutes, LlmWirePromptCacheLifetime.ThirtyMinutes, LlmWirePromptCacheLifetime.OneHour, LlmWirePromptCacheLifetime.TwentyFourHours],
-        tools: true, parallelToolCalls: true
+        input: LlmWireInputCapabilities(modalities: [LlmWireInputModality.Text, LlmWireInputModality.Image]),
+        thinking: LlmWireThinkingCapabilities(
+            modes: [LlmWireThinkingMode.Disabled, LlmWireThinkingMode.Enabled, LlmWireThinkingMode.Budget(1024), LlmWireThinkingMode.Adaptive],
+            efforts: [LlmWireReasoningEffort.Minimal, LlmWireReasoningEffort.Low, LlmWireReasoningEffort.Medium, LlmWireReasoningEffort.High, LlmWireReasoningEffort.XHigh, LlmWireReasoningEffort.Max]
+        ),
+        tools: LlmWireToolCapabilities(enabled: true, parallelCalls: true),
+        output: LlmWireOutputCapabilities(
+            structuredModes: [LlmWireStructuredOutputMode.Text, LlmWireStructuredOutputMode.JsonObject, LlmWireStructuredOutputMode.JsonSchema],
+            serviceTiers: [LlmWireServiceTier.Auto, LlmWireServiceTier.Default, LlmWireServiceTier.StandardOnly, LlmWireServiceTier.Flex, LlmWireServiceTier.Priority, LlmWireServiceTier.Fast, LlmWireServiceTier.Ultrafast],
+            generationSpeeds: [LlmWireGenerationSpeed.Standard, LlmWireGenerationSpeed.Fast]
+        ),
+        cache: LlmWireCacheCapabilities(lifetimes: [LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.FiveMinutes, LlmWirePromptCacheLifetime.ThirtyMinutes, LlmWirePromptCacheLifetime.OneHour, LlmWirePromptCacheLifetime.TwentyFourHours])
     )
 }
 
 func expectLlmError(code: String, body: () -> Unit): Unit {
     try {
         body()
-        @Fail("expected LlmTransportError: " + code)
-    } catch (error: LlmTransportError) { @Expect(error.code, code) }
+        @Fail("expected LlmWireError: " + code)
+    } catch (error: LlmWireError) { @Expect(error.code, code) }
 }
 
 func expectIllegalArgument(body: () -> Unit): Unit {
@@ -38,6 +42,7 @@ func event(data: String): SseEvent { SseEvent("message", data, "", None) }
 func validMessages(): Array<LlmWireMessage> {
     [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("hello"))])]
 }
+func testJson(source: String): LlmWireJson { LlmWireJson.fromJsonNode(parseWireJson(source)) }
 func beginMessages(decoder: LlmWireStreamDecoder): Unit { let _ = decoder.push(event("{\"type\":\"message_start\",\"message\":{}}")) }
 
 func succeededReply(state: LlmWireResponseState): LlmWireReply {
@@ -104,25 +109,25 @@ class Llm4CjV02Tests {
     func t002ThinkingUsesCapabilitiesAndDialectShape() {
         let capabilities = allCapabilities()
         let responses = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: capabilities)
-        let payload = responses.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Effort(LlmWireThinkingLevel.High)))
+        let payload = responses.encodeRequest(LlmWireRequest("m", validMessages(), reasoningEffort: LlmWireReasoningEffort.High))
         @Expect(payload.contains("\"reasoning\":{\"effort\":\"high\"}"), true)
 
         let messages = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), capabilities: capabilities)
-        let adaptive = messages.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Adaptive(Some(LlmWireThinkingLevel.High)), maxOutputTokens: Some(4096)))
+        let adaptive = messages.encodeRequest(LlmWireRequest("m", validMessages(), thinkingMode: LlmWireThinkingMode.Adaptive, reasoningEffort: LlmWireReasoningEffort.High, maxOutputTokens: Some(4096)))
         @Expect(adaptive.contains("\"thinking\":{\"type\":\"adaptive\"}"), true)
         @Expect(adaptive.contains("\"output_config\":{\"effort\":\"high\"}"), true)
 
         let deepSeek = LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect(), capabilities: capabilities)
-        @Expect(deepSeek.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Enabled)).contains("\"type\":\"enabled\""), true)
-        let deepSeekEffort = deepSeek.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low)))
+        @Expect(deepSeek.encodeRequest(LlmWireRequest("m", validMessages(), thinkingMode: LlmWireThinkingMode.Enabled)).contains("\"type\":\"enabled\""), true)
+        let deepSeekEffort = deepSeek.encodeRequest(LlmWireRequest("m", validMessages(), thinkingMode: LlmWireThinkingMode.Enabled, reasoningEffort: LlmWireReasoningEffort.Low))
         @Expect(deepSeekEffort.contains("\"thinking\":{\"type\":\"enabled\"}"), true)
         @Expect(deepSeekEffort.contains("\"reasoning_effort\":\"low\""), true)
         let deepSeekResponses = LlmWireCodec(LlmWireProtocol.Responses, deepSeekResponsesDialect(), capabilities: capabilities)
-        @Expect(deepSeekResponses.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Disabled)).contains("\"reasoning\":{\"effort\":\"none\"}"), true)
-        @Expect(deepSeekResponses.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Enabled)).contains("\"reasoning\":{\"effort\":\"high\"}"), true)
+        @Expect(deepSeekResponses.encodeRequest(LlmWireRequest("m", validMessages(), thinkingMode: LlmWireThinkingMode.Disabled)).contains("\"reasoning\":{\"effort\":\"none\"}"), true)
+        @Expect(deepSeekResponses.encodeRequest(LlmWireRequest("m", validMessages(), thinkingMode: LlmWireThinkingMode.Enabled)).contains("\"reasoning\":{\"effort\":\"high\"}"), true)
         let unknown = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
-        expectLlmError("llm.thinking_unsupported", { => let _ = unknown.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low))) })
-        expectLlmError("llm.thinking_unsupported", { => let _ = responses.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Adaptive(None))) })
+        expectLlmError("llm.reasoning_effort_unsupported", { => let _ = unknown.encodeRequest(LlmWireRequest("m", validMessages(), reasoningEffort: LlmWireReasoningEffort.Low)) })
+        expectLlmError("llm.thinking_unsupported", { => let _ = responses.encodeRequest(LlmWireRequest("m", validMessages(), thinkingMode: LlmWireThinkingMode.Adaptive)) })
     }
 
     @TestCase
@@ -250,7 +255,7 @@ class Llm4CjV02Tests {
     func t012SseHandlesBytesBomLineEndingsAndPersistentFields() {
         let decoder = SseDecoder(maxEventBytes: 1024)
         match (decoder.push("\u{feff}id: a\rretry: 0\r\rdata: 你\r\n\r\ndata:\ndata: x\n\n".toArray())) {
-            case LlmResult.Ok(events) =>
+            case LlmWireResult.Ok(events) =>
                 @Expect(events.size, 2)
                 @Expect(events[0].event, "message")
                 @Expect(events[0].data, "你")
@@ -258,24 +263,24 @@ class Llm4CjV02Tests {
                 @Expect(events[0].retryMillis, Some(0))
                 @Expect(events[1].data, "\nx")
                 @Expect(events[1].id, "a")
-            case LlmResult.Err(error) => @Fail(error.message)
+            case LlmWireResult.Err(error) => @Fail(error.message)
         }
         let tail = SseDecoder()
-        match (tail.push("data: discarded")) { case LlmResult.Ok(values) => @Expect(values.size, 0); case LlmResult.Err(error) => @Fail(error.message) }
-        match (tail.finish()) { case LlmResult.Ok(values) => @Expect(values.size, 0); case LlmResult.Err(error) => @Fail(error.message) }
+        match (tail.push("data: discarded")) { case LlmWireResult.Ok(values) => @Expect(values.size, 0); case LlmWireResult.Err(error) => @Fail(error.message) }
+        match (tail.finish()) { case LlmWireResult.Ok(values) => @Expect(values.size, 0); case LlmWireResult.Err(error) => @Fail(error.message) }
 
         let trailingCarriageReturn = SseDecoder(maxOutputBytesPerPush: 8)
-        match (trailingCarriageReturn.push("data:a\n\ndata:b\r\r")) { case LlmResult.Ok(values) => @Expect(values.size, 1); case LlmResult.Err(error) => @Fail(error.message) }
+        match (trailingCarriageReturn.push("data:a\n\ndata:b\r\r")) { case LlmWireResult.Ok(values) => @Expect(values.size, 1); case LlmWireResult.Err(error) => @Fail(error.message) }
         match (trailingCarriageReturn.finish()) {
-            case LlmResult.Ok(values) => @Expect(values.size, 1); @Expect(values[0].data, "b")
-            case LlmResult.Err(error) => @Fail(error.message)
+            case LlmWireResult.Ok(values) => @Expect(values.size, 1); @Expect(values[0].data, "b")
+            case LlmWireResult.Err(error) => @Fail(error.message)
         }
     }
 
     @TestCase
     func t013SseLimitsWholeEventBlock() {
         let decoder = SseDecoder(maxEventBytes: 8)
-        match (decoder.push(": 123456789\n\n")) { case LlmResult.Err(error) => @Expect(error.code, "llm.sse_event_too_large"); case _ => @Fail("large comment must count") }
+        match (decoder.push(": 123456789\n\n")) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.sse_event_too_large"); case _ => @Fail("large comment must count") }
     }
 
     @TestCase
@@ -306,17 +311,17 @@ class Llm4CjV02Tests {
     @TestCase
     func t016HttpBodyRemainsBounded() {
         let body = ByteBuffer(); body.write("hello".toArray())
-        match (readLlmHttpBody(body, Some(5), 5)) { case LlmResult.Ok(value) => @Expect(String.fromUtf8(value), "hello"); case LlmResult.Err(error) => @Fail(error.message) }
+        match (readLlmHttpBody(body, Some(5), 5)) { case LlmWireResult.Ok(value) => @Expect(String.fromUtf8(value), "hello"); case LlmWireResult.Err(error) => @Fail(error.message) }
         let large = ByteBuffer(); large.write("hello".toArray())
-        match (readLlmHttpBody(large, Some(5), 4)) { case LlmResult.Err(error) => @Expect(error.code, "llm.body_too_large"); case _ => @Fail("body must be bounded") }
+        match (readLlmHttpBody(large, Some(5), 4)) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.body_too_large"); case _ => @Fail("body must be bounded") }
     }
 
     @TestCase
     func t017AllRequestShapesAreExplicitlyEncoded() {
-        let schema = parseWireJson("{\"type\":\"object\"}")
+        let schema = testJson("{\"type\":\"object\"}")
         let tool = LlmWireTool("lookup", "find a value", schema)
         let format = LlmWireStructuredOutput.JsonSchema(LlmWireJsonSchema("answer", schema, description: "answer schema", strict: false))
-        let call = LlmWireBlock.ToolCall(LlmWireToolCallBlock("call-1", "lookup", LlmWireToolArguments.Complete(parseWireJson("{\"q\":1}"))))
+        let call = LlmWireBlock.ToolCall(LlmWireToolCallBlock("call-1", "lookup", LlmWireToolArguments.Complete(testJson("{\"q\":1}"))))
         let result = LlmWireBlock.ToolResult(LlmWireToolResultBlock("call-1", "done", isError: true))
         let common = [
             LlmWireMessage(LlmWireRole.User, [
@@ -330,7 +335,7 @@ class Llm4CjV02Tests {
         let responses = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: allCapabilities())
         let responsePayload = responses.encodeRequest(LlmWireRequest(
             "m", common, system: "system", tools: [tool],
-            thinking: LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Max), maxOutputTokens: Some(99),
+            reasoningEffort: LlmWireReasoningEffort.Max, maxOutputTokens: Some(99),
             streaming: Some(true), parallelToolCalls: Some(false), serviceTier: LlmWireServiceTier.Priority,
             promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ThirtyMinutes), promptCacheRoutingKey: Some("key"),
             toolChoice: LlmWireToolChoice.Auto, structuredOutput: format
@@ -339,11 +344,11 @@ class Llm4CjV02Tests {
 
         let chatMessages = [LlmWireMessage(LlmWireRole.Assistant, [call]), LlmWireMessage(LlmWireRole.User, [result])]
         let chat = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: allCapabilities())
-        let chatPayload = chat.encodeRequest(LlmWireRequest("m", chatMessages, system: "system", tools: [tool], thinking: LlmWireThinkingControl.Disabled, maxOutputTokens: Some(9), streaming: Some(false), parallelToolCalls: Some(true), serviceTier: LlmWireServiceTier.Default, toolChoice: LlmWireToolChoice.Required, structuredOutput: format))
+        let chatPayload = chat.encodeRequest(LlmWireRequest("m", chatMessages, system: "system", tools: [tool], thinkingMode: LlmWireThinkingMode.Disabled, maxOutputTokens: Some(9), streaming: Some(false), parallelToolCalls: Some(true), serviceTier: LlmWireServiceTier.Default, toolChoice: LlmWireToolChoice.Required, structuredOutput: format))
         for (needle in ["system", "tool_call_id", "tool_calls", "response_format", "reasoning_effort", "required"]) { @Expect(chatPayload.contains(needle), true) }
 
         let messages = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), capabilities: allCapabilities())
-        let messagePayload = messages.encodeRequest(LlmWireRequest("m", common, system: "system", tools: [tool], thinking: LlmWireThinkingControl.Adaptive(Some(LlmWireThinkingLevel.XHigh)), maxOutputTokens: Some(4096), streaming: Some(true), generationSpeed: LlmWireGenerationSpeed.Fast, toolChoice: LlmWireToolChoice.NoTools, structuredOutput: LlmWireStructuredOutput.JsonSchemaDocument(schema)))
+        let messagePayload = messages.encodeRequest(LlmWireRequest("m", common, system: "system", tools: [tool], thinkingMode: LlmWireThinkingMode.Adaptive, reasoningEffort: LlmWireReasoningEffort.XHigh, maxOutputTokens: Some(4096), streaming: Some(true), generationSpeed: LlmWireGenerationSpeed.Fast, toolChoice: LlmWireToolChoice.NoTools, structuredOutput: LlmWireStructuredOutput.JsonSchemaDocument(schema)))
         for (needle in ["output_config", "xhigh", "tool_use", "tool_result", "base64", "is_error", "input_schema"]) { @Expect(messagePayload.contains(needle), true) }
 
         expectLlmError("llm.tool_choice_without_tools", { => let _ = messages.encodeRequest(LlmWireRequest("m", validMessages(), maxOutputTokens: Some(1024), toolChoice: LlmWireToolChoice.Auto)) })
@@ -382,14 +387,14 @@ class Llm4CjV02Tests {
         let base = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
         expectLlmError("llm.model_missing", { => let _ = base.encodeRequest(LlmWireRequest("", [])) })
         expectLlmError("llm.max_output_tokens_invalid", { => let _ = base.encodeRequest(LlmWireRequest("m", validMessages(), maxOutputTokens: Some(0))) })
-        expectLlmError("llm.tools_unsupported", { => let _ = base.encodeRequest(LlmWireRequest("m", validMessages(), tools: [LlmWireTool("f", "", parseWireJson("{}"))])) })
-        expectLlmError("llm.structured_output_unsupported", { => let _ = base.encodeRequest(LlmWireRequest("m", validMessages(), structuredOutput: LlmWireStructuredOutput.JsonSchema(LlmWireJsonSchema("x", parseWireJson("{}"))))) })
+        expectLlmError("llm.tools_unsupported", { => let _ = base.encodeRequest(LlmWireRequest("m", validMessages(), tools: [LlmWireTool("f", "", testJson("{}"))])) })
+        expectLlmError("llm.structured_output_unsupported", { => let _ = base.encodeRequest(LlmWireRequest("m", validMessages(), structuredOutput: LlmWireStructuredOutput.JsonSchema(LlmWireJsonSchema("x", testJson("{}"))))) })
         expectLlmError("llm.parallel_tools_without_tools", { => let _ = base.encodeRequest(LlmWireRequest("m", validMessages(), parallelToolCalls: Some(true))) })
         expectLlmError("llm.service_tier_unsupported", { => let _ = base.encodeRequest(LlmWireRequest("m", validMessages(), serviceTier: LlmWireServiceTier.Priority)) })
         expectLlmError("llm.cache_lifetime_unsupported", { => let _ = base.encodeRequest(LlmWireRequest("m", validMessages(), promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.TwentyFourHours))) })
 
         let capable = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: allCapabilities())
-        let duplicate = [LlmWireMessage(LlmWireRole.Assistant, [LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(parseWireJson("{}")))), LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(parseWireJson("{}"))))])]
+        let duplicate = [LlmWireMessage(LlmWireRole.Assistant, [LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(testJson("{}")))), LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(testJson("{}"))))])]
         expectLlmError("llm.tool_call_duplicate", { => let _ = capable.encodeRequest(LlmWireRequest("m", duplicate)) })
         let partial = [LlmWireMessage(LlmWireRole.Assistant, [LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Partial("{")))])]
         expectLlmError("llm.tool_arguments_partial", { => let _ = capable.encodeRequest(LlmWireRequest("m", partial)) })
@@ -446,15 +451,15 @@ class Llm4CjV02Tests {
 
     @TestCase
     func t021TransportParsersCoverLimitsFieldsAndCalendarEdges() {
-        @Expect(LlmResult<Int64>.Ok(1).isOk(), true)
-        @Expect(LlmResult<Int64>.Err(LlmTransportError(LlmTransportErrorKind.Transport, "x", "x")).isOk(), false)
+        @Expect(LlmWireResult<Int64>.Ok(1).isOk(), true)
+        @Expect(LlmWireResult<Int64>.Err(LlmWireError(LlmWireErrorKind.Transport, "x", "x")).isOk(), false)
         @Expect(sseDataLine("data: value"), Some("value"))
         @Expect(sseDataLine("event: value"), None)
         let fields = SseDecoder(maxEventBytes: 100)
-        match (fields.push("event: custom\nid: a\u{0000}b\nretry: invalid\nunknown\ndata: x\n\n")) { case LlmResult.Ok(values) => @Expect(values[0].event, "custom"); @Expect(values[0].id, ""); case _ => @Fail("expected event") }
-        match (fields.finish()) { case LlmResult.Ok(_) => (); case _ => @Fail("expected finish") }
-        match (fields.push("data: x\n\n")) { case LlmResult.Err(error) => @Expect(error.code, "llm.sse_closed"); case _ => @Fail("closed push must fail") }
-        match (fields.finish()) { case LlmResult.Err(error) => @Expect(error.code, "llm.sse_closed"); case _ => @Fail("closed finish must fail") }
+        match (fields.push("event: custom\nid: a\u{0000}b\nretry: invalid\nunknown\ndata: x\n\n")) { case LlmWireResult.Ok(values) => @Expect(values[0].event, "custom"); @Expect(values[0].id, ""); case _ => @Fail("expected event") }
+        match (fields.finish()) { case LlmWireResult.Ok(_) => (); case _ => @Fail("expected finish") }
+        match (fields.push("data: x\n\n")) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.sse_closed"); case _ => @Fail("closed push must fail") }
+        match (fields.finish()) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.sse_closed"); case _ => @Fail("closed finish must fail") }
         @Expect(parseSseRetryMillis(""), None)
         @Expect(parseSseRetryMillis("12x"), None)
         @Expect(parseSseRetryMillis("999999999999999999999999"), Some(Int64.Max))
@@ -462,8 +467,8 @@ class Llm4CjV02Tests {
         for (date in ["Thu, 29 Feb 2024 00:00:00 GMT", "Thu, 29 Feb 2023 00:00:00 GMT", "Thu, 01 Jan 1969 00:00:00 GMT", "Thu, 01 Xxx 2024 00:00:00 GMT", "Thu, 01 Jan 2024 24:00:00 GMT", "Thu, 01 Jan 2024 bad GMT"]) { let _ = parseRetryAfterMillis(date, 0) }
         for (month in ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]) { @Expect(parseRetryAfterMillis("Mon, 01 " + month + " 2024 00:00:00 GMT", 0).isSome(), true) }
         let empty = ByteBuffer()
-        match (readLlmHttpBody(empty, None, 0)) { case LlmResult.Err(error) => @Expect(error.code, "llm.body_limit_invalid"); case _ => @Fail("invalid limit") }
-        match (readLlmHttpBody(empty, Some(-1), 10)) { case LlmResult.Err(error) => @Expect(error.code, "llm.body_too_large"); case _ => @Fail("invalid declared size") }
+        match (readLlmHttpBody(empty, None, 0)) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.body_limit_invalid"); case _ => @Fail("invalid limit") }
+        match (readLlmHttpBody(empty, Some(-1), 10)) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.body_too_large"); case _ => @Fail("invalid declared size") }
     }
 
     @TestCase
@@ -478,7 +483,7 @@ class Llm4CjV02Tests {
         for (index in 0..sources.size) { @Expect(sources[index] == sources[index], true); @Expect(sources[index] != sources[(index + 1) % sources.size], true) }
         let details = [LlmWireImageDetail.Auto, LlmWireImageDetail.Low, LlmWireImageDetail.High]
         for (index in 0..details.size) { @Expect(details[index] == details[index], true); @Expect(details[index] != details[(index + 1) % details.size], true) }
-        let levels = [LlmWireThinkingLevel.Minimal, LlmWireThinkingLevel.Low, LlmWireThinkingLevel.Medium, LlmWireThinkingLevel.High, LlmWireThinkingLevel.XHigh, LlmWireThinkingLevel.Max]
+        let levels = [LlmWireReasoningEffort.Minimal, LlmWireReasoningEffort.Low, LlmWireReasoningEffort.Medium, LlmWireReasoningEffort.High, LlmWireReasoningEffort.XHigh, LlmWireReasoningEffort.Max]
         for (index in 0..levels.size) { @Expect(levels[index] == levels[index], true); @Expect(levels[index] != levels[(index + 1) % levels.size], true) }
         let caches = [LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.FiveMinutes, LlmWirePromptCacheLifetime.OneHour]
         for (index in 0..caches.size) { @Expect(caches[index] == caches[index], true); @Expect(caches[index] != caches[(index + 1) % caches.size], true) }
@@ -503,10 +508,10 @@ class Llm4CjV02Tests {
         let usageStyles = [LlmWireUsageMergeStyle.ReplacePresent, LlmWireUsageMergeStyle.Monotonic, LlmWireUsageMergeStyle.Delta]
         for (index in 0..usageStyles.size) { @Expect(usageStyles[index] == usageStyles[index], true); @Expect(usageStyles[index] != usageStyles[(index + 1) % usageStyles.size], true) }
         let errorKinds = [
-            LlmTransportErrorKind.InvalidWire, LlmTransportErrorKind.InvalidRequest, LlmTransportErrorKind.Unsupported,
-            LlmTransportErrorKind.InvalidState, LlmTransportErrorKind.Http, LlmTransportErrorKind.BodyLimit,
-            LlmTransportErrorKind.LimitExceeded, LlmTransportErrorKind.Sse, LlmTransportErrorKind.Cancelled,
-            LlmTransportErrorKind.Deadline, LlmTransportErrorKind.Transport
+            LlmWireErrorKind.InvalidWire, LlmWireErrorKind.InvalidRequest, LlmWireErrorKind.Unsupported,
+            LlmWireErrorKind.InvalidState, LlmWireErrorKind.Http, LlmWireErrorKind.BodyLimit,
+            LlmWireErrorKind.LimitExceeded, LlmWireErrorKind.Sse, LlmWireErrorKind.Cancelled,
+            LlmWireErrorKind.Deadline, LlmWireErrorKind.Transport
         ]
         for (index in 0..errorKinds.size) { @Expect(errorKinds[index] == errorKinds[index], true); @Expect(errorKinds[index] != errorKinds[(index + 1) % errorKinds.size], true) }
         let phases = [
@@ -527,10 +532,9 @@ class Llm4CjV02Tests {
     @TestCase
     func t023EverySupportedThinkingDialectBranchIsEncoded() {
         let capabilities = allCapabilities()
-        let controls = [
-            LlmWireThinkingControl.Disabled,
-            LlmWireThinkingControl.Enabled,
-            LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low)
+        let modes = [
+            LlmWireThinkingMode.Disabled,
+            LlmWireThinkingMode.Enabled
         ]
         let deepSeekCodecs = [
             LlmWireCodec(LlmWireProtocol.Responses, deepSeekResponsesDialect(), capabilities: capabilities),
@@ -538,23 +542,28 @@ class Llm4CjV02Tests {
             LlmWireCodec(LlmWireProtocol.Messages, deepSeekMessagesDialect(), capabilities: capabilities)
         ]
         for (index in 0..deepSeekCodecs.size) {
-            for (control in controls) {
-                let payload = deepSeekCodecs[index].encodeRequest(LlmWireRequest("m", validMessages(), thinking: control, maxOutputTokens: Some(2048)))
+            for (mode in modes) {
+                let payload = deepSeekCodecs[index].encodeRequest(LlmWireRequest("m", validMessages(), thinkingMode: mode, maxOutputTokens: Some(2048)))
                 @Expect(payload.contains(if (index == 0) { "reasoning" } else { "thinking" }), true)
                 if (index == 0) { @Expect(payload.contains("\"thinking\""), false) }
             }
         }
-        @Expect(deepSeekCodecs[0].encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Minimal), maxOutputTokens: Some(2048))).contains("minimal"), true)
+        for (index in 0..deepSeekCodecs.size) {
+            let mode = if (index == 0) { LlmWireThinkingMode.ProviderDefault } else { LlmWireThinkingMode.Enabled }
+            let payload = deepSeekCodecs[index].encodeRequest(LlmWireRequest("m", validMessages(), thinkingMode: mode, reasoningEffort: LlmWireReasoningEffort.Low, maxOutputTokens: Some(2048)))
+            @Expect(payload.contains("low"), true)
+        }
+        @Expect(deepSeekCodecs[0].encodeRequest(LlmWireRequest("m", validMessages(), reasoningEffort: LlmWireReasoningEffort.Minimal, maxOutputTokens: Some(2048))).contains("minimal"), true)
         let openAiChat = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: capabilities)
-        @Expect(openAiChat.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Enabled)).contains("medium"), true)
-        @Expect(openAiChat.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low))).contains("low"), true)
+        @Expect(openAiChat.encodeRequest(LlmWireRequest("m", validMessages(), thinkingMode: LlmWireThinkingMode.Enabled)).contains("medium"), true)
+        @Expect(openAiChat.encodeRequest(LlmWireRequest("m", validMessages(), reasoningEffort: LlmWireReasoningEffort.Low)).contains("low"), true)
         let anthropic = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), capabilities: capabilities)
-        for (control in [LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Budget(1024), LlmWireThinkingControl.Adaptive(None)]) {
-            @Expect(anthropic.encodeRequest(LlmWireRequest("m", validMessages(), thinking: control, maxOutputTokens: Some(2048))).contains("thinking"), true)
+        for (mode in [LlmWireThinkingMode.Disabled, LlmWireThinkingMode.Budget(1024), LlmWireThinkingMode.Adaptive]) {
+            @Expect(anthropic.encodeRequest(LlmWireRequest("m", validMessages(), thinkingMode: mode, maxOutputTokens: Some(2048))).contains("thinking"), true)
         }
         let responses = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: capabilities)
-        for (level in [LlmWireThinkingLevel.Minimal, LlmWireThinkingLevel.Low, LlmWireThinkingLevel.Medium, LlmWireThinkingLevel.High, LlmWireThinkingLevel.XHigh, LlmWireThinkingLevel.Max]) {
-            @Expect(responses.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Effort(level))).contains("reasoning"), true)
+        for (level in [LlmWireReasoningEffort.Minimal, LlmWireReasoningEffort.Low, LlmWireReasoningEffort.Medium, LlmWireReasoningEffort.High, LlmWireReasoningEffort.XHigh, LlmWireReasoningEffort.Max]) {
+            @Expect(responses.encodeRequest(LlmWireRequest("m", validMessages(), reasoningEffort: level)).contains("reasoning"), true)
         }
     }
 
@@ -590,28 +599,27 @@ class Llm4CjV02Tests {
     func t025EveryUnrepresentableThinkingPairIsRejected() {
         let capabilities = allCapabilities()
         let pairs = [
-            (LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: capabilities), LlmWireThinkingControl.Disabled),
-            (LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: capabilities), LlmWireThinkingControl.Enabled),
-            (LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: capabilities), LlmWireThinkingControl.Budget(1)),
-            (LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: capabilities), LlmWireThinkingControl.Adaptive(None)),
-            (LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: capabilities), LlmWireThinkingControl.Budget(1)),
-            (LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: capabilities), LlmWireThinkingControl.Adaptive(None)),
-            (LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), capabilities: capabilities), LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low)),
-            (LlmWireCodec(LlmWireProtocol.Responses, deepSeekResponsesDialect(), capabilities: capabilities), LlmWireThinkingControl.Budget(1)),
-            (LlmWireCodec(LlmWireProtocol.Responses, deepSeekResponsesDialect(), capabilities: capabilities), LlmWireThinkingControl.Adaptive(None)),
-            (LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect(), capabilities: capabilities), LlmWireThinkingControl.Budget(1)),
-            (LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect(), capabilities: capabilities), LlmWireThinkingControl.Adaptive(None)),
-            (LlmWireCodec(LlmWireProtocol.Messages, deepSeekMessagesDialect(), capabilities: capabilities), LlmWireThinkingControl.Budget(1)),
-            (LlmWireCodec(LlmWireProtocol.Messages, deepSeekMessagesDialect(), capabilities: capabilities), LlmWireThinkingControl.Adaptive(None))
+            (LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: capabilities), LlmWireThinkingMode.Disabled),
+            (LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: capabilities), LlmWireThinkingMode.Enabled),
+            (LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: capabilities), LlmWireThinkingMode.Budget(1)),
+            (LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: capabilities), LlmWireThinkingMode.Adaptive),
+            (LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: capabilities), LlmWireThinkingMode.Budget(1)),
+            (LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: capabilities), LlmWireThinkingMode.Adaptive),
+            (LlmWireCodec(LlmWireProtocol.Responses, deepSeekResponsesDialect(), capabilities: capabilities), LlmWireThinkingMode.Budget(1)),
+            (LlmWireCodec(LlmWireProtocol.Responses, deepSeekResponsesDialect(), capabilities: capabilities), LlmWireThinkingMode.Adaptive),
+            (LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect(), capabilities: capabilities), LlmWireThinkingMode.Budget(1)),
+            (LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect(), capabilities: capabilities), LlmWireThinkingMode.Adaptive),
+            (LlmWireCodec(LlmWireProtocol.Messages, deepSeekMessagesDialect(), capabilities: capabilities), LlmWireThinkingMode.Budget(1)),
+            (LlmWireCodec(LlmWireProtocol.Messages, deepSeekMessagesDialect(), capabilities: capabilities), LlmWireThinkingMode.Adaptive)
         ]
         for ((codec, control) in pairs) {
-            expectLlmError("llm.thinking_unsupported", { => let _ = codec.encodeRequest(LlmWireRequest("m", validMessages(), thinking: control, maxOutputTokens: Some(2048))) })
+            expectLlmError("llm.thinking_unsupported", { => let _ = codec.encodeRequest(LlmWireRequest("m", validMessages(), thinkingMode: control, maxOutputTokens: Some(2048))) })
         }
-        let noLevels = LlmWireCapabilities(thinkingControls: [LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Medium)])
+        let noLevels = LlmWireCapabilities()
         let levelCodec = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: noLevels)
-        expectLlmError("llm.thinking_level_unsupported", { => let _ = levelCodec.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Effort(LlmWireThinkingLevel.High))) })
+        expectLlmError("llm.reasoning_effort_unsupported", { => let _ = levelCodec.encodeRequest(LlmWireRequest("m", validMessages(), reasoningEffort: LlmWireReasoningEffort.High)) })
         let budgetCodec = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), capabilities: capabilities)
-        expectLlmError("llm.thinking_budget_invalid", { => let _ = budgetCodec.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Budget(0), maxOutputTokens: Some(2048))) })
+        expectLlmError("llm.thinking_budget_invalid", { => let _ = budgetCodec.encodeRequest(LlmWireRequest("m", validMessages(), thinkingMode: LlmWireThinkingMode.Budget(0), maxOutputTokens: Some(2048))) })
         expectLlmError("llm.dialect_protocol_mismatch", { => let _ = LlmWireCodec(LlmWireProtocol.Messages, openAiResponsesDialect()) })
     }
 
@@ -619,20 +627,20 @@ class Llm4CjV02Tests {
     func t026TransportCoversSplitLinesInvalidLimitsAndOverflow() {
         try { let _ = SseDecoder(maxEventBytes: 0); @Fail("invalid limit") } catch (_: IllegalArgumentException) { () }
         let independentBuffer = SseDecoder(maxEventBytes: 100, maxLineBytes: 100, maxBufferedBytes: 2)
-        match (independentBuffer.push("abc")) { case LlmResult.Err(error) => @Expect(error.code, "llm.sse_buffer_too_large"); case _ => @Fail("independent buffer limit") }
-        match (independentBuffer.push("x")) { case LlmResult.Err(error) => @Expect(error.code, "llm.sse_failed"); case _ => @Fail("poisoned SSE") }
+        match (independentBuffer.push("abc")) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.sse_buffer_too_large"); case _ => @Fail("independent buffer limit") }
+        match (independentBuffer.push("x")) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.sse_failed"); case _ => @Fail("poisoned SSE") }
         let lineLimit = SseDecoder(maxEventBytes: 100, maxLineBytes: 2, maxBufferedBytes: 100)
-        match (lineLimit.push("abc")) { case LlmResult.Err(error) => @Expect(error.code, "llm.sse_line_too_large"); case _ => @Fail("line limit") }
+        match (lineLimit.push("abc")) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.sse_line_too_large"); case _ => @Fail("line limit") }
         let outputLimit = SseDecoder(maxEventBytes: 100, maxLineBytes: 100, maxBufferedBytes: 100, maxEventsPerPush: 1)
-        match (outputLimit.push("data: a\n\ndata: b\n\n")) { case LlmResult.Err(error) => @Expect(error.code, "llm.sse_output_too_large"); case _ => @Fail("output limit") }
+        match (outputLimit.push("data: a\n\ndata: b\n\n")) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.sse_output_too_large"); case _ => @Fail("output limit") }
         let split = SseDecoder(maxEventBytes: 128)
-        match (split.push("id: first\r")) { case LlmResult.Ok(values) => @Expect(values.size, 0); case _ => @Fail("split CR") }
-        match (split.push("\ndata: one\r\n\r\n")) { case LlmResult.Ok(values) => @Expect(values.size, 1); @Expect(values[0].id, "first"); case _ => @Fail("split CRLF") }
-        match (split.push("\nid:\ndata:\n\n")) { case LlmResult.Ok(values) => @Expect(values.size, 1); @Expect(values[0].id, ""); @Expect(values[0].data, ""); case _ => @Fail("empty data") }
-        match (SseDecoder().push("retry: 999999999999999999999999\ndata: x\n\n")) { case LlmResult.Ok(values) => @Expect(values[0].retryMillis, Some(Int64.Max)); case _ => @Fail("retry overflow") }
-        match (SseDecoder().push([255u8, 10u8, 10u8])) { case LlmResult.Err(error) => @Expect(error.code, "llm.sse_utf8_invalid"); case _ => @Fail("invalid UTF-8") }
+        match (split.push("id: first\r")) { case LlmWireResult.Ok(values) => @Expect(values.size, 0); case _ => @Fail("split CR") }
+        match (split.push("\ndata: one\r\n\r\n")) { case LlmWireResult.Ok(values) => @Expect(values.size, 1); @Expect(values[0].id, "first"); case _ => @Fail("split CRLF") }
+        match (split.push("\nid:\ndata:\n\n")) { case LlmWireResult.Ok(values) => @Expect(values.size, 1); @Expect(values[0].id, ""); @Expect(values[0].data, ""); case _ => @Fail("empty data") }
+        match (SseDecoder().push("retry: 999999999999999999999999\ndata: x\n\n")) { case LlmWireResult.Ok(values) => @Expect(values[0].retryMillis, Some(Int64.Max)); case _ => @Fail("retry overflow") }
+        match (SseDecoder().push([255u8, 10u8, 10u8])) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.sse_utf8_invalid"); case _ => @Fail("invalid UTF-8") }
         let actualLarge = ByteBuffer(); actualLarge.write("hello".toArray())
-        match (readLlmHttpBody(actualLarge, None, 4)) { case LlmResult.Err(error) => @Expect(error.code, "llm.body_too_large"); case _ => @Fail("stream body must be bounded") }
+        match (readLlmHttpBody(actualLarge, None, 4)) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.body_too_large"); case _ => @Fail("stream body must be bounded") }
         for (date in ["Sun, bad", "Sun, 06 Nov 1994 08:49:37 UTC", "Sunday, 06-Nov-94 08:49:37 UTC", "Sun Nov 6 08:49:37", "Sun Nov 6 08:49:37 1994 extra", "Sun, 31 Feb 1994 08:49:37 GMT"]) {
             @Expect(parseRetryAfterMillis(date, 0), None)
         }
@@ -640,16 +648,16 @@ class Llm4CjV02Tests {
 
     @TestCase
     func t027ArgumentEncodersAndOptionalRequestFieldsCoverAllVariants() {
-        let schema = parseWireJson("{}")
+        let schema = testJson("{}")
         let complete = LlmWireToolArguments.Complete(schema)
         let badJson = LlmWireToolArguments.InvalidJson("{")
-        let badShape = LlmWireToolArguments.InvalidShape(parseWireJson("[]"))
+        let badShape = LlmWireToolArguments.InvalidShape(testJson("[]"))
         @Expect(toolArgumentsRaw(complete), "{}")
         @Expect(toolArgumentsRaw(badJson), "{")
         @Expect(toolArgumentsRaw(badShape), "[]")
         expectLlmError("llm.tool_arguments_json_invalid", { => let _ = toolArgumentsObject(badJson) })
         expectLlmError("llm.tool_arguments_shape_invalid", { => let _ = toolArgumentsObject(badShape) })
-        expectLlmError("llm.tool_arguments_shape_invalid", { => let _ = toolArgumentsObject(LlmWireToolArguments.Complete(parseWireJson("[]"))) })
+        expectLlmError("llm.tool_arguments_shape_invalid", { => let _ = toolArgumentsObject(LlmWireToolArguments.Complete(testJson("[]"))) })
         let codec = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: allCapabilities())
         let minimal = codec.encodeRequest(LlmWireRequest("m", validMessages(), tools: [LlmWireTool("f", "", schema)], promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ThirtyMinutes), toolChoice: LlmWireToolChoice.NoTools, structuredOutput: LlmWireStructuredOutput.JsonSchema(LlmWireJsonSchema("x", schema))))
         @Expect(minimal.contains("prompt_cache_key"), false)
@@ -698,7 +706,7 @@ class Llm4CjV02Tests {
         let unknown = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect()).newStreamDecoder()
         beginMessages(unknown)
         try { let _ = unknown.push(event("{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"future\"}}")); @Fail("unknown native") }
-        catch (error: LlmTransportError) { @Expect(error.code, "llm.messages_stream_block_unsupported"); @Expect(error.diagnosticJson.getOrThrow().contains("raw_fragment"), true) }
+        catch (error: LlmWireError) { @Expect(error.code, "llm.messages_stream_block_unsupported"); @Expect(error.diagnosticJson.getOrThrow().contains("raw_fragment"), true) }
         let noStart = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect()).newStreamDecoder()
         expectLlmError("llm.messages_block_out_of_phase", { => let _ = noStart.push(event("{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"x\"}}")) })
         expectLlmError("llm.stream_failed", { => let _ = noStart.push(event("{\"type\":\"content_block_stop\",\"index\":0}")) })
@@ -755,7 +763,7 @@ class Llm4CjV02Tests {
         let messages = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect())
         expectLlmError("llm.opaque_diagnostic_only", { => let _ = messages.encodeRequest(LlmWireRequest("m", [LlmWireMessage(LlmWireRole.Assistant, [LlmWireBlock.Opaque(messageOpaque)])], maxOutputTokens: 1024)) })
 
-        let emptyId = [LlmWireMessage(LlmWireRole.Assistant, [LlmWireBlock.ToolCall(LlmWireToolCallBlock("", "f", LlmWireToolArguments.Complete(parseWireJson("{}"))))])]
+        let emptyId = [LlmWireMessage(LlmWireRole.Assistant, [LlmWireBlock.ToolCall(LlmWireToolCallBlock("", "f", LlmWireToolArguments.Complete(testJson("{}"))))])]
         let capable = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: allCapabilities())
         expectLlmError("llm.tool_call_duplicate", { => let _ = capable.encodeRequest(LlmWireRequest("m", emptyId)) })
 
@@ -845,7 +853,7 @@ class Llm4CjV02Tests {
         expectLlmError("llm.native_replay_incomplete", { => let _ = LlmWireNativeReplayBlock.restore(native.snapshot().replace("\"complete\":true", "\"complete\":false")) })
         expectLlmError("llm.native_replay_model_mismatch", { => let _ = anthropic.encodeRequest(LlmWireRequest("other", [LlmWireMessage(LlmWireRole.Assistant, [LlmWireBlock.NativeReplay(restored)])], maxOutputTokens: Some(2048))) })
 
-        let tool = LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(parseWireJson("{}"))))
+        let tool = LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(testJson("{}"))))
         expectLlmError("llm.tool_call_role_invalid", { => let _ = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: capabilities).encodeRequest(LlmWireRequest("m", [LlmWireMessage(LlmWireRole.User, [tool])])) })
         match (chat.decodeResponse("{\"choices\":[{\"index\":0,\"message\":{},\"finish_reason\":\"stop\"}]}")) { case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply)) => @Expect(reply.usage.inputTokens, None); case _ => @Fail("optional usage") }
     }
@@ -854,7 +862,7 @@ class Llm4CjV02Tests {
     func t033ProviderSpecificRequestAndReplayShapesStayExact() {
         let capabilities = allCapabilities()
         let chat = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: capabilities)
-        let schema = LlmWireStructuredOutput.JsonSchema(LlmWireJsonSchema("answer", parseWireJson("{\"type\":\"object\"}")))
+        let schema = LlmWireStructuredOutput.JsonSchema(LlmWireJsonSchema("answer", testJson("{\"type\":\"object\"}")))
         let encodedSchema = chat.encodeRequest(LlmWireRequest("m", validMessages(), structuredOutput: schema)).body
         @Expect(encodedSchema.contains("\"json_schema\":{\"name\":\"answer\""), true)
         @Expect(encodedSchema.contains("\"json_schema\":{\"type\":\"json_schema\""), false)
@@ -866,7 +874,7 @@ class Llm4CjV02Tests {
         let continuation = ArrayList<LlmWireMessage>()
         for (message in reply.toContinuationInput()) { continuation.add(message) }
         continuation.add(LlmWireMessage(LlmWireRole.User, [LlmWireBlock.ToolResult(LlmWireToolResultBlock("c", "ok"))]))
-        let replay = deepSeek.encodeRequest(LlmWireRequest("m", continuation.toArray(), tools: [LlmWireTool("f", "", parseWireJson("{}"))])).body
+        let replay = deepSeek.encodeRequest(LlmWireRequest("m", continuation.toArray(), tools: [LlmWireTool("f", "", testJson("{}"))])).body
         @Expect(replay.contains("\"reasoning_content\":\"reason\""), true)
 
         let responses = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
@@ -885,7 +893,7 @@ class Llm4CjV02Tests {
         )
         expectLlmError("llm.stream_semantic_too_large", { => let _ = limited.push(event("{\"choices\":[{\"index\":0,\"delta\":{\"content\":\"four\"}}]}")) })
         expectLlmError("llm.stream_failed", { => let _ = limited.push(event("{\"choices\":[]}")) })
-        match (SseDecoder(maxOutputBytesPerPush: 1).push("data: xx\n\n")) { case LlmResult.Err(error) => @Expect(error.code, "llm.sse_output_bytes_too_large"); case _ => @Fail("SSE output byte limit") }
+        match (SseDecoder(maxOutputBytesPerPush: 1).push("data: xx\n\n")) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.sse_output_bytes_too_large"); case _ => @Fail("SSE output byte limit") }
 
         let messages = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), capabilities: allCapabilities())
         let phase = messages.newStreamDecoder(); beginMessages(phase)
@@ -895,16 +903,16 @@ class Llm4CjV02Tests {
         expectLlmError("llm.messages_block_out_of_phase", { => let _ = lateBlock.push(event("{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"x\"}}")) })
 
         expectLlmError("llm.header_invalid", { => let _ = LlmWireHeader("bad:name", "x") })
-        expectLlmError("llm.tool_name_invalid", { => let _ = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: allCapabilities()).encodeRequest(LlmWireRequest("m", validMessages(), tools: [LlmWireTool("bad name", "", parseWireJson("{}"))])) })
-        expectLlmError("llm.tool_schema_invalid", { => let _ = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: allCapabilities()).encodeRequest(LlmWireRequest("m", validMessages(), tools: [LlmWireTool("f", "", parseWireJson("[]"))])) })
+        expectLlmError("llm.tool_name_invalid", { => let _ = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: allCapabilities()).encodeRequest(LlmWireRequest("m", validMessages(), tools: [LlmWireTool("bad name", "", testJson("{}"))])) })
+        expectLlmError("llm.tool_schema_invalid", { => let _ = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: allCapabilities()).encodeRequest(LlmWireRequest("m", validMessages(), tools: [LlmWireTool("f", "", testJson("[]"))])) })
         expectLlmError("llm.image_url_invalid", { => let _ = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect()).encodeRequest(LlmWireRequest("m", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.Url, ""))])])) })
         expectLlmError("llm.usage_negative", { => let _ = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect()).decodeResponse("{\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":-1}}") })
 
         let invalidReply = LlmWireReply(blocks: [LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.InvalidJson("{")))])
         expectLlmError("llm.tool_arguments_not_executable", { => let _ = invalidReply.toContinuationInput() })
-        let named = LlmWireStructuredOutput.JsonSchema(LlmWireJsonSchema("answer", parseWireJson("{}")))
+        let named = LlmWireStructuredOutput.JsonSchema(LlmWireJsonSchema("answer", testJson("{}")))
         expectLlmError("llm.structured_output_metadata_unsupported", { => let _ = messages.encodeRequest(LlmWireRequest("m", validMessages(), maxOutputTokens: Some(1024), structuredOutput: named)) })
-        @Expect(messages.encodeRequest(LlmWireRequest("m", validMessages(), maxOutputTokens: Some(1024), structuredOutput: LlmWireStructuredOutput.JsonSchemaDocument(parseWireJson("{}")))).contains("output_config"), true)
+        @Expect(messages.encodeRequest(LlmWireRequest("m", validMessages(), maxOutputTokens: Some(1024), structuredOutput: LlmWireStructuredOutput.JsonSchemaDocument(testJson("{}")))).contains("output_config"), true)
 
         try {
             let _ = LlmWireDialectContract("bad", LlmWireProtocol.Responses, LlmWireRequestStyle.DeepSeekChat, LlmWireOutputTokenField.MaxTokens)
@@ -923,14 +931,14 @@ class Llm4CjV02Tests {
     @TestCase
     func t035ConversationCannotAdvancePastPendingToolCalls() {
         let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: allCapabilities())
-        let tool = LlmWireTool("f", "", parseWireJson("{}"))
-        let call = LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(parseWireJson("{}"))))
+        let tool = LlmWireTool("f", "", testJson("{}"))
+        let call = LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(testJson("{}"))))
         let assistant = LlmWireMessage(LlmWireRole.Assistant, [call])
         expectLlmError("llm.tool_conversation_out_of_phase", { =>
             let _ = codec.encodeRequest(LlmWireRequest("m", [assistant, LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("continue"))])], tools: [tool]))
         })
 
-        let secondCall = LlmWireBlock.ToolCall(LlmWireToolCallBlock("d", "f", LlmWireToolArguments.Complete(parseWireJson("{}"))))
+        let secondCall = LlmWireBlock.ToolCall(LlmWireToolCallBlock("d", "f", LlmWireToolArguments.Complete(testJson("{}"))))
         expectLlmError("llm.tool_results_incomplete", { =>
             let _ = codec.encodeRequest(LlmWireRequest(
                 "m", [LlmWireMessage(LlmWireRole.Assistant, [call, secondCall]), LlmWireMessage(LlmWireRole.User, [LlmWireBlock.ToolResult(LlmWireToolResultBlock("c", "ok"))])],
@@ -1010,8 +1018,8 @@ class Llm4CjV02Tests {
         try {
             let _ = codec.decodeResponse("{\"status\":\"completed\",\"output\":[{\"type\":\"future\",\"secret\":\"" + payload.toString() + "\"}]}")
             @Fail("unknown semantic content must fail")
-        } catch (error: LlmTransportError) {
-            @Expect(error.kind, LlmTransportErrorKind.Unsupported)
+        } catch (error: LlmWireError) {
+            @Expect(error.kind, LlmWireErrorKind.Unsupported)
             @Expect(error.phase, Some(LlmTransportPhase.SemanticAssembly))
             @Expect(error.protocol, Some(LlmWireProtocol.Responses))
             @Expect(error.dialectId, "openai.responses.v1")
@@ -1027,8 +1035,8 @@ class Llm4CjV02Tests {
 
         let decoder = codec.newStreamDecoder()
         try { let _ = decoder.finishTransport(); @Fail("EOF without terminal must fail") }
-        catch (error: LlmTransportError) {
-            @Expect(error.kind, LlmTransportErrorKind.InvalidWire)
+        catch (error: LlmWireError) {
+            @Expect(error.kind, LlmWireErrorKind.InvalidWire)
             @Expect(error.code, "llm.stream_terminal_missing")
             @Expect(error.phase, Some(LlmTransportPhase.SemanticAssembly))
             @Expect(error.protocol, Some(LlmWireProtocol.Responses))
@@ -1078,8 +1086,8 @@ class Llm4CjV02Tests {
 
     @TestCase
     func t040CanonicalRequestsRejectInvalidMessagesAndArguments() {
-        let tool = LlmWireTool("f", "", parseWireJson("{}"))
-        let bad = LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(parseWireJson("[]"))))
+        let tool = LlmWireTool("f", "", testJson("{}"))
+        let bad = LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(testJson("[]"))))
         for (codec in [
             LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: allCapabilities()),
             LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: allCapabilities()),
@@ -1090,7 +1098,7 @@ class Llm4CjV02Tests {
         let chat = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
         expectLlmError("llm.message_empty", { => let _ = chat.encodeRequest(LlmWireRequest("m", [LlmWireMessage(LlmWireRole.User, [])])) })
         expectLlmError("llm.message_empty", { => let _ = chat.encodeRequest(LlmWireRequest("m", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock(""))])])) })
-        let illegalName = LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "bad name", LlmWireToolArguments.Complete(parseWireJson("{}"))))
+        let illegalName = LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "bad name", LlmWireToolArguments.Complete(testJson("{}"))))
         expectLlmError("llm.tool_call_name_invalid", { => let _ = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: allCapabilities()).encodeRequest(LlmWireRequest("m", [LlmWireMessage(LlmWireRole.Assistant, [illegalName])], tools: [tool])) })
         expectLlmError("llm.chat_legacy_function_call_unsupported", { => let _ = chat.decodeResponse("{\"choices\":[{\"index\":0,\"message\":{},\"finish_reason\":\"function_call\"}]}" ) })
     }
@@ -1202,14 +1210,14 @@ class Llm4CjV02Tests {
         expectIllegalArgument({ => let _ = LlmWireDialectContract("Bad ID", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens) })
         expectIllegalArgument({ => let _ = LlmWireDialectContract("test.cache.none", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens, promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault]) })
         expectIllegalArgument({ => let _ = LlmWireDialectContract("test.deepseek.tier", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.DeepSeekChat, LlmWireOutputTokenField.MaxTokens, serviceTiers: [LlmWireServiceTier.Auto]) })
-        expectIllegalArgument({ => let _ = LlmWireDialectContract("test.duplicate.level", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens, thinkingControls: [LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low)], thinkingLevels: [LlmWireThinkingLevel.Low, LlmWireThinkingLevel.Low]) })
+        expectIllegalArgument({ => let _ = LlmWireDialectContract("test.duplicate.level", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens, reasoningEfforts: [LlmWireReasoningEffort.Low, LlmWireReasoningEffort.Low]) })
         @Expect(LlmWireStandardDialect(LlmWireDialectContract("test_a-b", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens)).compatibilityId, "test_a-b")
 
-        let declared = [LlmWireThinkingLevel.Low]
-        let immutable = LlmWireDialectContract("test.chat.immutable", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens, thinkingControls: [LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low)], thinkingLevels: declared)
-        declared[0] = LlmWireThinkingLevel.High
-        let exposed = immutable.thinkingLevels; exposed[0] = LlmWireThinkingLevel.Max
-        @Expect(immutable.thinkingLevels[0], LlmWireThinkingLevel.Low)
+        let declared = [LlmWireReasoningEffort.Low]
+        let immutable = LlmWireDialectContract("test.chat.immutable", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens, reasoningEfforts: declared)
+        declared[0] = LlmWireReasoningEffort.High
+        let exposed = immutable.reasoningEfforts; exposed[0] = LlmWireReasoningEffort.Max
+        @Expect(immutable.reasoningEfforts[0], LlmWireReasoningEffort.Low)
 
         let chat = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
         expectLlmError("llm.tool_call_id_missing", { => let _ = chat.decodeResponse("{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{\"id\":\"\",\"type\":\"function\",\"function\":{\"name\":\"f\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}" ) })
@@ -1248,7 +1256,7 @@ class Llm4CjV02Tests {
             maxOutputTokens: Some(8)
         )
         expectLlmError("llm.image_input_unsupported", { => let _ = deepSeekMessages.encodeRequest(imageRequest) })
-        let visionMessages = LlmWireCodec(LlmWireProtocol.Messages, deepSeekMessagesDialect(), capabilities: LlmWireCapabilities(inputModalities: [LlmWireInputModality.Text, LlmWireInputModality.Image]))
+        let visionMessages = LlmWireCodec(LlmWireProtocol.Messages, deepSeekMessagesDialect(), capabilities: LlmWireCapabilities(input: LlmWireInputCapabilities(modalities: [LlmWireInputModality.Text, LlmWireInputModality.Image])))
         @Expect(visionMessages.encodeRequest(imageRequest).contains("\"type\":\"url\""), true)
         let filePlan = visionMessages.encodeRequest(LlmWireRequest(
             "deepseek-v4-flash-vision-exp", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.File, "file-api-test"))])],
@@ -1256,7 +1264,7 @@ class Llm4CjV02Tests {
         ))
         @Expect(filePlan.contains("\"file_id\":\"file-api-test\""), true)
         @Expect(filePlan.requiredHeaders[0].value, "files-api-2025-04-14")
-        let visionCapabilities = LlmWireCapabilities(inputModalities: [LlmWireInputModality.Text, LlmWireInputModality.Image])
+        let visionCapabilities = LlmWireCapabilities(input: LlmWireInputCapabilities(modalities: [LlmWireInputModality.Text, LlmWireInputModality.Image]))
         let visionChat = LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect(), capabilities: visionCapabilities)
         @Expect(visionChat.encodeRequest(LlmWireRequest("deepseek-v4-flash-vision-exp", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.File, "file-api-chat"))])])).contains("\"type\":\"file\""), true)
         let visionResponses = LlmWireCodec(LlmWireProtocol.Responses, deepSeekResponsesDialect(), capabilities: visionCapabilities)
@@ -1311,46 +1319,46 @@ class Llm4CjV02Tests {
             case _ => @Fail("failed Responses terminal")
         }
 
-        match (SseDecoder(maxEventBytes: 9).push("data:x\r\n\r\n")) { case LlmResult.Err(error) => @Expect(error.code, "llm.sse_event_too_large"); case _ => @Fail("CRLF bytes must count") }
-        match (SseDecoder(maxEventBytes: 10).push("data:x\r\n\r\n")) { case LlmResult.Ok(values) => @Expect(values.size, 1); case _ => @Fail("exact CRLF event limit") }
+        match (SseDecoder(maxEventBytes: 9).push("data:x\r\n\r\n")) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.sse_event_too_large"); case _ => @Fail("CRLF bytes must count") }
+        match (SseDecoder(maxEventBytes: 10).push("data:x\r\n\r\n")) { case LlmWireResult.Ok(values) => @Expect(values.size, 1); case _ => @Fail("exact CRLF event limit") }
         @Expect(parseRetryAfterMillis("Sunday, 06-Nov-94 08:49:37 GMT", Int64.Max), None)
     }
 
     @TestCase
     func t049ThinkingCombinationsAndContinuationProjectionFailClosed() {
-        let tool = LlmWireTool("lookup", "lookup", parseWireJson("{}"))
+        let tool = LlmWireTool("lookup", "lookup", testJson("{}"))
         let anthropic = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), capabilities: allCapabilities())
         expectLlmError("llm.thinking_tool_choice_unsupported", { => let _ = anthropic.encodeRequest(LlmWireRequest(
-            "claude", validMessages(), tools: [tool], thinking: LlmWireThinkingControl.Budget(1024),
+            "claude", validMessages(), tools: [tool], thinkingMode: LlmWireThinkingMode.Budget(1024),
             maxOutputTokens: Some(2048), toolChoice: LlmWireToolChoice.Required
         )) })
         @Expect(anthropic.encodeRequest(LlmWireRequest(
-            "claude", validMessages(), tools: [tool], thinking: LlmWireThinkingControl.Adaptive(None),
+            "claude", validMessages(), tools: [tool], thinkingMode: LlmWireThinkingMode.Adaptive,
             maxOutputTokens: Some(2048), toolChoice: LlmWireToolChoice.Required
         )).contains("\"type\":\"any\""), true)
 
         let deepSeek = LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect(), capabilities: allCapabilities())
         expectLlmError("llm.thinking_tool_choice_unsupported", { => let _ = deepSeek.encodeRequest(LlmWireRequest(
-            "deepseek-v4-flash", validMessages(), tools: [tool], thinking: LlmWireThinkingControl.Enabled,
+            "deepseek-v4-flash", validMessages(), tools: [tool], thinkingMode: LlmWireThinkingMode.Enabled,
             toolChoice: LlmWireToolChoice.Auto
         )) })
         @Expect(deepSeek.encodeRequest(LlmWireRequest(
-            "deepseek-v4-flash", validMessages(), tools: [tool], thinking: LlmWireThinkingControl.Disabled,
+            "deepseek-v4-flash", validMessages(), tools: [tool], thinkingMode: LlmWireThinkingMode.Disabled,
             toolChoice: LlmWireToolChoice.Required
         )).contains("\"tool_choice\":\"required\""), true)
 
         expectIllegalArgument({ => let _ = LlmWireStandardDialect(LlmWireDialectContract(
             "custom.thinking.chat", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat,
             LlmWireOutputTokenField.MaxCompletionTokens,
-            thinkingControls: [LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Effort(LlmWireThinkingLevel.High)],
-            thinkingLevels: [LlmWireThinkingLevel.High]
+            thinkingModes: [LlmWireThinkingMode.ProviderDefault],
+            reasoningEfforts: [LlmWireReasoningEffort.High]
         )) })
         expectLlmError("llm.dialect_thinking_replay_unsupported", { => let _ = LlmWireCodec(
             LlmWireProtocol.ChatCompletions,
             MutableTestDialect(LlmWireDialectContract(
                 "custom.direct.thinking", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat,
                 LlmWireOutputTokenField.MaxCompletionTokens,
-                thinkingControls: [LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Enabled]
+                thinkingModes: [LlmWireThinkingMode.ProviderDefault, LlmWireThinkingMode.Enabled]
             ))
         ) })
         expectLlmError("llm.dialect_identity_reserved", { => let _ = LlmWireCodec(
@@ -1382,7 +1390,7 @@ class Llm4CjV02Tests {
 
     @TestCase
     func t050ProviderFeatureShapesAndUnmodeledSemanticsFailClosed() {
-        let imageCapabilities = LlmWireCapabilities(inputModalities: [LlmWireInputModality.Text, LlmWireInputModality.Image])
+        let imageCapabilities = LlmWireCapabilities(input: LlmWireInputCapabilities(modalities: [LlmWireInputModality.Text, LlmWireInputModality.Image]))
         let openAiChat = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: imageCapabilities)
         let deepSeekChat = LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect(), capabilities: imageCapabilities)
         let openAiFile = openAiChat.encodeRequest(LlmWireRequest(
@@ -1404,9 +1412,9 @@ class Llm4CjV02Tests {
         @Expect(url.contains("\"image_url\":{\"url\":\"https://example.invalid/image.png\""), true)
         @Expect(base64.contains("data:image/png;base64,AAAA"), true)
 
-        let cacheCapabilities = LlmWireCapabilities(promptCacheLifetimes: [
+        let cacheCapabilities = LlmWireCapabilities(cache: LlmWireCacheCapabilities(lifetimes: [
             LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.FiveMinutes, LlmWirePromptCacheLifetime.OneHour
-        ])
+        ]))
         let anthropic = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), capabilities: cacheCapabilities)
         expectLlmError("llm.max_output_tokens_invalid", { => let _ = anthropic.encodeRequest(LlmWireRequest(
             "claude", validMessages(), maxOutputTokens: Some(0),
@@ -1507,21 +1515,17 @@ class Llm4CjV02Tests {
                 @Expect(requirementStates[left] == requirementStates[right], left == right)
             }
         }
-        let thinkingControls = [
-            LlmWireThinkingControl.ProviderDefault,
-            LlmWireThinkingControl.Disabled,
-            LlmWireThinkingControl.Enabled,
-            LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low),
-            LlmWireThinkingControl.Effort(LlmWireThinkingLevel.High),
-            LlmWireThinkingControl.Budget(1),
-            LlmWireThinkingControl.Budget(2),
-            LlmWireThinkingControl.Adaptive(None),
-            LlmWireThinkingControl.Adaptive(Some(LlmWireThinkingLevel.Low)),
-            LlmWireThinkingControl.Adaptive(Some(LlmWireThinkingLevel.High))
+        let thinkingModes = [
+            LlmWireThinkingMode.ProviderDefault,
+            LlmWireThinkingMode.Disabled,
+            LlmWireThinkingMode.Enabled,
+            LlmWireThinkingMode.Budget(1),
+            LlmWireThinkingMode.Budget(2),
+            LlmWireThinkingMode.Adaptive
         ]
-        for (left in 0..thinkingControls.size) {
-            for (right in 0..thinkingControls.size) {
-                @Expect(thinkingControls[left] == thinkingControls[right], left == right)
+        for (left in 0..thinkingModes.size) {
+            for (right in 0..thinkingModes.size) {
+                @Expect(thinkingModes[left] == thinkingModes[right], left == right)
             }
         }
         let tiers = [
@@ -1614,23 +1618,20 @@ class Llm4CjV02Tests {
                 structuredOutputModes: [mode]
             ) })
         }
-        for (control in [LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Enabled, LlmWireThinkingControl.Budget(1), LlmWireThinkingControl.Adaptive(None)]) {
+        for (control in [LlmWireThinkingMode.Disabled, LlmWireThinkingMode.Enabled, LlmWireThinkingMode.Budget(1), LlmWireThinkingMode.Adaptive]) {
             expectIllegalArgument({ => let _ = LlmWireDialectContract(
                 "test.bad.thinking", LlmWireProtocol.Responses, LlmWireRequestStyle.OpenAiResponses, LlmWireOutputTokenField.MaxOutputTokens,
-                thinkingControls: [control]
+                thinkingModes: [control]
             ) })
         }
-        expectIllegalArgument({ => let _ = LlmWireDialectContract(
-            "test.bad.levels", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens,
-            thinkingControls: [], thinkingLevels: [LlmWireThinkingLevel.Low]
-        ) })
-        expectIllegalArgument({ => let _ = LlmWireCapabilities(inputModalities: [LlmWireInputModality.Text, LlmWireInputModality.Text]) })
-        expectIllegalArgument({ => let _ = LlmWireCapabilities(thinkingControls: [LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Disabled]) })
-        expectIllegalArgument({ => let _ = LlmWireCapabilities(thinkingLevels: [LlmWireThinkingLevel.Low, LlmWireThinkingLevel.Low]) })
-        expectIllegalArgument({ => let _ = LlmWireCapabilities(structuredOutputModes: [LlmWireStructuredOutputMode.Text, LlmWireStructuredOutputMode.Text]) })
-        expectIllegalArgument({ => let _ = LlmWireCapabilities(serviceTiers: [LlmWireServiceTier.Auto, LlmWireServiceTier.Auto]) })
-        expectIllegalArgument({ => let _ = LlmWireCapabilities(generationSpeeds: [LlmWireGenerationSpeed.Fast, LlmWireGenerationSpeed.Fast]) })
-        expectIllegalArgument({ => let _ = LlmWireCapabilities(promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.ProviderDefault]) })
+        expectIllegalArgument({ => let _ = LlmWireInputCapabilities(modalities: [LlmWireInputModality.Text, LlmWireInputModality.Text]) })
+        expectIllegalArgument({ => let _ = LlmWireThinkingCapabilities(modes: [LlmWireThinkingMode.Disabled, LlmWireThinkingMode.Disabled]) })
+        expectIllegalArgument({ => let _ = LlmWireThinkingCapabilities(efforts: [LlmWireReasoningEffort.Low, LlmWireReasoningEffort.Low]) })
+        expectIllegalArgument({ => let _ = LlmWireOutputCapabilities(structuredModes: [LlmWireStructuredOutputMode.Text, LlmWireStructuredOutputMode.Text]) })
+        expectIllegalArgument({ => let _ = LlmWireOutputCapabilities(serviceTiers: [LlmWireServiceTier.Auto, LlmWireServiceTier.Auto]) })
+        expectIllegalArgument({ => let _ = LlmWireOutputCapabilities(generationSpeeds: [LlmWireGenerationSpeed.Fast, LlmWireGenerationSpeed.Fast]) })
+        expectIllegalArgument({ => let _ = LlmWireCacheCapabilities(lifetimes: [LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.ProviderDefault]) })
+        expectIllegalArgument({ => let _ = LlmWireToolCapabilities(parallelCalls: true) })
     }
 
     @TestCase
@@ -1659,11 +1660,11 @@ class Llm4CjV02Tests {
         }
         for (choice in [LlmWireToolChoice.Auto, LlmWireToolChoice.NoTools, LlmWireToolChoice.Required]) {
             @Expect(openAi.encodeRequest(LlmWireRequest(
-                "m", validMessages(), tools: [LlmWireTool("lookup", "lookup", parseWireJson("{}"))], toolChoice: choice
+                "m", validMessages(), tools: [LlmWireTool("lookup", "lookup", testJson("{}"))], toolChoice: choice
             )).contains("tool_choice"), true)
         }
         @Expect(openAi.encodeRequest(LlmWireRequest(
-            "m", validMessages(), tools: [LlmWireTool("lookup", "lookup", parseWireJson("{}"))],
+            "m", validMessages(), tools: [LlmWireTool("lookup", "lookup", testJson("{}"))],
             streaming: Some(false), parallelToolCalls: Some(false), promptCacheRoutingKey: Some("route"),
             promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ThirtyMinutes)
         )).contains("prompt_cache_options"), true)
@@ -1671,7 +1672,7 @@ class Llm4CjV02Tests {
             "m", validMessages(), promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault)
         ))
         automatic.validateForSend(SatisfiedRequirementResolver())
-        let schema = LlmWireJsonSchema("answer", parseWireJson("{}"), description: "desc", strict: false)
+        let schema = LlmWireJsonSchema("answer", testJson("{}"), description: "desc", strict: false)
         for (format in [LlmWireStructuredOutput.Text, LlmWireStructuredOutput.JsonObject, LlmWireStructuredOutput.JsonSchema(schema)]) {
             @Expect(openAi.encodeRequest(LlmWireRequest("m", validMessages(), structuredOutput: format)).contains("format"), true)
         }
@@ -1687,7 +1688,7 @@ class Llm4CjV02Tests {
         }
         for (parallel in [true, false]) {
             @Expect(anthropic.encodeRequest(LlmWireRequest(
-                "m", validMessages(), tools: [LlmWireTool("lookup", "lookup", parseWireJson("{}"))],
+                "m", validMessages(), tools: [LlmWireTool("lookup", "lookup", testJson("{}"))],
                 maxOutputTokens: Some(8), parallelToolCalls: Some(parallel)
             )).contains("disable_parallel_tool_use"), true)
         }
@@ -1725,7 +1726,7 @@ class Llm4CjV02Tests {
         @Expect(assembleCanonicalReply("", "", [diagnosticTool], LlmWireUsage(), "length", requireExecutableToolCalls: false).blocks.size, 1)
         expectLlmError("llm.tool_stop_without_call", { => validateReplyToolStop(LlmWireReply(), "tool_calls", "tool_calls", ["stop"]) })
         expectLlmError("llm.tool_call_stop_mismatch", { => validateReplyToolStop(
-            LlmWireReply(blocks: [LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(parseWireJson("{}"))))]),
+            LlmWireReply(blocks: [LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(testJson("{}"))))]),
             "stop", "tool_calls", ["stop"]
         ) })
 
@@ -1787,19 +1788,19 @@ class Llm4CjV02Tests {
         }
         let grammar = SseDecoder(maxEventBytes: 512)
         match (grammar.push(": heartbeat\rdata:first\rdata: second\nevent\nid: ok\nretry: 7\r\r")) {
-            case LlmResult.Ok(values) => @Expect(values.size, 0)
+            case LlmWireResult.Ok(values) => @Expect(values.size, 0)
             case _ => @Fail("mixed SSE grammar must decode")
         }
         match (grammar.finish()) {
-            case LlmResult.Ok(values) => @Expect(values.size, 1); @Expect(values[0].data, "first\nsecond"); @Expect(values[0].retryMillis, Some(7))
+            case LlmWireResult.Ok(values) => @Expect(values.size, 1); @Expect(values[0].data, "first\nsecond"); @Expect(values[0].retryMillis, Some(7))
             case _ => @Fail("SSE finish")
         }
         let finishEvent = SseDecoder(maxOutputBytesPerPush: 16)
         let _ = finishEvent.push("data: x\r\r")
-        match (finishEvent.finish()) { case LlmResult.Ok(values) => @Expect(values.size, 1); case _ => @Fail("trailing CR must dispatch") }
+        match (finishEvent.finish()) { case LlmWireResult.Ok(values) => @Expect(values.size, 1); case _ => @Fail("trailing CR must dispatch") }
         let outputBytes = SseDecoder(maxOutputBytesPerPush: 1)
-        match (outputBytes.push("data: xx\n\n")) { case LlmResult.Err(error) => @Expect(error.code, "llm.sse_output_bytes_too_large"); case _ => @Fail("output bytes limit") }
-        match (outputBytes.finish()) { case LlmResult.Err(error) => @Expect(error.code, "llm.sse_failed"); case _ => @Fail("failed finish") }
+        match (outputBytes.push("data: xx\n\n")) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.sse_output_bytes_too_large"); case _ => @Fail("output bytes limit") }
+        match (outputBytes.finish()) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.sse_failed"); case _ => @Fail("failed finish") }
 
         @Expect(parseUnsignedDecimal("0"), Some(0)); @Expect(parseUnsignedDecimal("-1"), None)
         @Expect(parseUnsignedDecimal("a"), None); @Expect(parseUnsignedDecimal("١"), None)
@@ -1851,20 +1852,20 @@ class Llm4CjV02Tests {
         @Expect(messageHasContent(LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("x"))])), true)
 
         for (control in [
-            LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Enabled,
-            LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low), LlmWireThinkingControl.Budget(1024), LlmWireThinkingControl.Adaptive(None)
-        ]) { @Expect(supportsThinkingControl([control], control), true) }
-        @Expect(supportsThinkingControl([LlmWireThinkingControl.Disabled], LlmWireThinkingControl.Enabled), false)
-        @Expect(supportsThinkingControl([], LlmWireThinkingControl.Disabled), false)
-        @Expect(supportsThinkingLevel([LlmWireThinkingLevel.Low], LlmWireThinkingLevel.Low), true)
-        @Expect(supportsThinkingLevel([LlmWireThinkingLevel.Low], LlmWireThinkingLevel.High), false)
+            LlmWireThinkingMode.ProviderDefault, LlmWireThinkingMode.Disabled, LlmWireThinkingMode.Enabled,
+            LlmWireThinkingMode.Budget(1024), LlmWireThinkingMode.Adaptive
+        ]) { @Expect(supportsThinkingMode([control], control), true) }
+        @Expect(supportsThinkingMode([LlmWireThinkingMode.Disabled], LlmWireThinkingMode.Enabled), false)
+        @Expect(supportsThinkingMode([], LlmWireThinkingMode.Disabled), false)
+        @Expect(supportsReasoningEffort([LlmWireReasoningEffort.Low], LlmWireReasoningEffort.Low), true)
+        @Expect(supportsReasoningEffort([LlmWireReasoningEffort.Low], LlmWireReasoningEffort.High), false)
         @Expect(supportsStructuredMode([LlmWireStructuredOutputMode.Text], LlmWireStructuredOutputMode.Text), true)
         @Expect(supportsStructuredMode([], LlmWireStructuredOutputMode.Text), false)
 
-        expectLlmError("llm.thinking_unsupported", { => limited.encodeRequest(LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low))) })
-        let effortOnly = LlmWireCapabilities(thinkingControls: [LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low)], thinkingLevels: [LlmWireThinkingLevel.High])
-        expectLlmError("llm.thinking_level_unsupported", { => LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: effortOnly).encodeRequest(
-            LlmWireRequest("m", validMessages(), thinking: LlmWireThinkingControl.Effort(LlmWireThinkingLevel.Low))
+        expectLlmError("llm.reasoning_effort_unsupported", { => limited.encodeRequest(LlmWireRequest("m", validMessages(), reasoningEffort: LlmWireReasoningEffort.Low)) })
+        let effortOnly = LlmWireCapabilities(thinking: LlmWireThinkingCapabilities(efforts: [LlmWireReasoningEffort.High]))
+        expectLlmError("llm.reasoning_effort_unsupported", { => LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: effortOnly).encodeRequest(
+            LlmWireRequest("m", validMessages(), reasoningEffort: LlmWireReasoningEffort.Low)
         ) })
         expectLlmError("llm.structured_output_unsupported", { => limited.encodeRequest(LlmWireRequest("m", validMessages(), structuredOutput: LlmWireStructuredOutput.Text)) })
         expectLlmError("llm.service_tier_unsupported", { => limited.encodeRequest(LlmWireRequest("m", validMessages(), serviceTier: LlmWireServiceTier.Auto)) })
@@ -1878,7 +1879,7 @@ class Llm4CjV02Tests {
             LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.Base64, "x", mediaType: "")),
             LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.Base64, "x", mediaType: "image")),
             LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.File, " "))
-        ]) { try { validateBlockShape(block); @Fail("invalid image shape") } catch (_: LlmTransportError) { () } }
+        ]) { try { validateBlockShape(block); @Fail("invalid image shape") } catch (_: LlmWireError) { () } }
         validateBlockShape(LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.Url, "https://example.invalid")))
         validateBlockShape(LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.Base64, "x", mediaType: "image/png")))
         validateBlockShape(LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.File, "file-1")))
@@ -1914,5 +1915,41 @@ class Llm4CjV02Tests {
         @Expect(responsesEventMatchesTerminal("response.incomplete", LlmWireTerminal.Incomplete(LlmWireReply(), LlmWireIncompleteReason.Other("x"))), true)
         @Expect(responsesEventMatchesTerminal("response.failed", LlmWireTerminal.Failed(LlmWireFailure(LlmWireFailureKind.ProviderError, "x"))), true)
         @Expect(responsesEventMatchesTerminal("response.completed", LlmWireTerminal.Incomplete(LlmWireReply(), LlmWireIncompleteReason.Other("x"))), false)
+    }
+
+    @TestCase
+    func t058PublicJsonAndNamedCodecFactoriesHideProviderInternals() {
+        let parsed = match (LlmWireJson.parse("{\"n\":1.00,\"items\":[true,null]}")) {
+            case LlmWireResult.Ok(value) => value
+            case LlmWireResult.Err(error) => throw error
+        }
+        @Expect(parsed.kind, LlmWireJsonKind.Object)
+        @Expect(parsed.field("n").getOrThrow().numberLiteral(), Some("1.00"))
+        @Expect(parsed.field("items").getOrThrow().values().size, 2)
+        @Expect(parsed.stringify(), "{\"n\":1.00,\"items\":[true,null]}")
+
+        match (LlmWireJson.number("[]")) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.json_number_invalid")
+            case _ => @Fail("non-number JSON must be rejected")
+        }
+        match (LlmWireJson.object([
+            LlmWireJsonField("x", LlmWireJson.boolean(true)),
+            LlmWireJsonField("x", LlmWireJson.nullValue())
+        ])) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.json_duplicate_key")
+            case _ => @Fail("duplicate object members must be rejected")
+        }
+
+        let profile = openAiResponsesModelProfile("model-a")
+        let codec = openAiResponsesCodec(profile)
+        @Expect(codec.protocol, LlmWireProtocol.Responses)
+        @Expect(codec.dialect.compatibilityId, "openai.responses.v1")
+        @Expect(codec.encodeRequest(LlmWireRequest("model-a", validMessages())).contains("model-a"), true)
+        expectLlmError("llm.model_profile_mismatch", { =>
+            codec.encodeRequest(LlmWireRequest("model-b", validMessages()))
+        })
+        expectLlmError("llm.model_profile_dialect_mismatch", { =>
+            openAiChatCodec(profile)
+        })
     }
 }

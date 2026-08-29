@@ -18,7 +18,7 @@ codec 构造时会冻结 dialect contract、protocol 与 compatibility identity�
 
 未提供 capability 时，仅保证基础文本和 `ProviderDefault` thinking。任何图片、显式 thinking、tools、structured output、parallel tool calls、service tier 或 cache 选项都必须先声明支持。
 
-图片能力按模型声明，不按 provider 一刀切。`deepseek-v4-flash-vision-exp` 可在 Chat、Responses 与 Messages 中使用 URL、JPEG/PNG/GIF/WebP base64 或 Files API `file_id`；调用方必须在 `LlmWireCapabilities.inputModalities` 中声明 `Image`。未声明时统一返回 `llm.image_input_unsupported`。Messages 的 file source 会自动加入 `anthropic-beta: files-api-2025-04-14`。普通 DeepSeek Flash/Pro 不应声明该能力。
+图片能力按模型声明，不按 provider 一刀切。`deepseek-v4-flash-vision-exp` 可在 Chat、Responses 与 Messages 中使用 URL、JPEG/PNG/GIF/WebP base64 或 Files API `file_id`；调用方必须在 `LlmWireCapabilities.input.modalities` 中声明 `Image`。未声明时统一返回 `llm.image_input_unsupported`。Messages 的 file source 会自动加入 `anthropic-beta: files-api-2025-04-14`。普通 DeepSeek Flash/Pro 不应声明该能力。
 
 Chat Files API 的 wire shape 属于 dialect：OpenAI Chat 使用嵌套的 `{"type":"file","file":{"file_id":"..."}}`，DeepSeek Chat 使用 `{"type":"file","file_id":"..."}`。codec 不会因为两者共享 Chat envelope 而混用内容块结构。
 

@@ -30,7 +30,7 @@ func baseRequest(codec: LlmWireCodec, request: LlmWireRequest): JsonNode {
 }
 
 func addDialectOptions(codec: LlmWireCodec, root: JsonNode, request: LlmWireRequest, requirements: ArrayList<LlmWireFeatureRequirement>): Unit {
-    encodeThinking(codec, root, request.thinking)
+    encodeThinking(codec, root, request.thinkingMode, request.reasoningEffort)
     match ((codec.dialect.contract.parallelToolStyle, request.parallelToolCalls)) {
         case (LlmWireParallelToolStyle.OpenAiTopLevel, Some(value)) => root.put("parallel_tool_calls", wireJsonBool(value))
         case _ => ()
@@ -115,7 +115,7 @@ func encodeChatRequest(codec: LlmWireCodec, request: LlmWireRequest, requirement
 }
 
 func encodeMessagesRequest(codec: LlmWireCodec, request: LlmWireRequest, headers: ArrayList<LlmWireHeader>, requirements: ArrayList<LlmWireFeatureRequirement>): String {
-    let root = baseRequest(codec, request); encodeThinking(codec, root, request.thinking)
+    let root = baseRequest(codec, request); encodeThinking(codec, root, request.thinkingMode, request.reasoningEffort)
     if (request.system != "") { root.put("system", wireJsonString(request.system)) }
     if (request.serviceTier != LlmWireServiceTier.ProviderDefault) { root.put("service_tier", wireJsonString(serviceTierName(request.serviceTier))) }
     if (request.generationSpeed != LlmWireGenerationSpeed.ProviderDefault) {
@@ -141,7 +141,7 @@ func encodeMessagesRequest(codec: LlmWireCodec, request: LlmWireRequest, headers
     match (request.structuredOutput) {
         case LlmWireStructuredOutput.JsonSchemaDocument(schema) =>
             let existing = match (root.field("output_config")) { case Some(value) => value; case None => wireJsonObject([]) }
-            existing.put("format", wireJsonObject([WireJsonField("type", wireJsonString("json_schema")), WireJsonField("schema", schema)])); root.put("output_config", existing)
+            existing.put("format", wireJsonObject([WireJsonField("type", wireJsonString("json_schema")), WireJsonField("schema", schema.jsonNode())])); root.put("output_config", existing)
         case _ => ()
     }
     encodePromptCache(codec, root, request.promptCache, requirements)
@@ -149,17 +149,17 @@ func encodeMessagesRequest(codec: LlmWireCodec, request: LlmWireRequest, headers
     let messages = wireJsonArray([])
     for (message in request.messages) { let content = wireJsonArray([]); for (block in message.blocks) { content.add(encodeMessagesContent(block)) }; messages.add(wireJsonObject([WireJsonField("role", wireJsonString(roleName(message.role))), WireJsonField("content", content)])) }
     root.put("messages", messages)
-    if (!request.tools.isEmpty()) { let tools = wireJsonArray([]); for (tool in request.tools) { tools.add(wireJsonObject([WireJsonField("name", wireJsonString(tool.name)), WireJsonField("description", wireJsonString(tool.description)), WireJsonField("input_schema", tool.inputSchema)])) }; root.put("tools", tools) }
+    if (!request.tools.isEmpty()) { let tools = wireJsonArray([]); for (tool in request.tools) { tools.add(wireJsonObject([WireJsonField("name", wireJsonString(tool.name)), WireJsonField("description", wireJsonString(tool.description)), WireJsonField("input_schema", tool.inputSchema.jsonNode())])) }; root.put("tools", tools) }
     root.stringify()
 }
 
 func encodeResponsesJsonSchemaFormat(spec: LlmWireJsonSchema): JsonNode {
-    let value = wireJsonObject([WireJsonField("type", wireJsonString("json_schema")), WireJsonField("name", wireJsonString(spec.name)), WireJsonField("schema", spec.schema), WireJsonField("strict", wireJsonBool(spec.strict))])
+    let value = wireJsonObject([WireJsonField("type", wireJsonString("json_schema")), WireJsonField("name", wireJsonString(spec.name)), WireJsonField("schema", spec.schema.jsonNode()), WireJsonField("strict", wireJsonBool(spec.strict))])
     if (spec.description != "") { value.put("description", wireJsonString(spec.description)) }; value
 }
 
 func encodeChatJsonSchemaSpec(spec: LlmWireJsonSchema): JsonNode {
-    let value = wireJsonObject([WireJsonField("name", wireJsonString(spec.name)), WireJsonField("schema", spec.schema), WireJsonField("strict", wireJsonBool(spec.strict))])
+    let value = wireJsonObject([WireJsonField("name", wireJsonString(spec.name)), WireJsonField("schema", spec.schema.jsonNode()), WireJsonField("strict", wireJsonBool(spec.strict))])
     if (spec.description != "") { value.put("description", wireJsonString(spec.description)) }; value
 }
 
@@ -167,32 +167,39 @@ func flushResponsesMessage(input: JsonNode, role: LlmWireRole, content: JsonNode
     if (!content.items.isEmpty()) { input.add(wireJsonObject([WireJsonField("role", wireJsonString(roleName(role))), WireJsonField("content", content)])) }
 }
 
-func encodeThinking(codec: LlmWireCodec, root: JsonNode, control: LlmWireThinkingControl): Unit {
+func encodeThinking(codec: LlmWireCodec, root: JsonNode, mode: LlmWireThinkingMode, effort: LlmWireReasoningEffort): Unit {
     let style = codec.dialect.contract.requestStyle
-    match ((style, control)) {
-        case (_, LlmWireThinkingControl.ProviderDefault) => ()
-        case (LlmWireRequestStyle.OpenAiResponses, LlmWireThinkingControl.Effort(level)) => root.put("reasoning", wireJsonObject([WireJsonField("effort", wireJsonString(wireThinkingLevel(level)))]))
-        case (LlmWireRequestStyle.OpenAiChat, LlmWireThinkingControl.Disabled) => root.put("reasoning_effort", wireJsonString("none"))
-        case (LlmWireRequestStyle.OpenAiChat, LlmWireThinkingControl.Enabled) => root.put("reasoning_effort", wireJsonString("medium"))
-        case (LlmWireRequestStyle.OpenAiChat, LlmWireThinkingControl.Effort(level)) => root.put("reasoning_effort", wireJsonString(wireThinkingLevel(level)))
-        case (LlmWireRequestStyle.DeepSeekChat, LlmWireThinkingControl.Disabled) | (LlmWireRequestStyle.DeepSeekMessages, LlmWireThinkingControl.Disabled) => root.put("thinking", wireJsonObject([WireJsonField("type", wireJsonString("disabled"))]))
-        case (LlmWireRequestStyle.DeepSeekChat, LlmWireThinkingControl.Enabled) | (LlmWireRequestStyle.DeepSeekMessages, LlmWireThinkingControl.Enabled) => root.put("thinking", wireJsonObject([WireJsonField("type", wireJsonString("enabled"))]))
-        case (LlmWireRequestStyle.DeepSeekChat, LlmWireThinkingControl.Effort(level)) =>
+    match ((style, mode)) {
+        case (LlmWireRequestStyle.OpenAiResponses, LlmWireThinkingMode.ProviderDefault) => putReasoningEffort(root, "reasoning", effort)
+        case (LlmWireRequestStyle.OpenAiChat, LlmWireThinkingMode.ProviderDefault) => putScalarReasoningEffort(root, effort)
+        case (LlmWireRequestStyle.OpenAiChat, LlmWireThinkingMode.Disabled) => root.put("reasoning_effort", wireJsonString("none"))
+        case (LlmWireRequestStyle.OpenAiChat, LlmWireThinkingMode.Enabled) => root.put("reasoning_effort", wireJsonString(if (effort == LlmWireReasoningEffort.ProviderDefault) { "medium" } else { wireReasoningEffort(effort) }))
+        case (LlmWireRequestStyle.DeepSeekChat, LlmWireThinkingMode.Disabled) | (LlmWireRequestStyle.DeepSeekMessages, LlmWireThinkingMode.Disabled) => root.put("thinking", wireJsonObject([WireJsonField("type", wireJsonString("disabled"))]))
+        case (LlmWireRequestStyle.DeepSeekChat, LlmWireThinkingMode.Enabled) =>
             root.put("thinking", wireJsonObject([WireJsonField("type", wireJsonString("enabled"))]))
-            root.put("reasoning_effort", wireJsonString(wireThinkingLevel(level)))
-        case (LlmWireRequestStyle.DeepSeekMessages, LlmWireThinkingControl.Effort(level)) =>
+            putScalarReasoningEffort(root, effort)
+        case (LlmWireRequestStyle.DeepSeekMessages, LlmWireThinkingMode.Enabled) =>
             root.put("thinking", wireJsonObject([WireJsonField("type", wireJsonString("enabled"))]))
-            root.put("output_config", wireJsonObject([WireJsonField("effort", wireJsonString(wireThinkingLevel(level)))]))
-        case (LlmWireRequestStyle.DeepSeekResponses, LlmWireThinkingControl.Disabled) => root.put("reasoning", wireJsonObject([WireJsonField("effort", wireJsonString("none"))]))
-        case (LlmWireRequestStyle.DeepSeekResponses, LlmWireThinkingControl.Enabled) => root.put("reasoning", wireJsonObject([WireJsonField("effort", wireJsonString("high"))]))
-        case (LlmWireRequestStyle.DeepSeekResponses, LlmWireThinkingControl.Effort(level)) => root.put("reasoning", wireJsonObject([WireJsonField("effort", wireJsonString(wireThinkingLevel(level)))]))
-        case (LlmWireRequestStyle.AnthropicMessages, LlmWireThinkingControl.Disabled) => root.put("thinking", wireJsonObject([WireJsonField("type", wireJsonString("disabled"))]))
-        case (LlmWireRequestStyle.AnthropicMessages, LlmWireThinkingControl.Budget(tokens)) => root.put("thinking", wireJsonObject([WireJsonField("type", wireJsonString("enabled")), WireJsonField("budget_tokens", wireJsonNumber(tokens.toString()))]))
-        case (LlmWireRequestStyle.AnthropicMessages, LlmWireThinkingControl.Adaptive(level)) =>
+            if (effort != LlmWireReasoningEffort.ProviderDefault) { root.put("output_config", wireJsonObject([WireJsonField("effort", wireJsonString(wireReasoningEffort(effort)))])) }
+        case (LlmWireRequestStyle.DeepSeekResponses, LlmWireThinkingMode.ProviderDefault) => putReasoningEffort(root, "reasoning", effort)
+        case (LlmWireRequestStyle.DeepSeekResponses, LlmWireThinkingMode.Disabled) => root.put("reasoning", wireJsonObject([WireJsonField("effort", wireJsonString("none"))]))
+        case (LlmWireRequestStyle.DeepSeekResponses, LlmWireThinkingMode.Enabled) => root.put("reasoning", wireJsonObject([WireJsonField("effort", wireJsonString(if (effort == LlmWireReasoningEffort.ProviderDefault) { "high" } else { wireReasoningEffort(effort) }))]))
+        case (_, LlmWireThinkingMode.ProviderDefault) => ()
+        case (LlmWireRequestStyle.AnthropicMessages, LlmWireThinkingMode.Disabled) => root.put("thinking", wireJsonObject([WireJsonField("type", wireJsonString("disabled"))]))
+        case (LlmWireRequestStyle.AnthropicMessages, LlmWireThinkingMode.Budget(tokens)) => root.put("thinking", wireJsonObject([WireJsonField("type", wireJsonString("enabled")), WireJsonField("budget_tokens", wireJsonNumber(tokens.toString()))]))
+        case (LlmWireRequestStyle.AnthropicMessages, LlmWireThinkingMode.Adaptive) =>
             root.put("thinking", wireJsonObject([WireJsonField("type", wireJsonString("adaptive"))]))
-            match (level) { case Some(value) => root.put("output_config", wireJsonObject([WireJsonField("effort", wireJsonString(wireThinkingLevel(value)))])); case None => () }
-        case _ => unsupportedRequest("llm.thinking_not_representable", "thinking control cannot be represented by this dialect")
+            if (effort != LlmWireReasoningEffort.ProviderDefault) { root.put("output_config", wireJsonObject([WireJsonField("effort", wireJsonString(wireReasoningEffort(effort)))])) }
+        case _ => unsupportedRequest("llm.thinking_not_representable", "thinking mode cannot be represented by this dialect")
     }
+}
+
+func putScalarReasoningEffort(root: JsonNode, effort: LlmWireReasoningEffort): Unit {
+    if (effort != LlmWireReasoningEffort.ProviderDefault) { root.put("reasoning_effort", wireJsonString(wireReasoningEffort(effort))) }
+}
+
+func putReasoningEffort(root: JsonNode, field: String, effort: LlmWireReasoningEffort): Unit {
+    if (effort != LlmWireReasoningEffort.ProviderDefault) { root.put(field, wireJsonObject([WireJsonField("effort", wireJsonString(wireReasoningEffort(effort)))])) }
 }
 
 func encodePromptCache(codec: LlmWireCodec, root: JsonNode, value: LlmWirePromptCache, requirements: ArrayList<LlmWireFeatureRequirement>): Unit {
@@ -215,14 +222,14 @@ func encodePromptCache(codec: LlmWireCodec, root: JsonNode, value: LlmWirePrompt
 func serviceTierName(value: LlmWireServiceTier): String { match (value) { case LlmWireServiceTier.Auto => "auto"; case LlmWireServiceTier.Default => "default"; case LlmWireServiceTier.StandardOnly => "standard_only"; case LlmWireServiceTier.Flex => "flex"; case LlmWireServiceTier.Priority => "priority"; case LlmWireServiceTier.Fast => "fast"; case LlmWireServiceTier.Ultrafast => "ultrafast"; case _ => "" } }
 func generationSpeedName(value: LlmWireGenerationSpeed): String { match (value) { case LlmWireGenerationSpeed.Standard => "standard"; case LlmWireGenerationSpeed.Fast => "fast"; case _ => "" } }
 func cacheLifetimeName(value: LlmWirePromptCacheLifetime): String { match (value) { case LlmWirePromptCacheLifetime.FiveMinutes => "5m"; case LlmWirePromptCacheLifetime.ThirtyMinutes => "30m"; case LlmWirePromptCacheLifetime.OneHour => "1h"; case LlmWirePromptCacheLifetime.TwentyFourHours => "24h"; case _ => "" } }
-func wireThinkingLevel(value: LlmWireThinkingLevel): String { match (value) { case LlmWireThinkingLevel.Minimal => "minimal"; case LlmWireThinkingLevel.Low => "low"; case LlmWireThinkingLevel.Medium => "medium"; case LlmWireThinkingLevel.High => "high"; case LlmWireThinkingLevel.XHigh => "xhigh"; case LlmWireThinkingLevel.Max => "max" } }
+func wireReasoningEffort(value: LlmWireReasoningEffort): String { match (value) { case LlmWireReasoningEffort.Minimal => "minimal"; case LlmWireReasoningEffort.Low => "low"; case LlmWireReasoningEffort.Medium => "medium"; case LlmWireReasoningEffort.High => "high"; case LlmWireReasoningEffort.XHigh => "xhigh"; case LlmWireReasoningEffort.Max => "max"; case LlmWireReasoningEffort.ProviderDefault => "" } }
 
 func addResponsesTools(root: JsonNode, values: Array<LlmWireTool>): Unit {
     if (values.isEmpty()) { return }
     let tools = wireJsonArray([])
     for (tool in values) { tools.add(wireJsonObject([
         WireJsonField("type", wireJsonString("function")), WireJsonField("name", wireJsonString(tool.name)),
-        WireJsonField("description", wireJsonString(tool.description)), WireJsonField("parameters", tool.inputSchema)
+        WireJsonField("description", wireJsonString(tool.description)), WireJsonField("parameters", tool.inputSchema.jsonNode())
     ])) }
     root.put("tools", tools)
 }
@@ -232,7 +239,7 @@ func addChatTools(root: JsonNode, values: Array<LlmWireTool>): Unit {
     let tools = wireJsonArray([])
     for (tool in values) { tools.add(wireJsonObject([
         WireJsonField("type", wireJsonString("function")), WireJsonField("function", wireJsonObject([
-            WireJsonField("name", wireJsonString(tool.name)), WireJsonField("description", wireJsonString(tool.description)), WireJsonField("parameters", tool.inputSchema)
+            WireJsonField("name", wireJsonString(tool.name)), WireJsonField("description", wireJsonString(tool.description)), WireJsonField("parameters", tool.inputSchema.jsonNode())
         ]))
     ])) }
     root.put("tools", tools)
@@ -279,22 +286,22 @@ func toolArgumentsRaw(arguments: LlmWireToolArguments): String {
         case LlmWireToolArguments.Complete(value) => value.stringify()
         case LlmWireToolArguments.InvalidJson(raw) => raw
         case LlmWireToolArguments.InvalidShape(value) => value.stringify()
-        case LlmWireToolArguments.Partial(_) => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be encoded")
+        case LlmWireToolArguments.Partial(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be encoded")
     }
 }
 
 func toolArgumentsObject(arguments: LlmWireToolArguments): JsonNode {
     match (arguments) {
-        case LlmWireToolArguments.Complete(value) => if (value.wireKind == WireJsonKind.Object) { value } else { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "tool arguments must be an object") }
-        case LlmWireToolArguments.InvalidShape(_) => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "tool arguments must be an object")
-        case LlmWireToolArguments.InvalidJson(_) => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_arguments_json_invalid", "tool arguments must contain valid JSON")
-        case LlmWireToolArguments.Partial(_) => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be encoded")
+        case LlmWireToolArguments.Complete(value) => if (value.jsonNode().wireKind == WireJsonKind.Object) { value.jsonNode() } else { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "tool arguments must be an object") }
+        case LlmWireToolArguments.InvalidShape(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "tool arguments must be an object")
+        case LlmWireToolArguments.InvalidJson(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_json_invalid", "tool arguments must contain valid JSON")
+        case LlmWireToolArguments.Partial(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be encoded")
     }
 }
 
 func roleName(role: LlmWireRole): String { match (role) { case LlmWireRole.User => "user"; case LlmWireRole.Assistant => "assistant" } }
 func imageDetail(value: LlmWireImageDetail): String { match (value) { case LlmWireImageDetail.Auto => "auto"; case LlmWireImageDetail.Low => "low"; case LlmWireImageDetail.High => "high" } }
-func imageUrl(value: LlmWireImageBlock): String { match (value.sourceKind) { case LlmWireImageSourceKind.Url => value.data; case LlmWireImageSourceKind.Base64 => "data:" + value.mediaType + ";base64," + value.data; case LlmWireImageSourceKind.File => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.image_file_shape_invalid", "file images require a provider-native file_id field") } }
+func imageUrl(value: LlmWireImageBlock): String { match (value.sourceKind) { case LlmWireImageSourceKind.Url => value.data; case LlmWireImageSourceKind.Base64 => "data:" + value.mediaType + ";base64," + value.data; case LlmWireImageSourceKind.File => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.image_file_shape_invalid", "file images require a provider-native file_id field") } }
 
 func encodeChatImage(codec: LlmWireCodec, value: LlmWireImageBlock): JsonNode {
     match (value.sourceKind) {
@@ -343,7 +350,7 @@ func decodeResponsesResponse(codec: LlmWireCodec, root: JsonNode): LlmWireRespon
         case "incomplete" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, incompleteReason(root)))
         case "failed" => LlmWireResponseState.Terminal(LlmWireTerminal.Failed(match (wireOptionalObject(root, "error", provider: codec.provider)) { case Some(error) => providerFailure(codec, error); case None => LlmWireFailure(LlmWireFailureKind.ProviderError, "provider response failed", provider: codec.provider) }))
         case "cancelled" => LlmWireResponseState.Terminal(LlmWireTerminal.Failed(LlmWireFailure(LlmWireFailureKind.Cancelled, "provider response was cancelled", provider: codec.provider)))
-        case _ => throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.responses_status_unsupported", "unknown Responses status: " + status, provider: codec.provider)
+        case _ => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.responses_status_unsupported", "unknown Responses status: " + status, provider: codec.provider)
     }
 }
 
@@ -433,10 +440,10 @@ func decodeChatResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseSta
     if (stop == "stop" || stop == "tool_calls") { validateReplyToolStop(reply, stop, "tool_calls", ["stop"]) }
     match (stop) {
         case "stop" | "tool_calls" => LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply))
-        case "function_call" => throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.chat_legacy_function_call_unsupported", "legacy Chat function_call responses are not supported", provider: codec.provider)
+        case "function_call" => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.chat_legacy_function_call_unsupported", "legacy Chat function_call responses are not supported", provider: codec.provider)
         case "length" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.Length))
         case "content_filter" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.ContentFilter))
-        case _ => throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.chat_finish_reason_unsupported", "unknown Chat finish reason: " + stop, provider: codec.provider)
+        case _ => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.chat_finish_reason_unsupported", "unknown Chat finish reason: " + stop, provider: codec.provider)
     }
 }
 
@@ -475,7 +482,7 @@ func decodeMessagesResponse(codec: LlmWireCodec, root: JsonNode): LlmWireRespons
                 blocks.add(LlmWireBlock.Text(LlmWireTextBlock(wireRequiredString(block, "text", provider: codec.provider))))
             case "tool_use" =>
                 let input = wireRequiredField(block, "input", provider: codec.provider)
-                let arguments = if (input.wireKind == WireJsonKind.Object) { LlmWireToolArguments.Complete(input) } else { LlmWireToolArguments.InvalidShape(input) }
+                let arguments = if (input.wireKind == WireJsonKind.Object) { LlmWireToolArguments.Complete(LlmWireJson.fromJsonNode(input)) } else { LlmWireToolArguments.InvalidShape(LlmWireJson.fromJsonNode(input)) }
                 blocks.add(LlmWireBlock.ToolCall(LlmWireToolCallBlock(wireRequiredString(block, "id", provider: codec.provider), wireRequiredString(block, "name", provider: codec.provider), arguments)))
             case "thinking" => blocks.add(LlmWireBlock.NativeReplay(nativeFromNative(codec, block, kind, wireOptionalString(block, "thinking", provider: codec.provider), modelConstraint, blockIndex)))
             case "redacted_thinking" => blocks.add(LlmWireBlock.NativeReplay(nativeFromNative(codec, block, kind, None, modelConstraint, blockIndex)))
@@ -495,7 +502,7 @@ func decodeMessagesResponse(codec: LlmWireCodec, root: JsonNode): LlmWireRespons
         case "max_tokens" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.MaxTokens))
         case "model_context_window_exceeded" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.ModelContextWindowExceeded))
         case "pause_turn" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.PauseTurn))
-        case _ => throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.messages_stop_reason_unsupported", "unknown Messages stop reason: " + stop, provider: codec.provider)
+        case _ => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.messages_stop_reason_unsupported", "unknown Messages stop reason: " + stop, provider: codec.provider)
     }
 }
 
@@ -539,9 +546,9 @@ func validateOptionalIdentity(codec: LlmWireCodec, value: JsonNode, field: Strin
 func classifyToolArguments(raw: String): LlmWireToolArguments {
     try {
         let value = parseWireJson(raw)
-        if (value.wireKind == WireJsonKind.Object) { LlmWireToolArguments.Complete(value) }
-        else { LlmWireToolArguments.InvalidShape(value) }
-    } catch (_: LlmTransportError) { LlmWireToolArguments.InvalidJson(raw) }
+        if (value.wireKind == WireJsonKind.Object) { LlmWireToolArguments.Complete(LlmWireJson.fromJsonNode(value)) }
+        else { LlmWireToolArguments.InvalidShape(LlmWireJson.fromJsonNode(value)) }
+    } catch (_: LlmWireError) { LlmWireToolArguments.InvalidJson(raw) }
 }
 
 func nativeFromNative(codec: LlmWireCodec, payload: JsonNode, nativeType: String, display: ?String, modelConstraint: ?String, blockOrder: Int64): LlmWireNativeReplayBlock {

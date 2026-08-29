@@ -9,11 +9,11 @@
 - `Terminal(Incomplete)`：保留可用输出，并给出 token/length 等原因；
 - `Terminal(Failed)`：provider 失败、取消或资源失败。
 
-provider 的合法错误响应属于 wire outcome，不会伪装成 JSON 或 transport exception。格式错误、错误字段类型和溢出才抛出 `LlmTransportError`。
+provider 的合法错误响应属于 wire outcome，不会伪装成 JSON 或 transport exception。格式错误、错误字段类型和溢出才抛出 `LlmWireError`。
 
 当前 canonical model 尚未表示 Responses 的非空 `annotations`、`logprobs`、非空 output `phase`，以及 Messages 的 citations、`stop_details` 和 refusal outcome。decoder 检测到这些合法但不可无损表示的语义时统一返回 `Unsupported`，不会删掉字段后返回 `Succeeded`。Chat tool call 只接受明确的 `type: "function"`；其他合法 tool 类型返回 `Unsupported`，缺失 discriminator 属于 `InvalidWire`。
 
-tool arguments 不再被压成一个字符串状态：`Complete` 只保存 canonical JSON 对象，`InvalidJson` 保存非法文本，`InvalidShape` 保存非对象 JSON，`Partial` 只用于尚未完成或 incomplete 的流。成功终态要求 tool arguments 是完整 JSON object；encoder 从 canonical `JsonNode` 生成 wire text，不存在可与对象内容冲突的第二份 raw truth。
+tool arguments 不再被压成一个字符串状态：`Complete` 只保存 canonical `LlmWireJson` 对象，`InvalidJson` 保存非法文本，`InvalidShape` 保存非对象 JSON，`Partial` 只用于尚未完成或 incomplete 的流。成功终态要求 tool arguments 是完整 JSON object；encoder 从 canonical JSON 生成 wire text，不存在可与对象内容冲突的第二份 raw truth。
 
 usage counter 使用 `Option<Int64>`。`None` 表示 provider 没有返回该字段，`Some(0)` 才表示 provider 明确报告零。
 

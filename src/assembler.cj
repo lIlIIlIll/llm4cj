@@ -25,7 +25,7 @@ class CanonicalReplyAssembler {
                     if (!validToolName(call.name)) { invalidWire("llm.tool_call_name_invalid", "a successful reply contains an invalid tool name") }
                     match (call.arguments) {
                         case LlmWireToolArguments.Complete(value) =>
-                            if (value.wireKind != WireJsonKind.Object) { invalidWire("llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object") }
+                            if (value.jsonNode().wireKind != WireJsonKind.Object) { invalidWire("llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object") }
                         case _ => invalidWire("llm.tool_arguments_not_executable", "a successful reply contains tool arguments that are not a complete JSON object")
                     }
                     toolCallIds.add(call.callId)
@@ -36,7 +36,7 @@ class CanonicalReplyAssembler {
                     invalidWire("llm.native_replay_incomplete", "a successful reply contains incomplete native replay state")
                 }
                 blocks.add(block)
-            case LlmWireBlock.Opaque(_) => throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.semantic_block_unsupported", "unknown semantic content cannot enter a canonical reply", phase: Some(LlmTransportPhase.SemanticAssembly))
+            case LlmWireBlock.Opaque(_) => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.semantic_block_unsupported", "unknown semantic content cannot enter a canonical reply", phase: Some(LlmTransportPhase.SemanticAssembly))
             case _ => blocks.add(block)
         }
     }
@@ -76,11 +76,11 @@ func mergeUsageValue(current: ?Int64, next: ?Int64, style: LlmWireUsageMergeStyl
         case Some(value) => match (style) {
             case LlmWireUsageMergeStyle.ReplacePresent => Some(value)
             case LlmWireUsageMergeStyle.Monotonic => match (current) {
-                case Some(previous) => if (value < previous) { throw LlmTransportError(LlmTransportErrorKind.InvalidWire, "llm.usage_decreased", "monotonic usage counter decreased", phase: Some(LlmTransportPhase.SemanticAssembly)) } else { Some(value) }
+                case Some(previous) => if (value < previous) { throw LlmWireError(LlmWireErrorKind.InvalidWire, "llm.usage_decreased", "monotonic usage counter decreased", phase: Some(LlmTransportPhase.SemanticAssembly)) } else { Some(value) }
                 case None => Some(value)
             }
             case LlmWireUsageMergeStyle.Delta => match (current) {
-                case Some(previous) => if (value > Int64.Max - previous) { throw LlmTransportError(LlmTransportErrorKind.InvalidWire, "llm.usage_overflow", "usage delta overflowed Int64", phase: Some(LlmTransportPhase.SemanticAssembly)) } else { Some(previous + value) }
+                case Some(previous) => if (value > Int64.Max - previous) { throw LlmWireError(LlmWireErrorKind.InvalidWire, "llm.usage_overflow", "usage delta overflowed Int64", phase: Some(LlmTransportPhase.SemanticAssembly)) } else { Some(previous + value) }
                 case None => Some(value)
             }
         }
@@ -100,8 +100,8 @@ func unsupportedSemantic(codec: LlmWireCodec, nativeType: String, payload: JsonN
         WireJsonField("truncated", wireJsonBool(!includeRaw))
     ])
     if (includeRaw) { diagnostic.put("raw_fragment", wireJsonString(raw)) }
-    throw LlmTransportError(
-        LlmTransportErrorKind.Unsupported, code, "provider content is valid but cannot be represented safely",
+    throw LlmWireError(
+        LlmWireErrorKind.Unsupported, code, "provider content is valid but cannot be represented safely",
         provider: codec.provider, diagnosticJson: Some(diagnostic.stringify()), phase: Some(LlmTransportPhase.SemanticAssembly),
         protocol: Some(codec.protocol), dialectId: codec.dialect.compatibilityId, eventType: eventType, blockIndex: blockIndex
     )

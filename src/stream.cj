@@ -126,7 +126,7 @@ class StreamBudget {
         } }
     }
     func inputEvent(): Unit { events++; if (events > limits.maxEvents) { limit("llm.stream_events_too_many", "stream consumed too many provider events") } }
-    private func limit(code: String, message: String): Nothing { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, code, message) }
+    private func limit(code: String, message: String): Nothing { throw LlmWireError(LlmWireErrorKind.LimitExceeded, code, message) }
 }
 
 func newWireStreamDecoder(codec: LlmWireCodec, limits: LlmWireStreamLimits): LlmWireStreamDecoder {
@@ -140,32 +140,32 @@ func newWireStreamDecoder(codec: LlmWireCodec, limits: LlmWireStreamLimits): Llm
 open class StreamLifecycle {
     protected var terminal: ?LlmWireTerminal = None
     protected var closed = false
-    private var failed: ?LlmTransportError = None
+    private var failed: ?LlmWireError = None
 
     protected func guardedPush(codec: LlmWireCodec, operation: () -> LlmWireStreamUpdate): LlmWireStreamUpdate {
-        match (failed) { case Some(_) => throw withCodecContext(LlmTransportError(LlmTransportErrorKind.InvalidState, "llm.stream_failed", "stream decoder is poisoned by an earlier error"), codec, LlmTransportPhase.SemanticAssembly); case None => () }
+        match (failed) { case Some(_) => throw withCodecContext(LlmWireError(LlmWireErrorKind.InvalidState, "llm.stream_failed", "stream decoder is poisoned by an earlier error"), codec, LlmTransportPhase.SemanticAssembly); case None => () }
         try { operation() }
-        catch (error: LlmTransportError) { let contextual = withCodecContext(error, codec, LlmTransportPhase.SemanticAssembly); failed = Some(contextual); throw contextual }
+        catch (error: LlmWireError) { let contextual = withCodecContext(error, codec, LlmTransportPhase.SemanticAssembly); failed = Some(contextual); throw contextual }
     }
 
     protected func beforePush(event: SseEvent): Bool {
-        if (closed) { throw LlmTransportError(LlmTransportErrorKind.InvalidState, "llm.stream_closed", "stream decoder is closed") }
+        if (closed) { throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.stream_closed", "stream decoder is closed") }
         match (terminal) {
             case Some(_) =>
                 if (event.data == "[DONE]") { return false }
-                throw LlmTransportError(LlmTransportErrorKind.InvalidWire, "llm.stream_event_after_terminal", "semantic stream event appeared after terminal")
+                throw LlmWireError(LlmWireErrorKind.InvalidWire, "llm.stream_event_after_terminal", "semantic stream event appeared after terminal")
             case None => true
         }
     }
 
     protected func finish(codec: LlmWireCodec): LlmWireTerminal {
-        match (failed) { case Some(_) => throw withCodecContext(LlmTransportError(LlmTransportErrorKind.InvalidState, "llm.stream_failed", "stream decoder is poisoned by an earlier error"), codec, LlmTransportPhase.SemanticAssembly); case None => () }
-        if (closed) { throw withCodecContext(LlmTransportError(LlmTransportErrorKind.InvalidState, "llm.stream_closed", "stream decoder is closed"), codec, LlmTransportPhase.SemanticAssembly) }
+        match (failed) { case Some(_) => throw withCodecContext(LlmWireError(LlmWireErrorKind.InvalidState, "llm.stream_failed", "stream decoder is poisoned by an earlier error"), codec, LlmTransportPhase.SemanticAssembly); case None => () }
+        if (closed) { throw withCodecContext(LlmWireError(LlmWireErrorKind.InvalidState, "llm.stream_closed", "stream decoder is closed"), codec, LlmTransportPhase.SemanticAssembly) }
         match (terminal) {
             case Some(value) => closed = true; value
             case None =>
-                let error = LlmTransportError(
-                    LlmTransportErrorKind.InvalidWire, "llm.stream_terminal_missing", "stream ended without a protocol terminal",
+                let error = LlmWireError(
+                    LlmWireErrorKind.InvalidWire, "llm.stream_terminal_missing", "stream ended without a protocol terminal",
                     provider: codec.provider, phase: Some(LlmTransportPhase.SemanticAssembly), protocol: Some(codec.protocol), dialectId: codec.dialect.compatibilityId
                 )
                 failed = Some(error); throw error
@@ -618,10 +618,10 @@ class ChatStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
         if (reason == "stop" || reason == "tool_calls") { validateReplyToolStop(reply, reason, "tool_calls", ["stop"]) }
         match (reason) {
             case "stop" | "tool_calls" => LlmWireTerminal.Succeeded(reply)
-            case "function_call" => throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.chat_legacy_function_call_unsupported", "legacy Chat function_call streams are not supported", provider: codec.provider)
+            case "function_call" => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.chat_legacy_function_call_unsupported", "legacy Chat function_call streams are not supported", provider: codec.provider)
             case "length" => LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.Length)
             case "content_filter" => LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.ContentFilter)
-            case _ => throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.chat_finish_reason_unsupported", "unknown Chat finish reason: " + reason, provider: codec.provider)
+            case _ => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.chat_finish_reason_unsupported", "unknown Chat finish reason: " + reason, provider: codec.provider)
         }
     }
 
@@ -823,7 +823,7 @@ class MessagesStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
             case "max_tokens" => LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.MaxTokens)
             case "model_context_window_exceeded" => LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.ModelContextWindowExceeded)
             case "pause_turn" => LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.PauseTurn)
-            case _ => throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.messages_stop_reason_unsupported", "unknown Messages stop reason: " + stopReason, provider: codec.provider)
+            case _ => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.messages_stop_reason_unsupported", "unknown Messages stop reason: " + stopReason, provider: codec.provider)
         }
     }
 
@@ -858,7 +858,7 @@ func materializeMessageBlock(codec: LlmWireCodec, block: MessageStreamBlock, mod
         case "redacted_thinking" =>
             let payload = match (block.initialPayload) { case Some(value) => value; case None => wireJsonObject([WireJsonField("type", wireJsonString("redacted_thinking"))]) }
             LlmWireBlock.NativeReplay(nativeReplayFromPayload(codec.protocol, codec.dialect.compatibilityId, "redacted_thinking", payload, modelConstraint: model, blockOrder: block.index, completion: if (block.completed) { LlmWireOpaqueCompletion.Complete } else { LlmWireOpaqueCompletion.Partial }))
-        case _ => throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.messages_stream_block_unsupported", "unknown streamed block cannot be materialized")
+        case _ => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.messages_stream_block_unsupported", "unknown streamed block cannot be materialized")
     }
 }
 

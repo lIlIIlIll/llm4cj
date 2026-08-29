@@ -42,11 +42,11 @@ func decodeStream(name: String, path: String, chunkBytes: Int64): Int64 {
         if (count <= 0) { break }
         let chunk = ArrayList<Byte>()
         for (index in 0..count) { chunk.add(buffer[index]) }
-        let events = match (framing.push(chunk.toArray())) { case LlmResult.Ok(value) => value; case LlmResult.Err(_) => file.close(); return 4 }
+        let events = match (framing.push(chunk.toArray())) { case LlmWireResult.Ok(value) => value; case LlmWireResult.Err(_) => file.close(); return 4 }
         for (value in events) { let _ = decoder.push(value) }
     }
     file.close()
-    let finalEvents = match (framing.finish()) { case LlmResult.Ok(value) => value; case LlmResult.Err(_) => return 5 }
+    let finalEvents = match (framing.finish()) { case LlmWireResult.Ok(value) => value; case LlmWireResult.Err(_) => return 5 }
     for (value in finalEvents) { let _ = decoder.push(value) }
     match (decoder.finishTransport()) {
         case LlmWireTerminal.Succeeded(_) | LlmWireTerminal.Incomplete(_, _) => println("ok"); 0

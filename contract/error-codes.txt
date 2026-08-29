@@ -46,6 +46,7 @@ llm.image_url_invalid
 llm.integer_invalid
 llm.json_duplicate_key
 llm.json_invalid
+llm.json_number_invalid
 llm.max_output_tokens_invalid
 llm.max_output_tokens_required
 llm.message_empty
@@ -73,6 +74,8 @@ llm.messages_stream_event_unsupported
 llm.messages_tool_call_incomplete
 llm.messages_tool_input_start_nonempty
 llm.model_missing
+llm.model_profile_dialect_mismatch
+llm.model_profile_mismatch
 llm.native_replay_cardinality_invalid
 llm.native_replay_dialect_mismatch
 llm.native_replay_incomplete
@@ -95,6 +98,8 @@ llm.parallel_tools_without_tools
 llm.prompt_cache_routing_key_invalid
 llm.prompt_cache_routing_unsupported
 llm.reasoning_display_only
+llm.reasoning_effort_mode_unsupported
+llm.reasoning_effort_unsupported
 llm.refusal_display_only
 llm.required_header_conflict
 llm.responses_arguments_without_item
@@ -167,7 +172,6 @@ llm.structured_output_unsupported
 llm.structured_schema_invalid
 llm.thinking_budget_exceeds_output
 llm.thinking_budget_invalid
-llm.thinking_level_unsupported
 llm.thinking_not_representable
 llm.thinking_tool_choice_unsupported
 llm.thinking_unsupported

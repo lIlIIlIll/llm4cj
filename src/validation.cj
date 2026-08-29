@@ -5,7 +5,7 @@ import std.convert.*
 import yjson.*
 
 func invalidWire(code: String, message: String, provider!: String = ""): Nothing {
-    throw LlmTransportError(LlmTransportErrorKind.InvalidWire, code, message, provider: provider, phase: Some(LlmTransportPhase.WireDecode))
+    throw LlmWireError(LlmWireErrorKind.InvalidWire, code, message, provider: provider, phase: Some(LlmTransportPhase.WireDecode))
 }
 
 func wireObject(value: JsonNode, name: String, provider!: String = ""): JsonNode {
@@ -78,24 +78,31 @@ func wireRequiredInt(value: JsonNode, name: String, provider!: String = ""): Int
 }
 
 func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
-    if (request.model == "") { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.model_missing", "model must not be empty") }
+    if (request.model == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.model_missing", "model must not be empty") }
+    match (codec.modelProfile) {
+        case Some(profile) =>
+            if (request.model != profile.model) {
+                throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.model_profile_mismatch", "request model must match the codec model profile")
+            }
+        case None => ()
+    }
     match (request.maxOutputTokens) {
         case Some(value) =>
             if (value <= 0) {
-                throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.max_output_tokens_invalid", "maxOutputTokens must be positive")
+                throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.max_output_tokens_invalid", "maxOutputTokens must be positive")
             }
         case None => ()
     }
     if (codec.dialect.contract.requireMaxOutputTokens && request.maxOutputTokens.isNone()) {
-        throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.max_output_tokens_required", "this dialect requires maxOutputTokens")
+        throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.max_output_tokens_required", "this dialect requires maxOutputTokens")
     }
     match (codec.protocol) {
         case LlmWireProtocol.Responses =>
-            if (request.messages.isEmpty() && request.system == "") { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.responses_input_required", "Responses requires input messages or instructions") }
+            if (request.messages.isEmpty() && request.system == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.responses_input_required", "Responses requires input messages or instructions") }
         case LlmWireProtocol.ChatCompletions =>
-            if (request.messages.isEmpty()) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.chat_messages_required", "Chat Completions requires at least one message") }
+            if (request.messages.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.chat_messages_required", "Chat Completions requires at least one message") }
         case LlmWireProtocol.Messages =>
-            if (request.messages.isEmpty()) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.messages_required", "Messages requires at least one message") }
+            if (request.messages.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.messages_required", "Messages requires at least one message") }
     }
     validateThinking(codec, request)
     validateRequestCombinations(codec, request)
@@ -103,15 +110,15 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
     var usesTools = !request.tools.isEmpty()
     for (message in request.messages) { for (block in message.blocks) { match (block) { case LlmWireBlock.ToolCall(_) | LlmWireBlock.ToolResult(_) => usesTools = true; case _ => () } } }
     match (request.toolChoice) { case LlmWireToolChoice.ProviderDefault => (); case _ => usesTools = true }
-    if (usesTools && (!codec.dialect.contract.tools || !codec.capabilities.tools)) { unsupportedRequest("llm.tools_unsupported", "tools require an explicit dialect and model capability") }
+    if (usesTools && (!codec.dialect.contract.tools || !codec.capabilities.tools.enabled)) { unsupportedRequest("llm.tools_unsupported", "tools require an explicit dialect and model capability") }
     if ((request.toolChoice == LlmWireToolChoice.Required || request.toolChoice == LlmWireToolChoice.Auto) && request.tools.isEmpty()) {
-        throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_choice_without_tools", "toolChoice requires at least one declared tool")
+        throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_choice_without_tools", "toolChoice requires at least one declared tool")
     }
     validateStructuredOutput(codec, request.structuredOutput)
     match (request.parallelToolCalls) {
         case Some(_) =>
-            if (request.tools.isEmpty()) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.parallel_tools_without_tools", "parallel tool calls require declared tools") }
-            if (codec.dialect.contract.parallelToolStyle == LlmWireParallelToolStyle.Unsupported || !codec.capabilities.parallelToolCalls) { unsupportedRequest("llm.parallel_tools_unsupported", "parallel tool calls are not supported by this dialect and model") }
+            if (request.tools.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.parallel_tools_without_tools", "parallel tool calls require declared tools") }
+            if (codec.dialect.contract.parallelToolStyle == LlmWireParallelToolStyle.Unsupported || !codec.capabilities.tools.parallelCalls) { unsupportedRequest("llm.parallel_tools_unsupported", "parallel tool calls are not supported by this dialect and model") }
         case None => ()
     }
     validateServiceTier(codec, request.serviceTier)
@@ -121,7 +128,7 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
         let message = request.messages[messageIndex]
         var deepSeekReasoningBlocks: Int64 = 0
         if (!messageHasContent(message)) {
-            throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.message_empty", "canonical messages must contain at least one non-empty block")
+            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.message_empty", "canonical messages must contain at least one non-empty block")
         }
         for (blockIndex in 0..message.blocks.size) {
             validateBlockForReplay(codec, request, message, message.blocks[blockIndex], blockIndex)
@@ -131,7 +138,7 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
                 case LlmWireBlock.NativeReplay(value) =>
                     if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.DeepSeekChat && value.nativeType == "reasoning_content") {
                         deepSeekReasoningBlocks++
-                        if (deepSeekReasoningBlocks > 1) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.native_replay_cardinality_invalid", "DeepSeek Chat assistant turns may contain only one reasoning_content replay block") }
+                        if (deepSeekReasoningBlocks > 1) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_cardinality_invalid", "DeepSeek Chat assistant turns may contain only one reasoning_content replay block") }
                     }
                 case LlmWireBlock.ToolResult(value) =>
                     if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.DeepSeekMessages && value.isError) {
@@ -145,20 +152,33 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
 }
 
 func validateRequestCombinations(codec: LlmWireCodec, request: LlmWireRequest): Unit {
+    if (request.thinkingMode == LlmWireThinkingMode.Disabled && request.reasoningEffort != LlmWireReasoningEffort.ProviderDefault) {
+        unsupportedRequest("llm.reasoning_effort_mode_unsupported", "disabled thinking cannot use a reasoning effort")
+    }
     match (codec.dialect.contract.requestStyle) {
         case LlmWireRequestStyle.AnthropicMessages =>
-            if (let LlmWireThinkingControl.Budget(_) <- request.thinking) {
+            if (let LlmWireThinkingMode.Budget(_) <- request.thinkingMode) {
                 if (request.toolChoice == LlmWireToolChoice.Required) {
                     unsupportedRequest("llm.thinking_tool_choice_unsupported", "manual Anthropic thinking supports only automatic or disabled tool choice")
                 }
             }
+            if (request.reasoningEffort != LlmWireReasoningEffort.ProviderDefault && request.thinkingMode != LlmWireThinkingMode.Adaptive) {
+                unsupportedRequest("llm.reasoning_effort_mode_unsupported", "Anthropic reasoning effort requires adaptive thinking")
+            }
         case LlmWireRequestStyle.DeepSeekChat =>
-            match (request.thinking) {
-                case LlmWireThinkingControl.Enabled | LlmWireThinkingControl.Effort(_) =>
+            match (request.thinkingMode) {
+                case LlmWireThinkingMode.Enabled =>
                     if (request.toolChoice != LlmWireToolChoice.ProviderDefault) {
                         unsupportedRequest("llm.thinking_tool_choice_unsupported", "DeepSeek Chat thinking mode does not accept an explicit tool_choice")
                     }
                 case _ => ()
+            }
+            if (request.reasoningEffort != LlmWireReasoningEffort.ProviderDefault && request.thinkingMode != LlmWireThinkingMode.Enabled) {
+                unsupportedRequest("llm.reasoning_effort_mode_unsupported", "DeepSeek Chat reasoning effort requires enabled thinking")
+            }
+        case LlmWireRequestStyle.DeepSeekMessages =>
+            if (request.reasoningEffort != LlmWireReasoningEffort.ProviderDefault && request.thinkingMode != LlmWireThinkingMode.Enabled) {
+                unsupportedRequest("llm.reasoning_effort_mode_unsupported", "DeepSeek Messages reasoning effort requires enabled thinking")
             }
         case _ => ()
     }
@@ -166,7 +186,7 @@ func validateRequestCombinations(codec: LlmWireCodec, request: LlmWireRequest): 
 
 func validateImageCapability(codec: LlmWireCodec, message: LlmWireMessage, value: LlmWireImageBlock): Unit {
     var supported = false
-    for (modality in codec.capabilities.inputModalities where modality == LlmWireInputModality.Image) { supported = true }
+    for (modality in codec.capabilities.input.modalities where modality == LlmWireInputModality.Image) { supported = true }
     if (!supported) { unsupportedRequest("llm.image_input_unsupported", "image input requires an explicit model capability") }
     let deepSeek = match (codec.dialect.contract.requestStyle) {
         case LlmWireRequestStyle.DeepSeekResponses | LlmWireRequestStyle.DeepSeekChat | LlmWireRequestStyle.DeepSeekMessages => true
@@ -185,41 +205,40 @@ func supportedDeepSeekImageMediaType(value: String): Bool {
 }
 
 func validateThinking(codec: LlmWireCodec, request: LlmWireRequest): Unit {
-    if (let LlmWireThinkingControl.ProviderDefault <- request.thinking) { return }
-    if (!supportsThinkingControl(codec.dialect.contract.thinkingControls, request.thinking) || !supportsThinkingControl(codec.capabilities.thinkingControls, request.thinking)) {
-        unsupportedRequest("llm.thinking_unsupported", "thinking control is not supported by the supplied dialect and capabilities")
+    if (request.thinkingMode != LlmWireThinkingMode.ProviderDefault &&
+        (!supportsThinkingMode(codec.dialect.contract.thinkingModes, request.thinkingMode) || !supportsThinkingMode(codec.capabilities.thinking.modes, request.thinkingMode))) {
+        unsupportedRequest("llm.thinking_unsupported", "thinking mode is not supported by the supplied dialect and capabilities")
     }
-    match (request.thinking) {
-        case LlmWireThinkingControl.Effort(level) =>
-            if (!supportsThinkingLevel(codec.dialect.contract.thinkingLevels, level) || !supportsThinkingLevel(codec.capabilities.thinkingLevels, level)) { unsupportedRequest("llm.thinking_level_unsupported", "thinking level is not supported") }
-        case LlmWireThinkingControl.Adaptive(Some(level)) =>
-            if (!supportsThinkingLevel(codec.dialect.contract.thinkingLevels, level) || !supportsThinkingLevel(codec.capabilities.thinkingLevels, level)) { unsupportedRequest("llm.thinking_level_unsupported", "thinking level is not supported") }
-        case LlmWireThinkingControl.Budget(tokens) =>
-            if (tokens < 1024) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.thinking_budget_invalid", "thinking budget must be at least 1024 tokens") }
-            match (request.maxOutputTokens) { case Some(maximum) => if (tokens >= maximum) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.thinking_budget_exceeds_output", "thinking budget must be smaller than maxOutputTokens") }; case None => () }
+    if (request.reasoningEffort != LlmWireReasoningEffort.ProviderDefault &&
+        (!supportsReasoningEffort(codec.dialect.contract.reasoningEfforts, request.reasoningEffort) || !supportsReasoningEffort(codec.capabilities.thinking.efforts, request.reasoningEffort))) {
+        unsupportedRequest("llm.reasoning_effort_unsupported", "reasoning effort is not supported by the supplied dialect and capabilities")
+    }
+    match (request.thinkingMode) {
+        case LlmWireThinkingMode.Budget(tokens) =>
+            if (tokens < 1024) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.thinking_budget_invalid", "thinking budget must be at least 1024 tokens") }
+            match (request.maxOutputTokens) { case Some(maximum) => if (tokens >= maximum) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.thinking_budget_exceeds_output", "thinking budget must be smaller than maxOutputTokens") }; case None => () }
         case _ => ()
     }
-    if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.AnthropicMessages && request.thinking == LlmWireThinkingControl.Enabled) {
+    if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.AnthropicMessages && request.thinkingMode == LlmWireThinkingMode.Enabled) {
         unsupportedRequest("llm.thinking_not_representable", "Anthropic enabled thinking requires an explicit budget or adaptive mode")
     }
 }
 
-func supportsThinkingControl(values: Array<LlmWireThinkingControl>, target: LlmWireThinkingControl): Bool {
+func supportsThinkingMode(values: Array<LlmWireThinkingMode>, target: LlmWireThinkingMode): Bool {
     for (value in values) {
         match ((value, target)) {
-            case (LlmWireThinkingControl.ProviderDefault, LlmWireThinkingControl.ProviderDefault) |
-                 (LlmWireThinkingControl.Disabled, LlmWireThinkingControl.Disabled) |
-                 (LlmWireThinkingControl.Enabled, LlmWireThinkingControl.Enabled) |
-                 (LlmWireThinkingControl.Effort(_), LlmWireThinkingControl.Effort(_)) |
-                 (LlmWireThinkingControl.Budget(_), LlmWireThinkingControl.Budget(_)) |
-                 (LlmWireThinkingControl.Adaptive(_), LlmWireThinkingControl.Adaptive(_)) => return true
+            case (LlmWireThinkingMode.ProviderDefault, LlmWireThinkingMode.ProviderDefault) |
+                 (LlmWireThinkingMode.Disabled, LlmWireThinkingMode.Disabled) |
+                 (LlmWireThinkingMode.Enabled, LlmWireThinkingMode.Enabled) |
+                 (LlmWireThinkingMode.Budget(_), LlmWireThinkingMode.Budget(_)) |
+                 (LlmWireThinkingMode.Adaptive, LlmWireThinkingMode.Adaptive) => return true
             case _ => ()
         }
     }
     false
 }
 
-func supportsThinkingLevel(values: Array<LlmWireThinkingLevel>, target: LlmWireThinkingLevel): Bool {
+func supportsReasoningEffort(values: Array<LlmWireReasoningEffort>, target: LlmWireReasoningEffort): Bool {
     for (value in values where value == target) { return true }; false
 }
 
@@ -236,7 +255,7 @@ func structuredMode(value: LlmWireStructuredOutput): ?LlmWireStructuredOutputMod
 func validateStructuredOutput(codec: LlmWireCodec, value: LlmWireStructuredOutput): Unit {
     match (structuredMode(value)) {
         case None => ()
-        case Some(mode) => if (!supportsStructuredMode(codec.dialect.contract.structuredOutputModes, mode) || !supportsStructuredMode(codec.capabilities.structuredOutputModes, mode)) { unsupportedRequest("llm.structured_output_unsupported", "structured output mode is not supported by this dialect and model") }
+        case Some(mode) => if (!supportsStructuredMode(codec.dialect.contract.structuredOutputModes, mode) || !supportsStructuredMode(codec.capabilities.output.structuredModes, mode)) { unsupportedRequest("llm.structured_output_unsupported", "structured output mode is not supported by this dialect and model") }
     }
     match ((codec.dialect.contract.requestStyle, value)) {
         case (LlmWireRequestStyle.AnthropicMessages, LlmWireStructuredOutput.JsonSchema(_)) => unsupportedRequest("llm.structured_output_metadata_unsupported", "Anthropic output_config.format cannot represent OpenAI schema name, description, or strict metadata")
@@ -250,20 +269,20 @@ func supportsStructuredMode(values: Array<LlmWireStructuredOutputMode>, target: 
 func validateServiceTier(codec: LlmWireCodec, value: LlmWireServiceTier): Unit {
     if (value == LlmWireServiceTier.ProviderDefault) { return }
     var contract = false; for (candidate in codec.dialect.contract.serviceTiers where candidate == value) { contract = true }
-    var capability = false; for (candidate in codec.capabilities.serviceTiers where candidate == value) { capability = true }
+    var capability = false; for (candidate in codec.capabilities.output.serviceTiers where candidate == value) { capability = true }
     if (!contract || !capability) { unsupportedRequest("llm.service_tier_unsupported", "service tier is not supported by this dialect and model") }
 }
 
 func validateGenerationSpeed(codec: LlmWireCodec, value: LlmWireGenerationSpeed): Unit {
     if (value == LlmWireGenerationSpeed.ProviderDefault) { return }
     var contract = false; for (candidate in codec.dialect.contract.generationSpeeds where candidate == value) { contract = true }
-    var capability = false; for (candidate in codec.capabilities.generationSpeeds where candidate == value) { capability = true }
+    var capability = false; for (candidate in codec.capabilities.output.generationSpeeds where candidate == value) { capability = true }
     if (!contract || !capability) { unsupportedRequest("llm.generation_speed_unsupported", "generation speed is not supported by this dialect and model") }
 }
 
 func validatePromptCache(codec: LlmWireCodec, value: LlmWirePromptCache, routingKey: ?String): Unit {
     match (routingKey) {
-        case Some(key) => if (key == "") { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.prompt_cache_routing_key_invalid", "prompt cache routing key must not be empty") } else if (!codec.dialect.contract.promptCacheRoutingKey) { unsupportedRequest("llm.prompt_cache_routing_unsupported", "prompt cache routing is not supported by this dialect") }
+        case Some(key) => if (key == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.prompt_cache_routing_key_invalid", "prompt cache routing key must not be empty") } else if (!codec.dialect.contract.promptCacheRoutingKey) { unsupportedRequest("llm.prompt_cache_routing_unsupported", "prompt cache routing is not supported by this dialect") }
         case None => ()
     }
     match (value) {
@@ -271,23 +290,23 @@ func validatePromptCache(codec: LlmWireCodec, value: LlmWirePromptCache, routing
         case LlmWirePromptCache.Automatic(lifetime) =>
             if (codec.dialect.contract.promptCacheStyle == LlmWirePromptCacheStyle.Unsupported) { unsupportedRequest("llm.cache_unsupported", "automatic prompt caching is not supported") }
             var contract = false; for (candidate in codec.dialect.contract.promptCacheLifetimes where candidate == lifetime) { contract = true }
-            var capability = false; for (candidate in codec.capabilities.promptCacheLifetimes where candidate == lifetime) { capability = true }
+            var capability = false; for (candidate in codec.capabilities.cache.lifetimes where candidate == lifetime) { capability = true }
             if (!contract || !capability) { unsupportedRequest("llm.cache_lifetime_unsupported", "prompt cache lifetime is not supported") }
     }
 }
 
 func unsupportedRequest(code: String, message: String): Nothing {
-    throw LlmTransportError(LlmTransportErrorKind.Unsupported, code, message, phase: Some(LlmTransportPhase.Encode))
+    throw LlmWireError(LlmWireErrorKind.Unsupported, code, message, phase: Some(LlmTransportPhase.Encode))
 }
 
 func unsupportedWire(code: String, message: String, provider!: String = ""): Nothing {
-    throw LlmTransportError(LlmTransportErrorKind.Unsupported, code, message, provider: provider, phase: Some(LlmTransportPhase.WireDecode))
+    throw LlmWireError(LlmWireErrorKind.Unsupported, code, message, provider: provider, phase: Some(LlmTransportPhase.WireDecode))
 }
 
 func validateBlockForReplay(codec: LlmWireCodec, request: LlmWireRequest, message: LlmWireMessage, block: LlmWireBlock, blockIndex: Int64): Unit {
     match (block) {
         case LlmWireBlock.NativeReplay(value) =>
-            if (message.role != LlmWireRole.Assistant) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.native_replay_role_invalid", "native replay state must remain in an assistant turn") }
+            if (message.role != LlmWireRole.Assistant) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_role_invalid", "native replay state must remain in an assistant turn") }
             if (value.completion != LlmWireOpaqueCompletion.Complete) { unsupportedRequest("llm.native_replay_incomplete", "partial native state cannot be replayed") }
             if (value.protocol != codec.protocol || value.dialectId != codec.dialect.compatibilityId) { unsupportedRequest("llm.native_replay_dialect_mismatch", "native state can only be replayed by the same protocol and dialect compatibility ID") }
             match (value.modelConstraint) { case Some(model) => if (model != request.model) { unsupportedRequest("llm.native_replay_model_mismatch", "native state is constrained to another model") }; case None => () }
@@ -296,12 +315,12 @@ func validateBlockForReplay(codec: LlmWireCodec, request: LlmWireRequest, messag
         case LlmWireBlock.Reasoning(_) => unsupportedRequest("llm.reasoning_display_only", "display reasoning is not request-encodable")
         case LlmWireBlock.Refusal(_) => unsupportedRequest("llm.refusal_display_only", "refusal output is not request-encodable")
         case LlmWireBlock.ToolCall(value) =>
-            if (!validToolName(value.name)) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_call_name_invalid", "tool call names must use the tool-name grammar") }
+            if (!validToolName(value.name)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_name_invalid", "tool call names must use the tool-name grammar") }
             match (value.arguments) {
             case LlmWireToolArguments.Complete(arguments) =>
-                if (arguments.wireKind != WireJsonKind.Object) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object") }
-            case LlmWireToolArguments.Partial(_) => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be sent as an executable tool call")
-            case _ => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_arguments_not_executable", "invalid tool arguments cannot be sent as an executable tool call")
+                if (arguments.jsonNode().wireKind != WireJsonKind.Object) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object") }
+            case LlmWireToolArguments.Partial(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be sent as an executable tool call")
+            case _ => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_not_executable", "invalid tool arguments cannot be sent as an executable tool call")
         }
         case _ => ()
     }
@@ -318,16 +337,16 @@ func messageHasContent(message: LlmWireMessage): Bool {
 func validateToolsAndSchemas(request: LlmWireRequest): Unit {
     let names = HashSet<String>()
     for (tool in request.tools) {
-        if (!validToolName(tool.name)) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_name_invalid", "tool names must be 1-64 ASCII letters, digits, underscore, or hyphen") }
-        if (names.contains(tool.name)) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_name_duplicate", "tool names must be unique") }
+        if (!validToolName(tool.name)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_invalid", "tool names must be 1-64 ASCII letters, digits, underscore, or hyphen") }
+        if (names.contains(tool.name)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_duplicate", "tool names must be unique") }
         names.add(tool.name)
-        if (tool.inputSchema.wireKind != WireJsonKind.Object) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_schema_invalid", "tool input schema must be a JSON object") }
+        if (tool.inputSchema.jsonNode().wireKind != WireJsonKind.Object) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_schema_invalid", "tool input schema must be a JSON object") }
     }
     match (request.structuredOutput) {
         case LlmWireStructuredOutput.JsonSchema(value) =>
-            if (value.name == "" || value.schema.wireKind != WireJsonKind.Object) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.structured_schema_invalid", "structured output name and object schema are required") }
+            if (value.name == "" || value.schema.jsonNode().wireKind != WireJsonKind.Object) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.structured_schema_invalid", "structured output name and object schema are required") }
         case LlmWireStructuredOutput.JsonSchemaDocument(value) =>
-            if (value.wireKind != WireJsonKind.Object) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.structured_schema_invalid", "structured output schema must be a JSON object") }
+            if (value.jsonNode().wireKind != WireJsonKind.Object) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.structured_schema_invalid", "structured output schema must be a JSON object") }
         case _ => ()
     }
 }
@@ -345,9 +364,9 @@ func validToolName(value: String): Bool {
 func validateBlockShape(block: LlmWireBlock): Unit {
     match (block) {
         case LlmWireBlock.Image(value) => match (value.sourceKind) {
-            case LlmWireImageSourceKind.Url => if (value.data.trimAscii() == "") { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.image_url_invalid", "image URL must not be empty") }
-            case LlmWireImageSourceKind.Base64 => if (value.data == "" || value.mediaType == "" || !value.mediaType.contains("/")) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.image_base64_invalid", "base64 images require data and a media type") }
-            case LlmWireImageSourceKind.File => if (value.data.trimAscii() == "") { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.image_file_invalid", "file images require a file ID") }
+            case LlmWireImageSourceKind.Url => if (value.data.trimAscii() == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.image_url_invalid", "image URL must not be empty") }
+            case LlmWireImageSourceKind.Base64 => if (value.data == "" || value.mediaType == "" || !value.mediaType.contains("/")) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.image_base64_invalid", "base64 images require data and a media type") }
+            case LlmWireImageSourceKind.File => if (value.data.trimAscii() == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.image_file_invalid", "file images require a file ID") }
         }
         case _ => ()
     }
@@ -358,29 +377,29 @@ func validateConversation(messages: Array<LlmWireMessage>): Unit {
     let pending = HashSet<String>()
     for (message in messages) {
         if (!pending.isEmpty()) {
-            if (message.role != LlmWireRole.User) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_conversation_out_of_phase", "only tool results may follow unresolved tool calls", phase: Some(LlmTransportPhase.Encode)) }
+            if (message.role != LlmWireRole.User) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_conversation_out_of_phase", "only tool results may follow unresolved tool calls", phase: Some(LlmTransportPhase.Encode)) }
             for (block in message.blocks) { match (block) {
                 case LlmWireBlock.ToolResult(_) => ()
-                case _ => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_conversation_out_of_phase", "ordinary content cannot appear while tool calls are unresolved", phase: Some(LlmTransportPhase.Encode))
+                case _ => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_conversation_out_of_phase", "ordinary content cannot appear while tool calls are unresolved", phase: Some(LlmTransportPhase.Encode))
             } }
         }
         for (block in message.blocks) {
         match (block) {
             case LlmWireBlock.ToolCall(call) =>
-                if (message.role != LlmWireRole.Assistant) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_call_role_invalid", "tool calls must belong to assistant messages") }
-                if (call.callId == "" || known.contains(call.callId)) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_call_duplicate", "tool call IDs must be non-empty and unique") }
+                if (message.role != LlmWireRole.Assistant) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_role_invalid", "tool calls must belong to assistant messages") }
+                if (call.callId == "" || known.contains(call.callId)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_duplicate", "tool call IDs must be non-empty and unique") }
                 known.add(call.callId)
                 pending.add(call.callId)
             case LlmWireBlock.ToolResult(result) =>
-                if (message.role != LlmWireRole.User) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_result_role_invalid", "tool results must belong to user messages") }
-                if (!pending.contains(result.callId)) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_result_unmatched", "tool result must match a prior unconsumed tool call") }
+                if (message.role != LlmWireRole.User) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_role_invalid", "tool results must belong to user messages") }
+                if (!pending.contains(result.callId)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_unmatched", "tool result must match a prior unconsumed tool call") }
                 pending.remove(result.callId)
             case _ => ()
         }
         }
         if (message.role == LlmWireRole.User && !pending.isEmpty()) {
-            throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_results_incomplete", "one tool-result message must close every pending parallel tool call", phase: Some(LlmTransportPhase.Encode))
+            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_results_incomplete", "one tool-result message must close every pending parallel tool call", phase: Some(LlmTransportPhase.Encode))
         }
     }
-    if (!pending.isEmpty()) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.tool_call_unresolved", "every tool call must have exactly one later result") }
+    if (!pending.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_unresolved", "every tool call must have exactly one later result") }
 }
