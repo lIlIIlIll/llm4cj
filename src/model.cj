@@ -374,7 +374,7 @@ public class LlmWireReply {
                 case LlmWireToolArguments.Complete(_) => replayable.add(block)
                 case _ => throw LlmTransportError(LlmTransportErrorKind.InvalidState, "llm.tool_arguments_not_executable", "diagnostic or partial tool arguments cannot be projected into continuation input")
             }
-            case _ => ()
+            case _ => throw LlmTransportError(LlmTransportErrorKind.InvalidState, "llm.continuation_projection_lossy", "continuation projection would discard a semantic reply block")
         } }
         if (replayable.isEmpty()) { [] } else { [LlmWireMessage(LlmWireRole.Assistant, replayable.toArray())] }
     }

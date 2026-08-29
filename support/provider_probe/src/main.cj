@@ -46,7 +46,8 @@ func decodeStream(name: String, path: String, chunkBytes: Int64): Int64 {
         for (value in events) { let _ = decoder.push(value) }
     }
     file.close()
-    match (framing.finish()) { case LlmResult.Ok(_) => (); case LlmResult.Err(_) => return 5 }
+    let finalEvents = match (framing.finish()) { case LlmResult.Ok(value) => value; case LlmResult.Err(_) => return 5 }
+    for (value in finalEvents) { let _ = decoder.push(value) }
     match (decoder.finishTransport()) {
         case LlmWireTerminal.Succeeded(_) | LlmWireTerminal.Incomplete(_, _) => println("ok"); 0
         case LlmWireTerminal.Failed(_) => 6

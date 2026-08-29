@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import tomllib
 from pathlib import Path
+from typing import Sequence
 
 
 def changed_lines(diff: str) -> dict[str, set[int]]:
@@ -53,6 +55,35 @@ def read_lcov(
     return lines, branches
 
 
+def read_instrumented_lines(gcov_root: Path, root: Path) -> dict[str, set[int]]:
+    """Read executable source lines from gcov, including zero-hit lines."""
+    instrumented: dict[str, set[int]] = {}
+    source_root = root.resolve() / "src"
+    for path in gcov_root.rglob("*.gcov"):
+        raw_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        source = ""
+        for raw in raw_lines[:10]:
+            match = re.match(r"\s*-:\s*0:Source:(.+)$", raw)
+            if match:
+                source = match.group(1)
+                break
+        if not source:
+            continue
+        try:
+            resolved = Path(source).resolve()
+            resolved.relative_to(source_root)
+            relative = str(resolved.relative_to(root.resolve())).replace("\\", "/")
+        except ValueError:
+            continue
+        target = instrumented.setdefault(relative, set())
+        for raw in raw_lines:
+            match = re.match(r"\s*([^:]+):\s*(\d+):", raw)
+            if not match or match.group(1).strip() == "-":
+                continue
+            target.add(int(match.group(2)))
+    return instrumented
+
+
 def percent(hit: int, total: int) -> float:
     return 100.0 * hit / total if total else 0.0
 
@@ -78,58 +109,92 @@ def has_candidate_code(path: Path, numbers: set[int]) -> bool:
     return False
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--diff", type=Path, required=True)
-parser.add_argument("--lcov", type=Path, required=True)
-parser.add_argument("--baseline", type=Path, required=True)
-args = parser.parse_args()
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    diff_source = parser.add_mutually_exclusive_group(required=True)
+    diff_source.add_argument("--diff", type=Path)
+    diff_source.add_argument("--base-ref")
+    parser.add_argument("--lcov", type=Path, required=True)
+    parser.add_argument("--gcov-root", type=Path, required=True)
+    parser.add_argument("--baseline", type=Path, required=True)
+    parser.add_argument("--root", type=Path, default=Path.cwd())
+    args = parser.parse_args(argv)
 
-changed = changed_lines(args.diff.read_text(encoding="utf-8"))
-lines, branches = read_lcov(args.lcov)
-lines = {canonical_source(source): values for source, values in lines.items()}
-branches = {canonical_source(source): values for source, values in branches.items()}
-production_changed = {
-    source: numbers for source, numbers in changed.items()
-    if source.startswith("src/") and source.endswith(".cj") and not source.endswith("_test.cj")
-}
-missing_records = sorted(source for source in production_changed if source not in lines)
-if missing_records:
-    raise SystemExit("modified production source is absent from LCOV: " + ", ".join(missing_records))
+    root = args.root.resolve()
+    if args.diff is not None:
+        diff_text = args.diff.read_text(encoding="utf-8")
+    else:
+        diff_text = subprocess.run(
+            ["git", "diff", "--unified=0", f"{args.base_ref}...HEAD", "--", "src/*.cj"],
+            cwd=root, check=True, text=True, capture_output=True,
+        ).stdout
+    changed = changed_lines(diff_text)
+    lines, branches = read_lcov(args.lcov)
+    lines = {canonical_source(source): values for source, values in lines.items()}
+    branches = {canonical_source(source): values for source, values in branches.items()}
+    instrumented = read_instrumented_lines(args.gcov_root, root)
+    production_changed = {
+        source: numbers for source, numbers in changed.items()
+        if source.startswith("src/") and source.endswith(".cj") and not source.endswith("_test.cj")
+    }
+    missing_records = sorted(source for source in production_changed if source not in lines)
+    if missing_records:
+        raise SystemExit("modified production source is absent from LCOV: " + ", ".join(missing_records))
+    missing_instrumentation = sorted(source for source in production_changed if source not in instrumented)
+    if missing_instrumentation:
+        raise SystemExit("modified production source is absent from gcov instrumentation: " + ", ".join(missing_instrumentation))
 
-line_counts = [
-    count
-    for source, source_lines in lines.items()
-    for number, count in source_lines.items()
-    if number in changed.get(source, set())
-]
-branch_counts = [
-    count
-    for source, source_branches in branches.items()
-    for number, count in source_branches
-    if number in changed.get(source, set())
-]
+    executable_changed = {
+        source: numbers & instrumented.get(source, set())
+        for source, numbers in production_changed.items()
+    }
+    missing_da = sorted(
+        f"{source}:{number}"
+        for source, numbers in executable_changed.items()
+        for number in numbers
+        if number not in lines.get(source, {})
+    )
+    if missing_da:
+        raise SystemExit("instrumented patch lines are absent from LCOV DA records: " + ", ".join(missing_da))
 
-candidate_files = [source for source, numbers in production_changed.items() if has_candidate_code(Path(source), numbers)]
-if candidate_files and not line_counts:
-    raise SystemExit("modified production code has no instrumented patch lines")
+    line_counts = [
+        lines[source][number]
+        for source, numbers in executable_changed.items()
+        for number in sorted(numbers)
+    ]
+    branch_counts = [
+        count
+        for source, source_branches in branches.items()
+        for number, count in source_branches
+        if number in changed.get(source, set())
+    ]
 
-line_hit = sum(count > 0 for count in line_counts)
-branch_hit = sum(count > 0 for count in branch_counts)
-line_percent = percent(line_hit, len(line_counts)) if candidate_files else 100.0
-branch_percent = percent(branch_hit, len(branch_counts)) if branch_counts else 100.0
-baseline = tomllib.loads(args.baseline.read_text(encoding="utf-8"))
-line_minimum = float(baseline["patch_line_percent"])
-branch_minimum = float(baseline["patch_branch_percent"])
+    candidate_files = [source for source, numbers in production_changed.items() if has_candidate_code(root / source, numbers)]
+    if candidate_files and not line_counts:
+        raise SystemExit("modified production code has no instrumented patch lines")
 
-print(
-    f"patch line coverage: {line_hit}/{len(line_counts)} = {line_percent:.1f}% "
-    f"(minimum {line_minimum:.1f}%)"
-)
-print(
-    f"patch branch coverage: {branch_hit}/{len(branch_counts)} = {branch_percent:.1f}% "
-    f"(minimum {branch_minimum:.1f}%)"
-)
-if line_percent + 1e-9 < line_minimum:
-    raise SystemExit("line coverage fell below the patch minimum")
-if branch_percent + 1e-9 < branch_minimum:
-    raise SystemExit("branch coverage fell below the patch minimum")
+    line_hit = sum(count > 0 for count in line_counts)
+    branch_hit = sum(count > 0 for count in branch_counts)
+    line_percent = percent(line_hit, len(line_counts)) if candidate_files else 100.0
+    branch_percent = percent(branch_hit, len(branch_counts)) if branch_counts else 100.0
+    baseline = tomllib.loads(args.baseline.read_text(encoding="utf-8"))
+    line_minimum = float(baseline["patch_line_percent"])
+    branch_minimum = float(baseline["patch_branch_percent"])
+
+    print(
+        f"patch line coverage: {line_hit}/{len(line_counts)} = {line_percent:.1f}% "
+        f"(minimum {line_minimum:.1f}%)"
+    )
+    print(
+        f"patch branch coverage: {branch_hit}/{len(branch_counts)} = {branch_percent:.1f}% "
+        f"(minimum {branch_minimum:.1f}%)"
+    )
+    if line_percent + 1e-9 < line_minimum:
+        raise SystemExit("line coverage fell below the patch minimum")
+    if branch_percent + 1e-9 < branch_minimum:
+        raise SystemExit("branch coverage fell below the patch minimum")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

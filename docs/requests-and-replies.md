@@ -21,4 +21,4 @@ conversation 只接受可发送的 canonical history：assistant tool call 之�
 
 空 block 列表和只包含空文本的 message 会以 `llm.message_empty` 拒绝。ToolResult turn 不允许与 Text 交错，因此 Chat encoder 不会重新排序“文本 + 工具结果”这种非法 canonical 输入。`Complete` tool arguments 在所有协议中都必须是 JSON object；历史 ToolCall name 与工具定义采用相同的 1–64 字节 ASCII 名称语法。
 
-`LlmWireReply.toContinuationInput()` 只投影可安全继续发送的 text、完整 tool call 和 native replay block。`InvalidJson`、`InvalidShape` 或 `Partial` tool arguments 会明确失败；display reasoning、refusal 与未知诊断 block 不会被静默转换成普通输入文本。如果删除较早的不可回放 block 会改变后续 `NativeReplay.blockOrder`，projection 会以 `llm.native_replay_projection_order_invalid` 失败，而不是生成下一次请求必然拒绝的历史。Responses encoder 只聚合相邻普通 content，native item 与 message 的相对顺序保持不变。
+`LlmWireReply.toContinuationInput()` 只投影可安全继续发送的 text、完整 tool call 和 native replay block。`InvalidJson`、`InvalidShape` 或 `Partial` tool arguments 会明确失败；存在 display reasoning、refusal 或未知诊断 block 时也会以 `llm.continuation_projection_lossy` 失败，绝不静默丢弃语义。如果删除较早的不可回放 block 会改变后续 `NativeReplay.blockOrder`，projection 会以 `llm.native_replay_projection_order_invalid` 失败，而不是生成下一次请求必然拒绝的历史。Responses encoder 只聚合相邻普通 content，native item 与 message 的相对顺序保持不变。

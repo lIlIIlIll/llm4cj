@@ -162,20 +162,19 @@ public class LlmWireCapabilities {
     private let promptCacheLifetimesValue: Array<LlmWirePromptCacheLifetime>
     public let tools: Bool
     public let parallelToolCalls: Bool
-    public let nativeExplicitCacheBreakpoints: Bool
     public init(
         inputModalities!: Array<LlmWireInputModality> = [LlmWireInputModality.Text],
         thinkingControls!: Array<LlmWireThinkingControl> = [], thinkingLevels!: Array<LlmWireThinkingLevel> = [],
         structuredOutputModes!: Array<LlmWireStructuredOutputMode> = [], serviceTiers!: Array<LlmWireServiceTier> = [],
         generationSpeeds!: Array<LlmWireGenerationSpeed> = [], promptCacheLifetimes!: Array<LlmWirePromptCacheLifetime> = [],
-        tools!: Bool = false, parallelToolCalls!: Bool = false, nativeExplicitCacheBreakpoints!: Bool = false
+        tools!: Bool = false, parallelToolCalls!: Bool = false
     ) {
         if (hasDuplicate(inputModalities)) { throw IllegalArgumentException("capability declarations must not contain duplicate input modalities") }
         rejectDuplicateContractValues(thinkingControls, thinkingLevels, structuredOutputModes, serviceTiers, generationSpeeds, promptCacheLifetimes)
         this.inputModalitiesValue = copyValues(inputModalities)
         this.thinkingControlsValue = copyValues(thinkingControls); this.thinkingLevelsValue = copyValues(thinkingLevels); this.structuredOutputModesValue = copyValues(structuredOutputModes)
         this.serviceTiersValue = copyValues(serviceTiers); this.generationSpeedsValue = copyValues(generationSpeeds); this.promptCacheLifetimesValue = copyValues(promptCacheLifetimes)
-        this.tools = tools; this.parallelToolCalls = parallelToolCalls; this.nativeExplicitCacheBreakpoints = nativeExplicitCacheBreakpoints
+        this.tools = tools; this.parallelToolCalls = parallelToolCalls
     }
     public prop inputModalities: Array<LlmWireInputModality> { get() { copyValues(inputModalitiesValue) } }
     public prop thinkingControls: Array<LlmWireThinkingControl> { get() { copyValues(thinkingControlsValue) } }

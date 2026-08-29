@@ -817,9 +817,9 @@ class MessagesStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
             responseId, model, output.toArray(), usage, stopReason,
             requireExecutableToolCalls: !incomplete
         )
-        if (stopReason == "tool_use" || stopReason == "end_turn" || stopReason == "stop_sequence" || stopReason == "refusal") { validateReplyToolStop(reply, stopReason, "tool_use", ["end_turn", "stop_sequence", "refusal"]) }
+        if (stopReason == "tool_use" || stopReason == "end_turn" || stopReason == "stop_sequence") { validateReplyToolStop(reply, stopReason, "tool_use", ["end_turn", "stop_sequence"]) }
         match (stopReason) {
-            case "end_turn" | "stop_sequence" | "tool_use" | "refusal" => LlmWireTerminal.Succeeded(reply)
+            case "end_turn" | "stop_sequence" | "tool_use" => LlmWireTerminal.Succeeded(reply)
             case "max_tokens" => LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.MaxTokens)
             case "model_context_window_exceeded" => LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.ModelContextWindowExceeded)
             case "pause_turn" => LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.PauseTurn)

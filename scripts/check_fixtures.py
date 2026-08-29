@@ -70,6 +70,12 @@ def main() -> None:
                     [stream_executable, "decode-stream", dialect, stream_path, str(chunk_size)],
                     cwd=ROOT, check=True,
                 )
+            trailing_cr_path = temporary / (fixture.stem + "-trailing-cr.sse")
+            trailing_cr_path.write_text("".join(f"data: {value}\r\r" for value in events), encoding="utf-8")
+            subprocess.run(
+                [stream_executable, "decode-stream", dialect, trailing_cr_path, "7"],
+                cwd=ROOT, check=True,
+            )
 
     print(f"provider fixtures verified through public codecs: {len(records) + len(request_records) + len(stream_records)}")
 

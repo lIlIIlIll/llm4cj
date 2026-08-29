@@ -22,6 +22,6 @@ codec 构造时会冻结 dialect contract、protocol 与 compatibility identity�
 
 Chat Files API 的 wire shape 属于 dialect：OpenAI Chat 使用嵌套的 `{"type":"file","file":{"file_id":"..."}}`，DeepSeek Chat 使用 `{"type":"file","file_id":"..."}`。codec 不会因为两者共享 Chat envelope 而混用内容块结构。
 
-Anthropic Messages 的 automatic prompt cache 编码为顶层 `cache_control`。`ProviderDefault` 与 `FiveMinutes` 使用默认 5 分钟 TTL，`OneHour` 显式写入 `ttl: "1h"`；其他 lifetime 在发送前拒绝。automatic cache 请求允许 `maxOutputTokens=0` 用于 cache prewarm，其他 dialect 或未启用 cache 的零输出上限仍是非法请求。
+Anthropic Messages 的 automatic prompt cache 编码为顶层 `cache_control`。`ProviderDefault` 与 `FiveMinutes` 使用默认 5 分钟 TTL，`OneHour` 显式写入 `ttl: "1h"`；其他 lifetime 在发送前拒绝。`maxOutputTokens` 必须为正数。v0.2 不公开 cache pre-warm，因为该流程还需要显式 breakpoint、请求目的和 request-aware response expectation；调用方不能用普通生成请求模拟预热。
 
 DeepSeek Messages compatibility 仍不支持 `redacted_thinking`；合法但无法安全回放的响应返回 `Unsupported`。

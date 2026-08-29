@@ -24,6 +24,7 @@ llm.chat_tool_call_index_invalid
 llm.chat_tool_call_name_mismatch
 llm.chat_tool_call_type_missing
 llm.chat_tool_type_unsupported
+llm.continuation_projection_lossy
 llm.dialect_identity_mismatch
 llm.dialect_identity_reserved
 llm.dialect_protocol_mismatch

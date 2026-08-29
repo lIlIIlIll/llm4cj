@@ -129,6 +129,7 @@ public class SseDecoder {
     public func finish(): LlmResult<Array<SseEvent>> {
         if (failed) { return llmFailure<Array<SseEvent>>(LlmTransportErrorKind.InvalidState, "llm.sse_failed", "SSE decoder is poisoned by an earlier error") }
         if (closed) { return llmFailure<Array<SseEvent>>(LlmTransportErrorKind.InvalidState, "llm.sse_closed", "SSE decoder is closed") }
+        pushOutputBytes = 0
         let output = ArrayList<SseEvent>()
         try {
             if (sawCarriageReturn) { sawCarriageReturn = false; processLine(output) }

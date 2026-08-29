@@ -151,46 +151,52 @@ def public_api_shape(value: str) -> list[str]:
         declarations.append(normalize_declaration(value[found.start():opening]))
     return sorted(declarations)
 
-api = sorted(
-    f"{kind} {name}"
-    for kind, name in re.findall(
-        r"^public\s+(class|enum|interface|struct|func)\s+([A-Za-z][A-Za-z0-9_]*)",
-        source,
-        re.MULTILINE,
+def main() -> int:
+    api = sorted(
+        f"{kind} {name}"
+        for kind, name in re.findall(
+            r"^public\s+(class|enum|interface|struct|func)\s+([A-Za-z][A-Za-z0-9_]*)",
+            source,
+            re.MULTILINE,
+        )
     )
-)
-expected_api = (ROOT / "contract/public-api.txt").read_text(encoding="utf-8").splitlines()
-if api != expected_api:
-    added = sorted(set(api) - set(expected_api))
-    removed = sorted(set(expected_api) - set(api))
-    raise SystemExit(f"public API snapshot drifted; added={added}, removed={removed}")
+    expected_api = (ROOT / "contract/public-api.txt").read_text(encoding="utf-8").splitlines()
+    if api != expected_api:
+        added = sorted(set(api) - set(expected_api))
+        removed = sorted(set(expected_api) - set(api))
+        raise SystemExit(f"public API snapshot drifted; added={added}, removed={removed}")
 
-api_shape = public_api_shape(source)
-api_shape_digest = hashlib.sha256(("\n".join(api_shape) + "\n").encode("utf-8")).hexdigest()
-expected_api_shape_digest = (ROOT / "contract/public-api-shape.sha256").read_text(encoding="utf-8").strip()
-if api_shape_digest != expected_api_shape_digest:
-    raise SystemExit(f"public API shape drifted: {api_shape_digest}")
+    api_shape = public_api_shape(source)
+    api_shape_digest = hashlib.sha256(("\n".join(api_shape) + "\n").encode("utf-8")).hexdigest()
+    expected_api_shape_digest = (ROOT / "contract/public-api-shape.sha256").read_text(encoding="utf-8").strip()
+    if api_shape_digest != expected_api_shape_digest:
+        raise SystemExit(f"public API shape drifted: {api_shape_digest}")
 
-codes = sorted(set(re.findall(r'"(llm\.[a-z0-9_.]+)"', source)))
-expected_codes = (ROOT / "contract/error-codes.txt").read_text(encoding="utf-8").splitlines()
-if codes != expected_codes:
-    added = sorted(set(codes) - set(expected_codes))
-    removed = sorted(set(expected_codes) - set(codes))
-    raise SystemExit(f"error-code inventory drifted; added={added}, removed={removed}")
+    codes = sorted(set(re.findall(r'"(llm\.[a-z0-9_.]+)"', source)))
+    expected_codes = (ROOT / "contract/error-codes.txt").read_text(encoding="utf-8").splitlines()
+    if codes != expected_codes:
+        added = sorted(set(codes) - set(expected_codes))
+        removed = sorted(set(expected_codes) - set(codes))
+        raise SystemExit(f"error-code inventory drifted; added={added}, removed={removed}")
 
-digest = hashlib.sha256()
-fixtures = (
-    sorted((ROOT / "fixtures").glob("*.json"))
-    + sorted((ROOT / "fixtures/requests").glob("*.json"))
-    + sorted((ROOT / "fixtures/streams").glob("*.json"))
-)
-if len(fixtures) != 18:
-    raise SystemExit(f"expected six response, six request, and six stream dialect fixtures, found {len(fixtures)}")
-for path in fixtures:
-    digest.update(path.relative_to(ROOT / "fixtures").as_posix().encode("utf-8") + b"\0" + path.read_bytes() + b"\0")
-actual_digest = digest.hexdigest()
-expected_digest = (ROOT / "contract/fixture-digest.txt").read_text(encoding="utf-8").strip()
-if actual_digest != expected_digest:
-    raise SystemExit(f"fixture digest drifted: {actual_digest}")
+    digest = hashlib.sha256()
+    fixtures = (
+        sorted((ROOT / "fixtures").glob("*.json"))
+        + sorted((ROOT / "fixtures/requests").glob("*.json"))
+        + sorted((ROOT / "fixtures/streams").glob("*.json"))
+    )
+    if len(fixtures) != 18:
+        raise SystemExit(f"expected six response, six request, and six stream dialect fixtures, found {len(fixtures)}")
+    for path in fixtures:
+        digest.update(path.relative_to(ROOT / "fixtures").as_posix().encode("utf-8") + b"\0" + path.read_bytes() + b"\0")
+    actual_digest = digest.hexdigest()
+    expected_digest = (ROOT / "contract/fixture-digest.txt").read_text(encoding="utf-8").strip()
+    if actual_digest != expected_digest:
+        raise SystemExit(f"fixture digest drifted: {actual_digest}")
 
-print(f"contract check passed: {len(api)} declarations, {len(api_shape)} API shapes, {len(codes)} codes, {len(fixtures)} fixtures")
+    print(f"contract check passed: {len(api)} declarations, {len(api_shape)} API shapes, {len(codes)} codes, {len(fixtures)} fixtures")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

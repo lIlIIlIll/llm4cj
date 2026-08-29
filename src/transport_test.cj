@@ -263,6 +263,13 @@ class Llm4CjV02Tests {
         let tail = SseDecoder()
         match (tail.push("data: discarded")) { case LlmResult.Ok(values) => @Expect(values.size, 0); case LlmResult.Err(error) => @Fail(error.message) }
         match (tail.finish()) { case LlmResult.Ok(values) => @Expect(values.size, 0); case LlmResult.Err(error) => @Fail(error.message) }
+
+        let trailingCarriageReturn = SseDecoder(maxOutputBytesPerPush: 8)
+        match (trailingCarriageReturn.push("data:a\n\ndata:b\r\r")) { case LlmResult.Ok(values) => @Expect(values.size, 1); case LlmResult.Err(error) => @Fail(error.message) }
+        match (trailingCarriageReturn.finish()) {
+            case LlmResult.Ok(values) => @Expect(values.size, 1); @Expect(values[0].data, "b")
+            case LlmResult.Err(error) => @Fail(error.message)
+        }
     }
 
     @TestCase
@@ -1361,7 +1368,16 @@ class Llm4CjV02Tests {
             LlmWireBlock.Refusal(LlmWireRefusalBlock("no")),
             LlmWireBlock.NativeReplay(replay)
         ])
-        expectLlmError("llm.native_replay_projection_order_invalid", { => let _ = reply.toContinuationInput() })
+        expectLlmError("llm.continuation_projection_lossy", { => let _ = reply.toContinuationInput() })
+        expectLlmError("llm.native_replay_projection_order_invalid", { => let _ = LlmWireReply(blocks: [
+            LlmWireBlock.NativeReplay(replay)
+        ]).toContinuationInput() })
+        expectLlmError("llm.continuation_projection_lossy", { => let _ = LlmWireReply(blocks: [
+            LlmWireBlock.Refusal(LlmWireRefusalBlock("no"))
+        ]).toContinuationInput() })
+        expectLlmError("llm.continuation_projection_lossy", { => let _ = LlmWireReply(blocks: [
+            LlmWireBlock.Reasoning(LlmWireReasoningBlock("display only"))
+        ]).toContinuationInput() })
     }
 
     @TestCase
@@ -1392,12 +1408,10 @@ class Llm4CjV02Tests {
             LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.FiveMinutes, LlmWirePromptCacheLifetime.OneHour
         ])
         let anthropic = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), capabilities: cacheCapabilities)
-        let prewarm = anthropic.encodeRequest(LlmWireRequest(
+        expectLlmError("llm.max_output_tokens_invalid", { => let _ = anthropic.encodeRequest(LlmWireRequest(
             "claude", validMessages(), maxOutputTokens: Some(0),
             promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.FiveMinutes)
-        ))
-        @Expect(prewarm.contains("\"max_tokens\":0"), true)
-        @Expect(prewarm.contains("\"cache_control\":{\"type\":\"ephemeral\"}"), true)
+        )) })
         let oneHour = anthropic.encodeRequest(LlmWireRequest(
             "claude", validMessages(), maxOutputTokens: Some(8),
             promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.OneHour)

@@ -489,9 +489,9 @@ func decodeMessagesResponse(codec: LlmWireCodec, root: JsonNode): LlmWireRespons
         blocks.toArray(), decodeMessagesUsage(codec, root), stop,
         requireExecutableToolCalls: stop != "max_tokens" && stop != "model_context_window_exceeded" && stop != "pause_turn"
     )
-    if (stop == "tool_use" || stop == "end_turn" || stop == "stop_sequence" || stop == "refusal") { validateReplyToolStop(reply, stop, "tool_use", ["end_turn", "stop_sequence", "refusal"]) }
+    if (stop == "tool_use" || stop == "end_turn" || stop == "stop_sequence") { validateReplyToolStop(reply, stop, "tool_use", ["end_turn", "stop_sequence"]) }
     match (stop) {
-        case "end_turn" | "stop_sequence" | "tool_use" | "refusal" => LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply))
+        case "end_turn" | "stop_sequence" | "tool_use" => LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply))
         case "max_tokens" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.MaxTokens))
         case "model_context_window_exceeded" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.ModelContextWindowExceeded))
         case "pause_turn" => LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.PauseTurn))

@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 permissions:
@@ -65,8 +65,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          git diff --unified=0 "$BASE_SHA"...HEAD -- 'src/*.cj' > coverage/patch.diff
-          python3 scripts/check_patch_coverage.py --diff coverage/patch.diff --lcov coverage/lcov.info --baseline coverage-baseline.toml
+          python3 scripts/check_patch_coverage.py --base-ref "$BASE_SHA" --lcov coverage/lcov.info --gcov-root cov_output --baseline coverage-baseline.toml
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
