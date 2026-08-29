@@ -448,6 +448,7 @@ public class LlmWireUsage {
     }
 }
 
+@Derive[Equatable]
 public enum LlmWireIncompleteReason {
     MaxTokens | Length | ContentFilter | ModelContextWindowExceeded | PauseTurn | Other(String)
 }
@@ -563,8 +564,8 @@ public class LlmWireFailure {
     }
 }
 public enum LlmWireTerminal {
-    Succeeded(LlmWireReply)
-    | Incomplete(LlmWireReply, LlmWireIncompleteReason)
-    | Failed(LlmWireFailure)
+    Completed(LlmWireReply)
+    | ProviderFailed(LlmWireFailure)
+    | Cancelled(LlmWireFailure)
 }
 public enum LlmWireResponseState { Pending(LlmWirePendingReply) | Terminal(LlmWireTerminal) }

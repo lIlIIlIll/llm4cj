@@ -8,7 +8,7 @@
 
 `LlmWireCodec.encodeRequest` 返回 opaque `LlmWirePreparedRequest`。调用 `materialize` 后才得到 `LlmWireMaterializedRequest`。后者公开 UTF-8 `body` bytes 和合并后的 headers。未解析的 feature requirement、冲突 header 或不安全 header 会返回 `LlmWireResult.Err`。
 
-`LlmWireHttpResponse` 保存 status、headers 和有界读取后的 body bytes。`decodeResponse(LlmWireHttpResponse)` 返回 `LlmWireResult<LlmWireResponseState>`。2xx body 进入协议 decoder；非 2xx provider 错误保持为 `Terminal(Failed)`，并保留 status、`Retry-After` 和 provider request ID。
+`LlmWireHttpResponse` 保存 status、headers 和有界读取后的 body bytes。`decodeResponse(LlmWireHttpResponse)` 返回 `LlmWireResult<LlmWireResponseState>`。2xx body 进入协议 decoder；非 2xx provider 错误保持为 `Terminal(ProviderFailed)`，并保留 status、`Retry-After` 和 provider request ID。
 
 ## 请求、block 与响应
 
@@ -30,9 +30,11 @@
 
 ## 流式
 
-`LlmWireEventKind`、`LlmWireEvent`、`LlmWireStreamLimits`、`LlmWireStreamUpdate`、`LlmWireStreamDecoder`。
+`LlmWireStreamBlockKind`、`LlmWireEventIdentity`、`LlmWireToolIdentity`、`LlmWireEvent`、`LlmWireStreamLimits`、`LlmWireSseLimits`、`LlmWireStreamUpdate`、`LlmWireStreamDecoder`。
 
-`LlmWireStreamLimits` 分别限制 total semantic、text、reasoning、tool arguments、retained state、block、tool call 与输入 provider event 数量；这些值在 decoder 构造后不可变。`maxEvents` 在每次协议 decoder `push` 时计数，即使该 provider event 不产生 public semantic event。
+`LlmWireStreamDecoder.push` 接收 `String` 或 `Array<Byte>`，返回 `LlmWireResult<LlmWireStreamUpdate>`；`finish` 处理 EOF 并要求协议终态，`cancel` 幂等返回 `Cancelled`。`LlmWireEvent` 是 payload enum，包含 text/reasoning/refusal delta、tool identity、citation、usage、choice completion 与 terminal。
+
+`LlmWireStreamLimits` 分别限制 total semantic、text、reasoning、tool arguments、retained state、block、tool call 与输入 provider event 数量；`LlmWireSseLimits` 限制 framing 与非 2xx error body。所有值在 decoder 构造后不可变。`maxEvents` 在每次 provider event 消费时计数，即使该事件不产生 public semantic event。
 
 ## 传输
 

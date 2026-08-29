@@ -29,9 +29,9 @@ main(): Int64 {
     let decoded = codecFor(arguments[1]).decodeResponse(LlmWireHttpResponse(200, [], response.toArray()))
     match (decoded) {
         case LlmWireResult.Err(error) => println("protocol probe failed: " + error.code); 1
-        case LlmWireResult.Ok(LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(_))) => println("protocol probe passed: " + arguments[1]); 0
-        case LlmWireResult.Ok(LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(_, _))) => println("protocol probe received an incomplete response"); 1
-        case LlmWireResult.Ok(LlmWireResponseState.Terminal(LlmWireTerminal.Failed(failure))) => println("protocol probe received provider failure: " + failure.providerErrorType); 1
+        case LlmWireResult.Ok(LlmWireResponseState.Terminal(LlmWireTerminal.Completed(_))) => println("protocol probe passed: " + arguments[1]); 0
+        case LlmWireResult.Ok(LlmWireResponseState.Terminal(LlmWireTerminal.ProviderFailed(failure))) => println("protocol probe received provider failure: " + failure.providerErrorType); 1
+        case LlmWireResult.Ok(LlmWireResponseState.Terminal(LlmWireTerminal.Cancelled(_))) => println("protocol probe received cancellation"); 1
         case LlmWireResult.Ok(LlmWireResponseState.Pending(_)) => println("protocol probe received a pending response"); 1
     }
 }

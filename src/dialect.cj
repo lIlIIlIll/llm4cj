@@ -399,7 +399,19 @@ public class LlmWireCodec {
     public func decodeResponse(response: LlmWireHttpResponse, nowEpochMillis!: Int64 = 0): LlmWireResult<LlmWireResponseState> {
         decodeHttpResponse(this, response, nowEpochMillis)
     }
-    public func newStreamDecoder(limits!: LlmWireStreamLimits = LlmWireStreamLimits()): LlmWireStreamDecoder { newWireStreamDecoder(this, limits) }
+    public func newStreamDecoder(
+        limits!: LlmWireStreamLimits = LlmWireStreamLimits(),
+        sseLimits!: LlmWireSseLimits = LlmWireSseLimits()
+    ): LlmWireStreamDecoder { LlmWireStreamDecoder(this, 200, [], limits, sseLimits) }
+    public func newHttpStreamDecoder(
+        statusCode: Int64, headers!: Array<LlmWireHeader> = [],
+        limits!: LlmWireStreamLimits = LlmWireStreamLimits(),
+        sseLimits!: LlmWireSseLimits = LlmWireSseLimits(),
+        nowEpochMillis!: Int64 = 0
+    ): LlmWireResult<LlmWireStreamDecoder> {
+        try { LlmWireResult.Ok(LlmWireStreamDecoder(this, statusCode, headers, limits, sseLimits, nowEpochMillis: nowEpochMillis)) }
+        catch (error: LlmWireError) { LlmWireResult.Err(withCodecContext(error, this, LlmTransportPhase.ResponseHeaders)) }
+    }
 }
 
 public class LlmWireModelProfile {

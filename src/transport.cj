@@ -70,6 +70,27 @@ public class SseEvent {
     }
 }
 
+public class LlmWireSseLimits {
+    public let maxEventBytes: Int64
+    public let maxLineBytes: Int64
+    public let maxBufferedBytes: Int64
+    public let maxEventsPerPush: Int64
+    public let maxOutputBytesPerPush: Int64
+    public let maxErrorBodyBytes: Int64
+    public init(
+        maxEventBytes!: Int64 = 8388608, maxLineBytes!: Int64 = 1048576,
+        maxBufferedBytes!: Int64 = 16777216, maxEventsPerPush!: Int64 = 1024,
+        maxOutputBytesPerPush!: Int64 = 16777216, maxErrorBodyBytes!: Int64 = 8388608
+    ) {
+        if (maxEventBytes < 1 || maxLineBytes < 1 || maxBufferedBytes < 1 || maxEventsPerPush < 1 || maxOutputBytesPerPush < 1 || maxErrorBodyBytes < 1) {
+            throw IllegalArgumentException("invalid SSE limits")
+        }
+        this.maxEventBytes = maxEventBytes; this.maxLineBytes = maxLineBytes
+        this.maxBufferedBytes = maxBufferedBytes; this.maxEventsPerPush = maxEventsPerPush
+        this.maxOutputBytesPerPush = maxOutputBytesPerPush; this.maxErrorBodyBytes = maxErrorBodyBytes
+    }
+}
+
 public class SseDecoder {
     private let maxEventBytes: Int64
     private let maxLineBytes: Int64

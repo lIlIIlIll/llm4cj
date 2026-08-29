@@ -5,7 +5,7 @@ class LlmWireCitation
 class LlmWireCodec
 class LlmWireDialectContract
 class LlmWireError
-class LlmWireEvent
+class LlmWireEventIdentity
 class LlmWireFailure
 class LlmWireFeatureRequirement
 class LlmWireHeader
@@ -28,7 +28,9 @@ class LlmWireRefusalBlock
 class LlmWireReply
 class LlmWireRequest
 class LlmWireRequestBuilder
+class LlmWireSseLimits
 class LlmWireStandardDialect
+class LlmWireStreamDecoder
 class LlmWireStreamLimits
 class LlmWireStreamUpdate
 class LlmWireTextBlock
@@ -38,6 +40,7 @@ class LlmWireTokenLogprobCandidate
 class LlmWireTool
 class LlmWireToolCallBlock
 class LlmWireToolCapabilities
+class LlmWireToolIdentity
 class LlmWireToolResultBlock
 class LlmWireUsage
 class SseDecoder
@@ -49,7 +52,7 @@ enum LlmWireBuiltinDialect
 enum LlmWireChoiceOutcome
 enum LlmWireCitationKind
 enum LlmWireErrorKind
-enum LlmWireEventKind
+enum LlmWireEvent
 enum LlmWireFailureKind
 enum LlmWireGenerationSpeed
 enum LlmWireImageDetail
@@ -76,6 +79,7 @@ enum LlmWireResponseState
 enum LlmWireResult
 enum LlmWireRole
 enum LlmWireServiceTier
+enum LlmWireStreamBlockKind
 enum LlmWireStructuredOutput
 enum LlmWireStructuredOutputMode
 enum LlmWireTerminal
@@ -109,4 +113,3 @@ func readLlmHttpBody
 func sseDataLine
 interface LlmWireDialect
 interface LlmWireRequirementResolver
-interface LlmWireStreamDecoder

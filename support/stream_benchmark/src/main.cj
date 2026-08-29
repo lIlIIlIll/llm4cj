@@ -16,22 +16,29 @@ func benchmark(name: String, fragmentBytes: Int64, totalBytes: Int64): Unit {
     let payloadBytes = if (totalBytes > argumentEnvelopeBytes) { totalBytes - argumentEnvelopeBytes } else { 0 }
     let count = payloadBytes / fragmentBytes
     let start = MonoTime.now()
-    let _ = decoder.push(SseEvent("message", "{\"type\":\"message_start\",\"message\":{\"id\":\"bench\",\"model\":\"claude\"}}", "", None))
-    let _ = decoder.push(SseEvent("message", "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call\",\"name\":\"bench\",\"input\":{}}}", "", None))
-    let _ = decoder.push(SseEvent("message", "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"value\\\":\\\"\"}}", "", None))
+    pushEvent(decoder, "{\"type\":\"message_start\",\"message\":{\"id\":\"bench\",\"model\":\"claude\"}}")
+    pushEvent(decoder, "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call\",\"name\":\"bench\",\"input\":{}}}")
+    pushEvent(decoder, "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"value\\\":\\\"\"}}")
     for (_ in 0..count) {
-        let _ = decoder.push(SseEvent("message", "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"" + fragment + "\"}}", "", None))
+        pushEvent(decoder, "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"" + fragment + "\"}}")
     }
-    let _ = decoder.push(SseEvent("message", "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"}\"}}", "", None))
-    let _ = decoder.push(SseEvent("message", "{\"type\":\"content_block_stop\",\"index\":0}", "", None))
-    let _ = decoder.push(SseEvent("message", "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}", "", None))
-    let terminal = decoder.push(SseEvent("message", "{\"type\":\"message_stop\"}", "", None))
+    pushEvent(decoder, "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"}\"}}")
+    pushEvent(decoder, "{\"type\":\"content_block_stop\",\"index\":0}")
+    pushEvent(decoder, "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}")
+    let terminal = pushEvent(decoder, "{\"type\":\"message_stop\"}")
     match (terminal.terminal) {
-        case Some(LlmWireTerminal.Succeeded(reply)) => if (reply.blocks.size != 1) { throw Exception("benchmark lost tool call") }
+        case Some(LlmWireTerminal.Completed(reply)) => if (reply.blocks.size != 1) { throw Exception("benchmark lost tool call") }
         case _ => throw Exception("benchmark did not reach success")
     }
     let elapsed = (MonoTime.now() - start).toNanoseconds()
     println("{\"scenario\":\"" + name + "\",\"fragment_bytes\":" + fragmentBytes.toString() + ",\"total_bytes\":" + totalBytes.toString() + ",\"elapsed_ns\":" + elapsed.toString() + "}")
+}
+
+func pushEvent(decoder: LlmWireStreamDecoder, payload: String): LlmWireStreamUpdate {
+    match (decoder.push("data: " + payload + "\n\n")) {
+        case LlmWireResult.Ok(value) => value
+        case LlmWireResult.Err(error) => throw error
+    }
 }
 
 main(): Int64 {

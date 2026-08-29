@@ -26,7 +26,7 @@ main(): Int64 {
         case LlmWireResult.Err(_) => return 1
     }
     match (state) {
-        case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply)) =>
+        case LlmWireResponseState.Terminal(LlmWireTerminal.Completed(reply)) =>
             for (block in reply.blocks) {
                 match (block) {
                     case LlmWireOutputBlock.Text(text) => println(text.text)

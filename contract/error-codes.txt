@@ -5,8 +5,6 @@ llm.cache_lifetime_unsupported
 llm.cache_unsupported
 llm.chat_block_unsupported
 llm.chat_choice_index_invalid
-llm.chat_choice_index_unsupported
-llm.chat_choice_terminal_duplicate
 llm.chat_choice_terminal_missing
 llm.chat_choices_empty
 llm.chat_event_after_choice_finished
@@ -15,7 +13,6 @@ llm.chat_id_mismatch
 llm.chat_legacy_function_call_unsupported
 llm.chat_messages_required
 llm.chat_model_mismatch
-llm.chat_multiple_choices_unsupported
 llm.chat_opaque_unsupported
 llm.chat_semantic_unsupported
 llm.chat_tool_call_id_mismatch
@@ -73,7 +70,6 @@ llm.messages_delta_type_mismatch
 llm.messages_delta_without_start
 llm.messages_refusal_details_missing
 llm.messages_required
-llm.messages_semantic_unsupported
 llm.messages_start_duplicate
 llm.messages_stop_details_unsupported
 llm.messages_stop_out_of_phase

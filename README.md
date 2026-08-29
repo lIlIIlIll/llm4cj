@@ -52,7 +52,7 @@ main(): Int64 {
         case LlmWireResult.Err(_) => return 1
     }
     match (state) {
-        case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply)) =>
+        case LlmWireResponseState.Terminal(LlmWireTerminal.Completed(reply)) =>
             for (block in reply.blocks) {
                 match (block) {
                     case LlmWireOutputBlock.Text(text) => println(text.text)
@@ -76,9 +76,9 @@ main(): Int64 {
 - `LlmWireCodec` 同时绑定 protocol、dialect、model capabilities 和 provider 名称；请求始终严格校验，避免只看 envelope 就猜 provider 语义。
 - `newRequestBuilder` 复用 codec 与 model profile，字段 setter 立即拒绝局部非法值，`build` 再验证完整请求。system 与 developer instructions 按添加顺序编码；是否启用 streaming 由 `encodeRequest(..., streaming: true)` 决定，不保存在可复用请求中。
 - thinking 默认是 `ProviderDefault`，不会主动发送字段；显式能力若未声明或 dialect 无法表达，会直接报错。
-- 固定响应和流式响应都区分 `Succeeded`、`Incomplete` 与 `Failed`。
+- global terminal 区分 `Completed`、`ProviderFailed` 与 `Cancelled`；每个 choice 再区分 completed、incomplete 和 refused，避免把生成截断或拒绝误当成传输失败。
 - Messages 的已知 `thinking` 与 `redacted_thinking` 以 dialect-bound native state 完整保存，只能在同一 dialect 中回放；未知语义 block 返回 `Unsupported`，不会伪装成成功结果。
-- SSE 以字节为输入，支持 CR、LF、CRLF、BOM、空 `data`、持久 `id`/`retry`、完整事件限额和 EOF 丢弃未结束事件。
+- public stream decoder 直接接收网络字节，统一拥有 UTF-8、SSE framing、协议状态机和 canonical assembler；底层 SSE 支持 CR、LF、CRLF、BOM、空 `data`、持久 `id`/`retry`、完整事件限额和 EOF 丢弃未结束事件。
 - tool arguments 区分完整对象、非法 JSON、非法 shape 与流式 partial；只有完整 JSON object 能进入成功终态或 continuation。严格校验还拒绝孤立、重复、未来匹配、不完整批次，以及 pending call 后的普通对话。
 - canonical message 不允许为空；工具结果 turn 只能包含完整闭合当前 pending calls 的 ToolResult，不能与普通文本交错。ToolResult content 是有序的 text 或 image 列表。ToolCall name 与工具定义使用同一语法。
 - Responses 流维护 `item_id` 到 `call_id`/name 的状态映射；DeepSeek Chat 将 provider-native `reasoning_content` 与同一 assistant message 的 text/tool calls 一起回放。
