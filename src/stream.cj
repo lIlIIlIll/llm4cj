@@ -108,10 +108,10 @@ class StreamBudget {
     func toolCall(): Unit { toolCalls++; if (toolCalls > limits.maxToolCalls) { limit("llm.stream_tool_calls_too_many", "stream produced too many tool calls") } }
     func terminalReply(reply: LlmWireReply): Unit {
         for (entry in reply.blocks) { match (entry) {
-            case LlmWireBlock.Text(value) => block(); semantic(value.text, "text")
-            case LlmWireBlock.Reasoning(value) => block(); semantic(value.text, "reasoning")
-            case LlmWireBlock.Refusal(value) => block(); semantic(value.text, "text")
-            case LlmWireBlock.ToolCall(value) =>
+            case LlmWireOutputBlock.Text(value) => block(); semantic(value.text, "text")
+            case LlmWireOutputBlock.Reasoning(value) => block(); semantic(value.text, "reasoning")
+            case LlmWireOutputBlock.Refusal(value) => block(); semantic(value.text, "text")
+            case LlmWireOutputBlock.ToolCall(value) =>
                 block(); toolCall()
                 match (value.arguments) {
                     case LlmWireToolArguments.Complete(arguments) => semantic(arguments.stringify(), "tool")
@@ -119,10 +119,9 @@ class StreamBudget {
                     case LlmWireToolArguments.Partial(raw) => semantic(raw, "tool")
                     case LlmWireToolArguments.InvalidShape(arguments) => semantic(arguments.stringify(), "tool")
                 }
-            case LlmWireBlock.NativeReplay(value) =>
+            case LlmWireOutputBlock.NativeReplay(value) =>
                 block(); retain(value.payload().stringify())
                 match (value.displayReasoning) { case Some(display) => semantic(display, "reasoning"); case None => () }
-            case _ => block()
         } }
     }
     func inputEvent(): Unit { events++; if (events > limits.maxEvents) { limit("llm.stream_events_too_many", "stream consumed too many provider events") } }
@@ -596,20 +595,20 @@ class ChatStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
         if (reason == "insufficient_system_resource") {
             return LlmWireTerminal.Failed(LlmWireFailure(LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true))
         }
-        let blocks = ArrayList<LlmWireBlock>()
-        let content = text.toString(); if (content != "") { blocks.add(LlmWireBlock.Text(LlmWireTextBlock(content))) }
+        let blocks = ArrayList<LlmWireOutputBlock>()
+        let content = text.toString(); if (content != "") { blocks.add(LlmWireOutputBlock.Text(LlmWireTextBlock(content))) }
         let thought = reasoning.toString(); if (thought != "") {
-            if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.DeepSeekChat) { blocks.add(LlmWireBlock.NativeReplay(chatReasoningReplay(codec, thought, if (model == "") { None } else { Some(model) }, blocks.size))) }
-            else { blocks.add(LlmWireBlock.Reasoning(LlmWireReasoningBlock(thought))) }
+            if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.DeepSeekChat) { blocks.add(LlmWireOutputBlock.NativeReplay(chatReasoningReplay(codec, thought, if (model == "") { None } else { Some(model) }, blocks.size))) }
+            else { blocks.add(LlmWireOutputBlock.Reasoning(LlmWireReasoningBlock(thought))) }
         }
-        let denied = refusal.toString(); if (denied != "") { blocks.add(LlmWireBlock.Refusal(LlmWireRefusalBlock(denied))) }
+        let denied = refusal.toString(); if (denied != "") { blocks.add(LlmWireOutputBlock.Refusal(LlmWireRefusalBlock(denied))) }
         for (toolCallIndex in 0..calls.size) {
             let call = match (findExistingChatCall(calls, 0, toolCallIndex)) { case Some(value) => value; case None => invalidWire("llm.chat_tool_call_index_gap", "Chat tool call indexes must be contiguous", provider: codec.provider) }
             if (reason != "length" && reason != "content_filter" && call.nativeType == "") { invalidWire("llm.chat_tool_call_type_missing", "completed Chat tool call never declared its type", provider: codec.provider) }
             if (reason != "length" && reason != "content_filter" && (call.callId == "" || call.name == "")) { invalidWire("llm.chat_tool_call_incomplete", "completed Chat tool call is missing id or name", provider: codec.provider) }
             let raw = call.arguments.toString()
             let arguments = if (reason == "length" || reason == "content_filter") { LlmWireToolArguments.Partial(raw) } else { classifyToolArguments(raw) }
-            blocks.add(LlmWireBlock.ToolCall(LlmWireToolCallBlock(call.callId, call.name, arguments)))
+            blocks.add(LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(call.callId, call.name, arguments)))
         }
         let reply = assembleCanonicalReply(
             responseId, model, blocks.toArray(), usage, reason,
@@ -811,7 +810,7 @@ class MessagesStreamDecoder <: StreamLifecycle & LlmWireStreamDecoder {
     private func messagesTerminal(): LlmWireTerminal {
         let incomplete = stopReason == "max_tokens" || stopReason == "model_context_window_exceeded" || stopReason == "pause_turn"
         if (!incomplete) { for (block in blocks where !block.completed) { invalidWire("llm.messages_content_block_incomplete", "Messages succeeded with an incomplete content block", provider: codec.provider) } }
-        let output = ArrayList<LlmWireBlock>()
+        let output = ArrayList<LlmWireOutputBlock>()
         for (block in blocks) { output.add(materializeMessageBlock(codec, block, model: if (model == "") { None } else { Some(model) })) }
         let reply = assembleCanonicalReply(
             responseId, model, output.toArray(), usage, stopReason,
@@ -845,19 +844,19 @@ func findMessageBlock(values: ArrayList<MessageStreamBlock>, index: Int64): ?Mes
     None
 }
 
-func materializeMessageBlock(codec: LlmWireCodec, block: MessageStreamBlock, model!: ?String = None): LlmWireBlock {
+func materializeMessageBlock(codec: LlmWireCodec, block: MessageStreamBlock, model!: ?String = None): LlmWireOutputBlock {
     match (block.nativeType) {
-        case "text" => LlmWireBlock.Text(LlmWireTextBlock(block.text.toString()))
+        case "text" => LlmWireOutputBlock.Text(LlmWireTextBlock(block.text.toString()))
         case "tool_use" =>
             let raw = block.arguments.toString()
-            LlmWireBlock.ToolCall(LlmWireToolCallBlock(block.callId, block.name, if (!block.completed) { LlmWireToolArguments.Partial(raw) } else { classifyToolArguments(raw) }))
+            LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(block.callId, block.name, if (!block.completed) { LlmWireToolArguments.Partial(raw) } else { classifyToolArguments(raw) }))
         case "thinking" =>
             let payload = match (block.initialPayload) { case Some(value) => parseWireJson(value.stringify()); case None => wireJsonObject([WireJsonField("type", wireJsonString("thinking"))]) }
             payload.put("thinking", wireJsonString(block.text.toString())); payload.put("signature", wireJsonString(block.signature.toString()))
-            LlmWireBlock.NativeReplay(nativeReplayFromPayload(codec.protocol, codec.dialect.compatibilityId, "thinking", payload, modelConstraint: model, blockOrder: block.index, completion: if (block.completed) { LlmWireOpaqueCompletion.Complete } else { LlmWireOpaqueCompletion.Partial }, displayReasoning: Some(block.text.toString())))
+            LlmWireOutputBlock.NativeReplay(nativeReplayFromPayload(codec.protocol, codec.dialect.compatibilityId, "thinking", payload, modelConstraint: model, blockOrder: block.index, completion: if (block.completed) { LlmWireOpaqueCompletion.Complete } else { LlmWireOpaqueCompletion.Partial }, displayReasoning: Some(block.text.toString())))
         case "redacted_thinking" =>
             let payload = match (block.initialPayload) { case Some(value) => value; case None => wireJsonObject([WireJsonField("type", wireJsonString("redacted_thinking"))]) }
-            LlmWireBlock.NativeReplay(nativeReplayFromPayload(codec.protocol, codec.dialect.compatibilityId, "redacted_thinking", payload, modelConstraint: model, blockOrder: block.index, completion: if (block.completed) { LlmWireOpaqueCompletion.Complete } else { LlmWireOpaqueCompletion.Partial }))
+            LlmWireOutputBlock.NativeReplay(nativeReplayFromPayload(codec.protocol, codec.dialect.compatibilityId, "redacted_thinking", payload, modelConstraint: model, blockOrder: block.index, completion: if (block.completed) { LlmWireOpaqueCompletion.Complete } else { LlmWireOpaqueCompletion.Partial }))
         case _ => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.messages_stream_block_unsupported", "unknown streamed block cannot be materialized")
     }
 }

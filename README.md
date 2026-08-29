@@ -55,7 +55,7 @@ main(): Int64 {
         case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply)) =>
             for (block in reply.blocks) {
                 match (block) {
-                    case LlmWireBlock.Text(text) => println(text.text)
+                    case LlmWireOutputBlock.Text(text) => println(text.text)
                     case _ => ()
                 }
             }

@@ -1,5 +1,7 @@
 class LlmWireCacheCapabilities
 class LlmWireCapabilities
+class LlmWireChoice
+class LlmWireCitation
 class LlmWireCodec
 class LlmWireDialectContract
 class LlmWireError
@@ -31,6 +33,8 @@ class LlmWireStreamLimits
 class LlmWireStreamUpdate
 class LlmWireTextBlock
 class LlmWireThinkingCapabilities
+class LlmWireTokenLogprob
+class LlmWireTokenLogprobCandidate
 class LlmWireTool
 class LlmWireToolCallBlock
 class LlmWireToolCapabilities
@@ -39,8 +43,11 @@ class LlmWireUsage
 class SseDecoder
 class SseEvent
 enum LlmTransportPhase
+enum LlmWireAnnotation
 enum LlmWireBlock
 enum LlmWireBuiltinDialect
+enum LlmWireChoiceOutcome
+enum LlmWireCitationKind
 enum LlmWireErrorKind
 enum LlmWireEventKind
 enum LlmWireFailureKind
@@ -53,6 +60,8 @@ enum LlmWireInstructionRole
 enum LlmWireJsonKind
 enum LlmWireNativeReplayScope
 enum LlmWireOpaqueCompletion
+enum LlmWireOutputBlock
+enum LlmWireOutputPhase
 enum LlmWireOutputTokenField
 enum LlmWireParallelToolStyle
 enum LlmWirePendingReply

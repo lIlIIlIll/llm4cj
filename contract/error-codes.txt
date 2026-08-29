@@ -4,6 +4,7 @@ llm.body_too_large
 llm.cache_lifetime_unsupported
 llm.cache_unsupported
 llm.chat_block_unsupported
+llm.chat_choice_index_invalid
 llm.chat_choice_index_unsupported
 llm.chat_choice_terminal_duplicate
 llm.chat_choice_terminal_missing
@@ -24,6 +25,9 @@ llm.chat_tool_call_index_invalid
 llm.chat_tool_call_name_mismatch
 llm.chat_tool_call_type_missing
 llm.chat_tool_type_unsupported
+llm.choice_index_invalid
+llm.continuation_choice_missing
+llm.continuation_choice_required
 llm.continuation_projection_lossy
 llm.developer_instruction_unsupported
 llm.dialect_identity_mismatch
@@ -50,6 +54,7 @@ llm.integer_invalid
 llm.json_duplicate_key
 llm.json_invalid
 llm.json_number_invalid
+llm.logprob_byte_invalid
 llm.max_output_tokens_invalid
 llm.max_output_tokens_required
 llm.message_empty
@@ -60,14 +65,17 @@ llm.messages_block_out_of_phase
 llm.messages_block_stop_duplicate
 llm.messages_block_stop_without_start
 llm.messages_block_unsupported
+llm.messages_citation_unsupported
 llm.messages_content_block_incomplete
 llm.messages_delta_after_stop
 llm.messages_delta_out_of_phase
 llm.messages_delta_type_mismatch
 llm.messages_delta_without_start
+llm.messages_refusal_details_missing
 llm.messages_required
 llm.messages_semantic_unsupported
 llm.messages_start_duplicate
+llm.messages_stop_details_unsupported
 llm.messages_stop_out_of_phase
 llm.messages_stop_reason_mismatch
 llm.messages_stop_reason_missing
@@ -106,6 +114,7 @@ llm.reasoning_effort_unsupported
 llm.refusal_display_only
 llm.required_header_conflict
 llm.response_utf8_invalid
+llm.responses_annotation_unsupported
 llm.responses_arguments_without_item
 llm.responses_block_unsupported
 llm.responses_content_index_invalid
@@ -148,7 +157,6 @@ llm.responses_terminal_output_mismatch
 llm.responses_terminal_output_missing
 llm.responses_text_mismatch
 llm.responses_value_done_duplicate
-llm.semantic_block_unsupported
 llm.service_tier_unsupported
 llm.sse_buffer_too_large
 llm.sse_closed

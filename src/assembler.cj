@@ -8,7 +8,7 @@ class CanonicalReplyAssembler {
     private let model: String
     private let rawStopReason: String
     private let requireExecutableToolCalls: Bool
-    private let blocks = ArrayList<LlmWireBlock>()
+    private let blocks = ArrayList<LlmWireOutputBlock>()
     private let toolCallIds = HashSet<String>()
     private var usage: LlmWireUsage
 
@@ -16,9 +16,9 @@ class CanonicalReplyAssembler {
         this.responseId = responseId; this.model = model; this.rawStopReason = rawStopReason; this.usage = usage
         this.requireExecutableToolCalls = requireExecutableToolCalls
     }
-    func add(block: LlmWireBlock): Unit {
+    func add(block: LlmWireOutputBlock): Unit {
         match (block) {
-            case LlmWireBlock.ToolCall(call) =>
+            case LlmWireOutputBlock.ToolCall(call) =>
                 if (requireExecutableToolCalls) {
                     if (call.callId == "") { invalidWire("llm.tool_call_id_missing", "a successful reply contains an empty tool call ID") }
                     if (toolCallIds.contains(call.callId)) { invalidWire("llm.tool_call_id_duplicate", "a successful reply contains duplicate tool call IDs") }
@@ -31,21 +31,20 @@ class CanonicalReplyAssembler {
                     toolCallIds.add(call.callId)
                 }
                 blocks.add(block)
-            case LlmWireBlock.NativeReplay(value) =>
+            case LlmWireOutputBlock.NativeReplay(value) =>
                 if (requireExecutableToolCalls && value.completion != LlmWireOpaqueCompletion.Complete) {
                     invalidWire("llm.native_replay_incomplete", "a successful reply contains incomplete native replay state")
                 }
                 blocks.add(block)
-            case LlmWireBlock.Opaque(_) => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.semantic_block_unsupported", "unknown semantic content cannot enter a canonical reply", phase: Some(LlmTransportPhase.SemanticAssembly))
             case _ => blocks.add(block)
         }
     }
-    func addAll(values: Array<LlmWireBlock>): Unit { for (value in values) { add(value) } }
+    func addAll(values: Array<LlmWireOutputBlock>): Unit { for (value in values) { add(value) } }
     func finish(): LlmWireReply { LlmWireReply(responseId: responseId, model: model, blocks: blocks.toArray(), usage: usage, rawStopReason: rawStopReason) }
 }
 
 func assembleCanonicalReply(
-    responseId: String, model: String, blocks: Array<LlmWireBlock>, usage: LlmWireUsage, rawStopReason: String,
+    responseId: String, model: String, blocks: Array<LlmWireOutputBlock>, usage: LlmWireUsage, rawStopReason: String,
     requireExecutableToolCalls!: Bool = true
 ): LlmWireReply {
     let assembler = CanonicalReplyAssembler(responseId, model, rawStopReason, usage: usage, requireExecutableToolCalls: requireExecutableToolCalls)
@@ -55,7 +54,7 @@ func assembleCanonicalReply(
 
 func validateReplyToolStop(reply: LlmWireReply, stop: String, toolStop: String, ordinaryStops: Array<String>): Unit {
     var hasToolCall = false
-    for (block in reply.blocks) { match (block) { case LlmWireBlock.ToolCall(_) => hasToolCall = true; case _ => () } }
+    for (block in reply.blocks) { match (block) { case LlmWireOutputBlock.ToolCall(_) => hasToolCall = true; case _ => () } }
     if (stop == toolStop && !hasToolCall) { invalidWire("llm.tool_stop_without_call", "provider reported a tool-call stop without a tool call") }
     for (ordinary in ordinaryStops where stop == ordinary && hasToolCall) { invalidWire("llm.tool_call_stop_mismatch", "provider returned a tool call under a non-tool stop reason") }
 }
@@ -66,7 +65,11 @@ func mergeWireUsage(current: LlmWireUsage, next: LlmWireUsage, style: LlmWireUsa
         outputTokens: mergeUsageValue(current.outputTokens, next.outputTokens, style),
         reasoningTokens: mergeUsageValue(current.reasoningTokens, next.reasoningTokens, style),
         cacheReadTokens: mergeUsageValue(current.cacheReadTokens, next.cacheReadTokens, style),
-        cacheWriteTokens: mergeUsageValue(current.cacheWriteTokens, next.cacheWriteTokens, style)
+        cacheWriteTokens: mergeUsageValue(current.cacheWriteTokens, next.cacheWriteTokens, style),
+        totalTokens: mergeUsageValue(current.totalTokens, next.totalTokens, style),
+        webSearchRequests: mergeUsageValue(current.webSearchRequests, next.webSearchRequests, style),
+        webFetchRequests: mergeUsageValue(current.webFetchRequests, next.webFetchRequests, style),
+        serviceTier: match (next.serviceTier) { case Some(_) => next.serviceTier; case None => current.serviceTier }
     )
 }
 

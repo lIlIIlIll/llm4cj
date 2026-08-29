@@ -68,7 +68,7 @@ func expectTextReplyEquivalent(left: LlmWireReply, right: LlmWireReply): Unit {
     @Expect(left.blocks.size, right.blocks.size)
     for (index in 0..left.blocks.size) {
         match ((left.blocks[index], right.blocks[index])) {
-            case (LlmWireBlock.Text(a), LlmWireBlock.Text(b)) => @Expect(a.text, b.text)
+            case (LlmWireOutputBlock.Text(a), LlmWireOutputBlock.Text(b)) => @Expect(a.text, b.text)
             case _ => @Fail("canonical block mismatch")
         }
     }
@@ -146,8 +146,8 @@ class Llm4CjV02Tests {
         let reply = match (state) { case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(value)) => value; case _ => @Fail("expected success") }
         let blocks = reply.blocks
         @Expect(blocks.size, 2)
-        match (blocks[0]) { case LlmWireBlock.NativeReplay(value) => @Expect(value.payload()["signature"].string, "sig"); @Expect(value.displayReasoning, Some("why")); case _ => @Fail("thinking must be native replay") }
-        match (blocks[1]) { case LlmWireBlock.NativeReplay(value) => @Expect(value.payload()["data"].string, "opaque"); case _ => @Fail("redacted thinking must be native replay") }
+        match (blocks[0]) { case LlmWireOutputBlock.NativeReplay(value) => @Expect(value.payload()["signature"].string, "sig"); @Expect(value.displayReasoning, Some("why")); case _ => @Fail("thinking must be native replay") }
+        match (blocks[1]) { case LlmWireOutputBlock.NativeReplay(value) => @Expect(value.payload()["data"].string, "opaque"); case _ => @Fail("redacted thinking must be native replay") }
         let continuation = reply.toContinuationInput()
         let replay = codec.encodeRequest(LlmWireRequest("claude", continuation, maxOutputTokens: Some(1024)))
         @Expect(replay.contains("\"signature\":\"sig\""), true)
@@ -184,7 +184,7 @@ class Llm4CjV02Tests {
     func t006SuccessfulToolArgumentsMustBeExecutable() {
         let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
         let objectState = codec.decodeResponse("{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{\"id\":\"a\",\"type\":\"function\",\"function\":{\"name\":\"f\",\"arguments\":\"{\\\"x\\\":1}\"}}]},\"finish_reason\":\"tool_calls\"}]}")
-        match (objectState) { case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply)) => match (reply.blocks[0]) { case LlmWireBlock.ToolCall(call) => match (call.arguments) { case LlmWireToolArguments.Complete(value) => @Expect(value.stringify(), "{\"x\":1}"); case _ => @Fail("expected complete") }; case _ => @Fail("expected tool") }; case _ => @Fail("expected success") }
+        match (objectState) { case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply)) => match (reply.blocks[0]) { case LlmWireOutputBlock.ToolCall(call) => match (call.arguments) { case LlmWireToolArguments.Complete(value) => @Expect(value.stringify(), "{\"x\":1}"); case _ => @Fail("expected complete") }; case _ => @Fail("expected tool") }; case _ => @Fail("expected success") }
         expectLlmError("llm.tool_arguments_not_executable", { => let _ = codec.decodeResponse("{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{\"id\":\"b\",\"type\":\"function\",\"function\":{\"name\":\"f\",\"arguments\":\"[]\"}}]},\"finish_reason\":\"tool_calls\"}]}" ) })
         expectLlmError("llm.tool_arguments_not_executable", { => let _ = codec.decodeResponse("{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"f\",\"arguments\":\"{\"}}]},\"finish_reason\":\"tool_calls\"}]}" ) })
     }
@@ -243,8 +243,8 @@ class Llm4CjV02Tests {
         let terminal = decoder.push(event("{\"type\":\"message_stop\"}"))
         match (terminal.terminal) {
             case Some(LlmWireTerminal.Incomplete(reply, LlmWireIncompleteReason.MaxTokens)) =>
-                match (reply.blocks[0]) { case LlmWireBlock.NativeReplay(value) => @Expect(value.snapshot().contains("sig"), true); case _ => @Fail("expected native replay") }
-                match (reply.blocks[1]) { case LlmWireBlock.ToolCall(call) => match (call.arguments) { case LlmWireToolArguments.InvalidJson(raw) => @Expect(raw, "{\"x\":"); case _ => @Fail("expected diagnostic arguments") }; case _ => @Fail("expected tool") }
+                match (reply.blocks[0]) { case LlmWireOutputBlock.NativeReplay(value) => @Expect(value.snapshot().contains("sig"), true); case _ => @Fail("expected native replay") }
+                match (reply.blocks[1]) { case LlmWireOutputBlock.ToolCall(call) => match (call.arguments) { case LlmWireToolArguments.InvalidJson(raw) => @Expect(raw, "{\"x\":"); case _ => @Fail("expected diagnostic arguments") }; case _ => @Fail("expected tool") }
             case _ => @Fail("expected incomplete")
         }
     }
@@ -700,7 +700,7 @@ class Llm4CjV02Tests {
         let _ = chatPartial.push(event("{\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"f\",\"arguments\":\"{\"}}]}}]}"))
         let _ = chatPartial.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}]}"))
         let _ = chatPartial.push(event("[DONE]"))
-        match (chatPartial.finishTransport()) { case LlmWireTerminal.Incomplete(reply, _) => match (reply.blocks[0]) { case LlmWireBlock.ToolCall(call) => match (call.arguments) { case LlmWireToolArguments.Partial(_) => (); case _ => @Fail("partial call") }; case _ => @Fail("tool call") }; case _ => @Fail("length") }
+        match (chatPartial.finishTransport()) { case LlmWireTerminal.Incomplete(reply, _) => match (reply.blocks[0]) { case LlmWireOutputBlock.ToolCall(call) => match (call.arguments) { case LlmWireToolArguments.Partial(_) => (); case _ => @Fail("partial call") }; case _ => @Fail("tool call") }; case _ => @Fail("length") }
         let unsupportedChat = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect()).newStreamDecoder()
         expectLlmError("llm.chat_finish_reason_unsupported", { => let _ = unsupportedChat.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"future\"}]}")) })
 
@@ -733,7 +733,7 @@ class Llm4CjV02Tests {
         let _ = redacted.push(event("{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"redacted_thinking\",\"data\":\"x\"}}"))
         let _ = redacted.push(event("{\"type\":\"content_block_stop\",\"index\":0}"))
         let _ = redacted.push(event("{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"max_tokens\"}}"))
-        match (redacted.push(event("{\"type\":\"message_stop\"}")).terminal) { case Some(LlmWireTerminal.Incomplete(reply, _)) => match (reply.blocks[0]) { case LlmWireBlock.NativeReplay(value) => @Expect(value.completion, LlmWireOpaqueCompletion.Complete); case _ => @Fail("native replay") }; case _ => @Fail("redacted") }
+        match (redacted.push(event("{\"type\":\"message_stop\"}")).terminal) { case Some(LlmWireTerminal.Incomplete(reply, _)) => match (reply.blocks[0]) { case LlmWireOutputBlock.NativeReplay(value) => @Expect(value.completion, LlmWireOpaqueCompletion.Complete); case _ => @Fail("native replay") }; case _ => @Fail("redacted") }
     }
 
     @TestCase
@@ -754,7 +754,7 @@ class Llm4CjV02Tests {
         expectLlmError("llm.field_missing", { => let _ = messages.decodeResponse("{\"stop_reason\":\"end_turn\"}") })
         match (messages.decodeResponse("{\"type\":\"error\",\"message\":\"root bad\"}")) { case LlmWireResponseState.Terminal(LlmWireTerminal.Failed(failure)) => @Expect(failure.message, "root bad"); case _ => @Fail("root message error") }
         let completeTool = messages.decodeResponse("{\"content\":[{\"type\":\"tool_use\",\"id\":\"c\",\"name\":\"f\",\"input\":{\"x\":1}}],\"stop_reason\":\"tool_use\"}")
-        match (completeTool) { case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply)) => match (reply.blocks[0]) { case LlmWireBlock.ToolCall(call) => match (call.arguments) { case LlmWireToolArguments.Complete(_) => (); case _ => @Fail("complete") }; case _ => @Fail("tool") }; case _ => @Fail("messages") }
+        match (completeTool) { case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply)) => match (reply.blocks[0]) { case LlmWireOutputBlock.ToolCall(call) => match (call.arguments) { case LlmWireToolArguments.Complete(_) => (); case _ => @Fail("complete") }; case _ => @Fail("tool") }; case _ => @Fail("messages") }
     }
 
     @TestCase
@@ -795,9 +795,9 @@ class Llm4CjV02Tests {
 
         let rawRedacted = MessageStreamBlock(0, "redacted_thinking")
         rawRedacted.initialPayload = Some(parseWireJson("{\"type\":\"redacted_thinking\",\"data\":\"x\"}"))
-        match (materializeMessageBlock(messages, rawRedacted)) { case LlmWireBlock.NativeReplay(value) => @Expect(value.completion, LlmWireOpaqueCompletion.Partial); case _ => @Fail("raw redacted") }
+        match (materializeMessageBlock(messages, rawRedacted)) { case LlmWireOutputBlock.NativeReplay(value) => @Expect(value.completion, LlmWireOpaqueCompletion.Partial); case _ => @Fail("raw redacted") }
         rawRedacted.completed = true
-        match (materializeMessageBlock(messages, rawRedacted)) { case LlmWireBlock.NativeReplay(value) => @Expect(value.completion, LlmWireOpaqueCompletion.Complete); case _ => @Fail("complete redacted") }
+        match (materializeMessageBlock(messages, rawRedacted)) { case LlmWireOutputBlock.NativeReplay(value) => @Expect(value.completion, LlmWireOpaqueCompletion.Complete); case _ => @Fail("complete redacted") }
         @Expect(extractRetryAfterMillis("Retry-After: invalid\n", 0), None)
     }
 
@@ -834,13 +834,14 @@ class Llm4CjV02Tests {
         @Expect(grouped, "{\"model\":\"m\",\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"a\"},{\"type\":\"input_text\",\"text\":\"b\"}]}]}")
 
         let chat = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
-        match (chat.decodeResponse("{\"choices\":[{\"index\":0,\"message\":{\"refusal\":\"no\"},\"finish_reason\":\"stop\"}]}")) { case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply)) => match (reply.blocks[0]) { case LlmWireBlock.Refusal(value) => @Expect(value.text, "no"); case _ => @Fail("fixed refusal") }; case _ => @Fail("fixed chat") }
-        expectLlmError("llm.chat_multiple_choices_unsupported", { => let _ = chat.decodeResponse("{\"choices\":[{\"index\":0,\"message\":{},\"finish_reason\":\"stop\"},{\"message\":{},\"finish_reason\":\"stop\"}]}" ) })
-        expectLlmError("llm.chat_choice_index_unsupported", { => let _ = chat.decodeResponse("{\"choices\":[{\"index\":1,\"message\":{},\"finish_reason\":\"stop\"}]}" ) })
+        match (chat.decodeResponse("{\"choices\":[{\"index\":0,\"message\":{\"refusal\":\"no\"},\"finish_reason\":\"stop\"}]}")) { case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply)) => match (reply.blocks[0]) { case LlmWireOutputBlock.Refusal(value) => @Expect(value.text, "no"); case _ => @Fail("fixed refusal") }; case _ => @Fail("fixed chat") }
+        let multi = succeededReply(chat.decodeResponse("{\"choices\":[{\"index\":0,\"message\":{},\"finish_reason\":\"stop\"},{\"index\":1,\"message\":{},\"finish_reason\":\"stop\"}]}"))
+        @Expect(multi.choices.size, 2)
+        expectLlmError("llm.chat_choice_index_invalid", { => let _ = chat.decodeResponse("{\"choices\":[{\"index\":1,\"message\":{},\"finish_reason\":\"stop\"}]}" ) })
         let refusal = chat.newStreamDecoder()
         @Expect(refusal.push(event("{\"choices\":[{\"index\":0,\"delta\":{\"refusal\":\"no\"}}]}" )).events[0].kind, LlmWireEventKind.RefusalDelta)
         let _ = refusal.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}"))
-        match (refusal.push(event("[DONE]")).terminal) { case Some(LlmWireTerminal.Succeeded(reply)) => match (reply.blocks[0]) { case LlmWireBlock.Refusal(value) => @Expect(value.text, "no"); case _ => @Fail("stream refusal") }; case _ => @Fail("stream chat") }
+        match (refusal.push(event("[DONE]")).terminal) { case Some(LlmWireTerminal.Succeeded(reply)) => match (reply.blocks[0]) { case LlmWireOutputBlock.Refusal(value) => @Expect(value.text, "no"); case _ => @Fail("stream refusal") }; case _ => @Fail("stream chat") }
 
         let badMessages = anthropic.newStreamDecoder()
         beginMessages(badMessages)
@@ -879,7 +880,7 @@ class Llm4CjV02Tests {
         let deepSeek = LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect(), capabilities: capabilities)
         let state = deepSeek.decodeResponse("{\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"content\":\"answer\",\"reasoning_content\":\"reason\",\"tool_calls\":[{\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"f\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}")
         let reply = match (state) { case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(value)) => value; case _ => @Fail("DeepSeek reply") }
-        match (reply.blocks[1]) { case LlmWireBlock.NativeReplay(value) => @Expect(value.nativeType, "reasoning_content"); case _ => @Fail("reasoning must be native replay") }
+        match (reply.blocks[1]) { case LlmWireOutputBlock.NativeReplay(value) => @Expect(value.nativeType, "reasoning_content"); case _ => @Fail("reasoning must be native replay") }
         let continuation = ArrayList<LlmWireMessage>()
         for (message in reply.toContinuationInput()) { continuation.add(message) }
         continuation.add(LlmWireMessage(LlmWireRole.User, [LlmWireBlock.ToolResult(toolResultText("c", "ok"))]))
@@ -917,7 +918,7 @@ class Llm4CjV02Tests {
         expectLlmError("llm.image_url_invalid", { => let _ = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect()).encodeRequest(LlmWireRequest("m", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.Url, ""))])])) })
         expectLlmError("llm.usage_negative", { => let _ = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect()).decodeResponse("{\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":-1}}") })
 
-        let invalidReply = LlmWireReply(blocks: [LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.InvalidJson("{")))])
+        let invalidReply = LlmWireReply(blocks: [LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.InvalidJson("{")))])
         expectLlmError("llm.tool_arguments_not_executable", { => let _ = invalidReply.toContinuationInput() })
         let named = LlmWireStructuredOutput.JsonSchema(LlmWireJsonSchema("answer", testJson("{}")))
         expectLlmError("llm.structured_output_metadata_unsupported", { => let _ = messages.encodeRequest(LlmWireRequest("m", validMessages(), maxOutputTokens: Some(1024), structuredOutput: named)) })
@@ -1382,18 +1383,18 @@ class Llm4CjV02Tests {
             "{\"protocol\":\"messages\",\"dialect_id\":\"anthropic.messages.v1\",\"native_type\":\"thinking\",\"schema_version\":1,\"scope\":\"assistant_turn\",\"assistant_turn_index\":0,\"block_order\":1,\"complete\":true,\"payload\":{\"type\":\"thinking\",\"thinking\":\"why\",\"signature\":\"sig\"}}"
         )
         let reply = LlmWireReply(blocks: [
-            LlmWireBlock.Refusal(LlmWireRefusalBlock("no")),
-            LlmWireBlock.NativeReplay(replay)
+            LlmWireOutputBlock.Refusal(LlmWireRefusalBlock("no")),
+            LlmWireOutputBlock.NativeReplay(replay)
         ])
         expectLlmError("llm.continuation_projection_lossy", { => let _ = reply.toContinuationInput() })
         expectLlmError("llm.native_replay_projection_order_invalid", { => let _ = LlmWireReply(blocks: [
-            LlmWireBlock.NativeReplay(replay)
+            LlmWireOutputBlock.NativeReplay(replay)
         ]).toContinuationInput() })
         expectLlmError("llm.continuation_projection_lossy", { => let _ = LlmWireReply(blocks: [
-            LlmWireBlock.Refusal(LlmWireRefusalBlock("no"))
+            LlmWireOutputBlock.Refusal(LlmWireRefusalBlock("no"))
         ]).toContinuationInput() })
         expectLlmError("llm.continuation_projection_lossy", { => let _ = LlmWireReply(blocks: [
-            LlmWireBlock.Reasoning(LlmWireReasoningBlock("display only"))
+            LlmWireOutputBlock.Reasoning(LlmWireReasoningBlock("display only"))
         ]).toContinuationInput() })
     }
 
@@ -1450,13 +1451,13 @@ class Llm4CjV02Tests {
         ) })
 
         let responses = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
-        expectLlmError("llm.responses_semantic_unsupported", { => let _ = responses.decodeResponse(
+        let _ = responses.decodeResponse(
             "{\"object\":\"response\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"phase\":\"commentary\",\"content\":[]}]}"
-        ) })
-        expectLlmError("llm.responses_semantic_unsupported", { => let _ = responses.decodeResponse(
+        )
+        expectLlmError("llm.field_missing", { => let _ = responses.decodeResponse(
             "{\"object\":\"response\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"answer\",\"annotations\":[{\"type\":\"file_citation\"}]}]}]}"
         ) })
-        expectLlmError("llm.responses_semantic_unsupported", { => let _ = responses.decodeResponse(
+        expectLlmError("llm.field_missing", { => let _ = responses.decodeResponse(
             "{\"object\":\"response\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"answer\",\"logprobs\":[{\"token\":\"answer\"}]}]}]}"
         ) })
         let _ = responses.decodeResponse(
@@ -1464,13 +1465,13 @@ class Llm4CjV02Tests {
         )
 
         let messages = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect())
-        expectLlmError("llm.messages_semantic_unsupported", { => let _ = messages.decodeResponse(
+        expectLlmError("llm.field_missing", { => let _ = messages.decodeResponse(
             "{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"answer\",\"citations\":[{\"type\":\"page_location\"}]}],\"stop_reason\":\"end_turn\"}"
         ) })
-        expectLlmError("llm.messages_semantic_unsupported", { => let _ = messages.decodeResponse(
+        let _ = messages.decodeResponse(
             "{\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":\"refusal\",\"stop_details\":{\"type\":\"refusal\",\"category\":\"cyber\"}}"
-        ) })
-        expectLlmError("llm.messages_semantic_unsupported", { => let _ = messages.decodeResponse(
+        )
+        expectLlmError("llm.messages_refusal_details_missing", { => let _ = messages.decodeResponse(
             "{\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":\"refusal\"}"
         ) })
         let _ = messages.decodeResponse(
@@ -1731,11 +1732,11 @@ class Llm4CjV02Tests {
         )
         @Expect(mergedUsage.cacheWriteTokens, Some(2))
 
-        let diagnosticTool = LlmWireBlock.ToolCall(LlmWireToolCallBlock("", "bad name", LlmWireToolArguments.Partial("{")))
+        let diagnosticTool = LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock("", "bad name", LlmWireToolArguments.Partial("{")))
         @Expect(assembleCanonicalReply("", "", [diagnosticTool], LlmWireUsage(), "length", requireExecutableToolCalls: false).blocks.size, 1)
         expectLlmError("llm.tool_stop_without_call", { => validateReplyToolStop(LlmWireReply(), "tool_calls", "tool_calls", ["stop"]) })
         expectLlmError("llm.tool_call_stop_mismatch", { => validateReplyToolStop(
-            LlmWireReply(blocks: [LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(testJson("{}"))))]),
+            LlmWireReply(blocks: [LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(testJson("{}"))))]),
             "stop", "tool_calls", ["stop"]
         ) })
 
@@ -1745,13 +1746,10 @@ class Llm4CjV02Tests {
             completion: LlmWireOpaqueCompletion.Partial
         )
         expectLlmError("llm.native_replay_incomplete", { => let _ = assembleCanonicalReply(
-            "", "", [LlmWireBlock.NativeReplay(partialReplay)], LlmWireUsage(), "end_turn"
+            "", "", [LlmWireOutputBlock.NativeReplay(partialReplay)], LlmWireUsage(), "end_turn"
         ) })
         let opaque = LlmWireOpaqueBlock("future", parseWireJson("{}"))
         @Expect(opaque.payload().wireKind, WireJsonKind.Object)
-        expectLlmError("llm.semantic_block_unsupported", { => let _ = assembleCanonicalReply(
-            "", "", [LlmWireBlock.Opaque(opaque)], LlmWireUsage(), "stop"
-        ) })
         expectLlmError("llm.opaque_payload_invalid", { => let _ = LlmWireOpaqueBlock("", parseWireJson("{}")) })
         expectLlmError("llm.opaque_payload_invalid", { => let _ = LlmWireOpaqueBlock("future", parseWireJson("[]")) })
 
@@ -2085,5 +2083,108 @@ class Llm4CjV02Tests {
             case LlmWireResult.Err(error) => @Expect(error.code, "llm.response_utf8_invalid")
             case _ => @Fail("invalid response UTF-8 must be a local error")
         }
+    }
+
+    @TestCase
+    func t062FixedRepliesPreserveTypedProviderSemantics() {
+        let responses = openAiResponsesCodec(openAiResponsesModelProfile("gpt"))
+        let responseReply = succeededReply(responses.decodeResponse("""
+        {"id":"resp","object":"response","model":"gpt","status":"completed","service_tier":"priority","output":[
+          {"type":"message","role":"assistant","status":"completed","phase":"commentary","content":[
+            {"type":"output_text","text":"source","annotations":[
+              {"type":"url_citation","start_index":0,"end_index":6,"url":"https://example.invalid","title":"Example"},
+              {"type":"file_citation","index":1,"file_id":"file-1","filename":"source.txt"}
+            ],"logprobs":[{"token":"source","bytes":[115],"logprob":-0.25,"top_logprobs":[{"token":"Source","bytes":[83],"logprob":-1.5}]}]}
+          ]}
+        ],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}}
+        """))
+        match (responseReply.blocks[0]) {
+            case LlmWireOutputBlock.Text(value) =>
+                @Expect(value.phase, LlmWireOutputPhase.Commentary)
+                @Expect(value.annotations.size, 2)
+                match (value.annotations[0]) {
+                    case LlmWireAnnotation.UrlCitation(citation) => @Expect(citation.url, "https://example.invalid"); @Expect(citation.startIndex, Some(0))
+                    case _ => @Fail("expected URL citation")
+                }
+                match (value.annotations[1]) {
+                    case LlmWireAnnotation.FileCitation(citation) => @Expect(citation.fileId, "file-1"); @Expect(citation.filename, "source.txt")
+                    case _ => @Fail("expected file citation")
+                }
+                @Expect(value.logprobs.size, 1)
+                @Expect(value.logprobs[0].bytes[0], 115)
+                @Expect(value.logprobs[0].logprob.stringify(), "-0.25")
+                @Expect(value.logprobs[0].topLogprobs[0].token, "Source")
+            case _ => @Fail("expected typed Responses text")
+        }
+        @Expect(responseReply.usage.totalTokens, Some(3))
+        @Expect(responseReply.usage.serviceTier, Some("priority"))
+
+        let messages = anthropicMessagesCodec(anthropicMessagesModelProfile("claude"))
+        let citationReply = succeededReply(messages.decodeResponse("""
+        {"id":"msg","type":"message","role":"assistant","model":"claude","content":[
+          {"type":"text","text":"grass","citations":[{"type":"char_location","cited_text":"grass","document_index":0,"document_title":"Doc","start_char_index":0,"end_char_index":5}]}
+        ],"stop_reason":"end_turn","stop_details":null,"usage":{"input_tokens":4,"output_tokens":1,"server_tool_use":{"web_search_requests":2,"web_fetch_requests":1}},"service_tier":"standard"}
+        """))
+        match (citationReply.blocks[0]) {
+            case LlmWireOutputBlock.Text(value) =>
+                @Expect(value.citations.size, 1)
+                @Expect(value.citations[0].kind, LlmWireCitationKind.CharacterRange)
+                @Expect(value.citations[0].citedText, "grass")
+                @Expect(value.citations[0].endIndex, Some(5))
+            case _ => @Fail("expected cited Messages text")
+        }
+        @Expect(citationReply.usage.webSearchRequests, Some(2))
+        @Expect(citationReply.usage.webFetchRequests, Some(1))
+
+        let refusalReply = succeededReply(messages.decodeResponse("""
+        {"id":"msg-refusal","type":"message","role":"assistant","model":"claude","content":[],"stop_reason":"refusal","stop_details":{"type":"refusal","category":"cyber","explanation":"declined"},"usage":{"input_tokens":1,"output_tokens":0}}
+        """))
+        match (refusalReply.blocks[0]) {
+            case LlmWireOutputBlock.Refusal(value) => @Expect(value.category, Some("cyber")); @Expect(value.explanation, Some("declined"))
+            case _ => @Fail("expected structured refusal")
+        }
+
+        let chat = openAiChatCodec(openAiChatModelProfile("gpt"))
+        let chatReply = succeededReply(chat.decodeResponse("""
+        {"id":"chat","object":"chat.completion","model":"gpt","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop","logprobs":{"content":[{"token":"ok","bytes":[111,107],"logprob":-0.1,"top_logprobs":[]}]}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
+        """))
+        match (chatReply.blocks[0]) {
+            case LlmWireOutputBlock.Text(value) => @Expect(value.logprobs[0].token, "ok")
+            case _ => @Fail("expected Chat text logprobs")
+        }
+    }
+
+    @TestCase
+    func t063ChatChoicesKeepIndependentOutcomesAndContinuation() {
+        let codec = openAiChatCodec(openAiChatModelProfile("gpt"))
+        let reply = succeededReply(codec.decodeResponse("""
+        {"id":"chat-multi","object":"chat.completion","model":"gpt","choices":[
+          {"index":0,"message":{"role":"assistant","content":"first"},"finish_reason":"stop"},
+          {"index":1,"message":{"role":"assistant","content":null,"refusal":"declined"},"finish_reason":"stop"}
+        ]}
+        """))
+        @Expect(reply.choices.size, 2)
+        @Expect(reply.choices[0].index, 0)
+        match (reply.choices[0].outcome) { case LlmWireChoiceOutcome.Completed => (); case _ => @Fail("first choice must complete") }
+        match (reply.choices[1].outcome) {
+            case LlmWireChoiceOutcome.Refused(value) => @Expect(value.text, "declined")
+            case _ => @Fail("second choice must preserve refusal")
+        }
+        expectLlmError("llm.continuation_choice_required", { => let _ = reply.toContinuationInput() })
+        match (reply.toContinuationInput(0)) {
+            case LlmWireResult.Ok(messages) =>
+                @Expect(messages.size, 1)
+                match (messages[0].blocks[0]) { case LlmWireBlock.Text(value) => @Expect(value.text, "first"); case _ => @Fail("expected selected text") }
+            case LlmWireResult.Err(error) => throw error
+        }
+        match (reply.toContinuationInput(9)) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.continuation_choice_missing")
+            case _ => @Fail("missing choice must fail")
+        }
+        expectLlmError("llm.chat_choice_index_invalid", { => let _ = codec.decodeResponse("""
+        {"object":"chat.completion","choices":[
+          {"index":1,"message":{"role":"assistant","content":"wrong"},"finish_reason":"stop"}
+        ]}
+        """) })
     }
 }
