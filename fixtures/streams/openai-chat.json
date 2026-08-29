@@ -1,0 +1,1 @@
+{"fixture":"openai.chat.v1","events":["{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}","{\"choices\":[],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1}}","[DONE]"]}

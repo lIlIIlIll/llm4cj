@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 permissions:
@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           clean: true
+          fetch-depth: 0
       - name: Setup Cangjie 1.1.0
         uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
         with:
@@ -34,6 +35,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           clean: true
+          fetch-depth: 0
       - name: Setup latest stable Cangjie
         uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
         with:
@@ -65,8 +67,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          git diff --unified=0 "$BASE_SHA"...HEAD -- 'src/*.cj' > coverage/patch.diff
-          python3 scripts/check_patch_coverage.py --diff coverage/patch.diff --lcov coverage/lcov.info --baseline coverage-baseline.toml
+          python3 scripts/check_patch_coverage.py --base-ref "$BASE_SHA" --lcov coverage/lcov.info --gcov-root cov_output --baseline coverage-baseline.toml
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
@@ -84,3 +85,4 @@ jobs:
         with:
           clean: true
       - run: python3 scripts/check_contract.py
+      - run: python3 scripts/check_provider_smoke_security.py

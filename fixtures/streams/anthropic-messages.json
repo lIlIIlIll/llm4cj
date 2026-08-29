@@ -1,0 +1,1 @@
+{"fixture":"anthropic.messages.v1","events":["{\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"model\":\"claude\"}}","{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}","{\"type\":\"message_stop\"}"]}

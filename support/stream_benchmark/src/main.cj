@@ -12,12 +12,17 @@ func repeatedAscii(size: Int64): String {
 func benchmark(name: String, fragmentBytes: Int64, totalBytes: Int64): Unit {
     let decoder = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect()).newStreamDecoder()
     let fragment = repeatedAscii(fragmentBytes)
-    let count = totalBytes / fragmentBytes
+    let argumentEnvelopeBytes: Int64 = 12
+    let payloadBytes = if (totalBytes > argumentEnvelopeBytes) { totalBytes - argumentEnvelopeBytes } else { 0 }
+    let count = payloadBytes / fragmentBytes
     let start = MonoTime.now()
-    let _ = decoder.push(SseEvent("message", "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call\",\"name\":\"bench\"}}", "", None))
+    let _ = decoder.push(SseEvent("message", "{\"type\":\"message_start\",\"message\":{\"id\":\"bench\",\"model\":\"claude\"}}", "", None))
+    let _ = decoder.push(SseEvent("message", "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call\",\"name\":\"bench\",\"input\":{}}}", "", None))
+    let _ = decoder.push(SseEvent("message", "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"value\\\":\\\"\"}}", "", None))
     for (_ in 0..count) {
         let _ = decoder.push(SseEvent("message", "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"" + fragment + "\"}}", "", None))
     }
+    let _ = decoder.push(SseEvent("message", "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"}\"}}", "", None))
     let _ = decoder.push(SseEvent("message", "{\"type\":\"content_block_stop\",\"index\":0}", "", None))
     let _ = decoder.push(SseEvent("message", "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}", "", None))
     let terminal = decoder.push(SseEvent("message", "{\"type\":\"message_stop\"}", "", None))
