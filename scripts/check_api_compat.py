@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
+import json
 import re
 import subprocess
 import tomllib
@@ -32,9 +34,14 @@ def git(*args: str) -> str:
     return subprocess.run(["git", *args], cwd=ROOT, check=True, text=True, capture_output=True).stdout
 
 
+def is_stable_source_path(name: str) -> bool:
+    path = Path(name)
+    return path.parent == Path("src") and path.suffix == ".cj" and not path.name.endswith("_test.cj")
+
+
 def source_at(reference: str) -> str:
     names = git("ls-tree", "-r", "--name-only", reference, "src").splitlines()
-    production = sorted(name for name in names if name.endswith(".cj") and not name.endswith("_test.cj"))
+    production = sorted(name for name in names if is_stable_source_path(name))
     if not production:
         raise SystemExit("release tag has no production Cangjie sources: " + reference)
     return "\n".join(git("show", f"{reference}:{name}") for name in production)
@@ -44,7 +51,10 @@ def shape_digest(value: str) -> str:
     return hashlib.sha256(("\n".join(public_api_shape(value)) + "\n").encode()).hexdigest()
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args(argv)
     tags = git("tag", "--sort=-version:refname").splitlines()
     if not tags:
         raise SystemExit("public API compatibility check requires a release tag")
@@ -60,7 +70,23 @@ def main() -> int:
         if not path.name.endswith("_test.cj")
     )
     current_digest = shape_digest(current_source)
-    if previous_digest != current_digest and not permits_shape_change(previous, current):
+    changed = previous_digest != current_digest
+    permitted = not changed or permits_shape_change(previous, current)
+    report = {
+        "scope": "stable llm4cj package only",
+        "experimentalExcluded": True,
+        "baselineTag": tag,
+        "baselineVersion": previous_manifest["package"]["version"],
+        "candidateVersion": current_manifest["package"]["version"],
+        "baselineShapeSha256": previous_digest,
+        "candidateShapeSha256": current_digest,
+        "shapeChanged": changed,
+        "semverPermitsChange": permitted,
+    }
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    if not permitted:
         raise SystemExit(
             f"public API changed since {tag} without a breaking semver bump: "
             f"{previous_manifest['package']['version']} -> {current_manifest['package']['version']}"

@@ -57,6 +57,24 @@ class Llm4CjExperimentalTests {
                 LlmWireOutputTokenField.MaxCompletionTokens
             ))
         })
+        expectExperimentalError("llm.dialect_thinking_replay_unsupported", { =>
+            let _ = LlmWireStandardDialect(LlmWireDialectContract(
+                "example.chat.effort",
+                LlmWireProtocol.ChatCompletions,
+                LlmWireRequestStyle.OpenAiChat,
+                LlmWireOutputTokenField.MaxCompletionTokens,
+                reasoningEfforts: [LlmWireReasoningEffort.Low]
+            ))
+        })
+        expectExperimentalError("llm.dialect_thinking_replay_unsupported", { =>
+            let _ = LlmWireStandardDialect(LlmWireDialectContract(
+                "example.chat.thinking",
+                LlmWireProtocol.ChatCompletions,
+                LlmWireRequestStyle.OpenAiChat,
+                LlmWireOutputTokenField.MaxCompletionTokens,
+                thinkingModes: [LlmWireThinkingMode.ProviderDefault, LlmWireThinkingMode.Enabled]
+            ))
+        })
     }
 
     @TestCase
@@ -97,6 +115,58 @@ class Llm4CjExperimentalTests {
             case LlmWireResult.Err(error) => @Expect(error.code, "llm.cache_prewarm_tool_choice_unsupported")
             case _ => @Fail("required-tool pre-warm must fail")
         }
+
+        let wrongTokens = LlmWireRequest(
+            "claude-test", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm"))])],
+            maxOutputTokens: Some(1),
+            promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault)
+        )
+        match (prepareAnthropicCachePrewarm(prewarmCodec(), wrongTokens)) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.cache_prewarm_tokens_invalid")
+            case _ => @Fail("positive-token pre-warm must fail")
+        }
+
+        let missingCache = LlmWireRequest(
+            "claude-test", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm"))])],
+            maxOutputTokens: Some(0)
+        )
+        match (prepareAnthropicCachePrewarm(prewarmCodec(), missingCache)) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.cache_prewarm_cache_missing")
+            case _ => @Fail("uncached pre-warm must fail")
+        }
+
+        let openAi = openAiResponsesCodec(openAiResponsesModelProfile("gpt"))
+        match (prepareAnthropicCachePrewarm(openAi, LlmWireRequest(
+            "gpt", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm"))])],
+            maxOutputTokens: Some(0),
+            promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault)
+        ))) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.cache_prewarm_dialect_unsupported")
+            case _ => @Fail("non-Anthropic pre-warm must fail")
+        }
+    }
+
+    @TestCase
+    func cachePrewarmRejectsUnexpectedResponseSemantics() {
+        let exchange = match (prepareAnthropicCachePrewarm(prewarmCodec(), prewarmRequest())) {
+            case LlmWireResult.Ok(value) => value
+            case LlmWireResult.Err(error) => throw error
+        }
+        let nonEmpty = LlmWireHttpResponse(200, [], """
+        {"id":"msg","type":"message","role":"assistant","model":"claude-test","content":[{"type":"text","text":"unexpected"}],"stop_reason":"max_tokens","usage":{"input_tokens":1,"output_tokens":1}}
+        """.toArray())
+        match (exchange.decodeResponse(nonEmpty)) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.cache_prewarm_response_invalid")
+            case _ => @Fail("non-empty pre-warm response must fail")
+        }
+        match (exchange.decodeResponse(LlmWireHttpResponse(200, [], "{".toArray()))) {
+            case LlmWireResult.Err(_) => ()
+            case _ => @Fail("invalid pre-warm wire must fail")
+        }
+        match (exchange.decodeResponse(LlmWireHttpResponse(429, [], "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow\"}}".toArray()))) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.cache_prewarm_response_invalid")
+            case _ => @Fail("provider failure is not a successful pre-warm")
+        }
     }
 
     @TestCase
@@ -104,6 +174,8 @@ class Llm4CjExperimentalTests {
         let grammar = LlmWireGrammar(LlmWireGrammarSyntax.Regex, "[a-z]+")
         let tool = LlmWireCustomTool("emit", format: LlmWireCustomToolFormat.Grammar(grammar))
         @Expect(tool.name, "emit")
+        @Expect(LlmWireGrammarSyntax.Regex == LlmWireGrammarSyntax.Regex, true)
+        @Expect(LlmWireGrammarSyntax.Regex != LlmWireGrammarSyntax.Lark, true)
         expectExperimentalError("llm.grammar_empty", { => let _ = LlmWireGrammar(LlmWireGrammarSyntax.Lark, " ") })
         expectExperimentalError("llm.custom_tool_name_invalid", { => let _ = LlmWireCustomTool(" ") })
     }

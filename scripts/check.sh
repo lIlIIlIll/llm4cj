@@ -15,5 +15,6 @@ cjpm clean
 cjpm check
 cjpm build
 cjpm test
+scripts/check_local_consumers.sh
 
 printf 'llm4cj check passed\n'

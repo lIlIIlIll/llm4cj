@@ -64,6 +64,11 @@ class PatchCoverageTests(unittest.TestCase):
 
 
 class ApiCompatibilityTests(unittest.TestCase):
+    def test_only_root_stable_package_sources_are_compared(self) -> None:
+        self.assertTrue(check_api_compat.is_stable_source_path("src/model.cj"))
+        self.assertFalse(check_api_compat.is_stable_source_path("src/model_test.cj"))
+        self.assertFalse(check_api_compat.is_stable_source_path("src/experimental/experimental.cj"))
+
     def test_zero_major_requires_minor_bump(self) -> None:
         self.assertFalse(check_api_compat.permits_shape_change((0, 2, 0), (0, 2, 1)))
         self.assertTrue(check_api_compat.permits_shape_change((0, 2, 0), (0, 3, 0)))
