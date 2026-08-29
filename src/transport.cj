@@ -3,10 +3,17 @@ package llm4cj
 import std.collection.*
 import std.convert.*
 import std.io.*
+import std.deriving.Derive
 
+@Derive[Equatable]
 public enum LlmTransportErrorKind {
     InvalidWire | InvalidRequest | Unsupported | InvalidState |
-    Http | BodyLimit | Sse | Cancelled | Deadline | Transport
+    Http | BodyLimit | LimitExceeded | Sse | Cancelled | Deadline | Transport
+}
+
+@Derive[Equatable]
+public enum LlmTransportPhase {
+    Encode | Request | ResponseHeaders | StreamFraming | WireDecode | SemanticAssembly | Transport
 }
 
 public class LlmTransportError <: Exception {
@@ -18,17 +25,33 @@ public class LlmTransportError <: Exception {
     public let provider: String
     public let providerErrorCode: String
     public let providerErrorType: String
+    public let diagnosticJson: ?String
+    public let phase: ?LlmTransportPhase
+    public let protocol: ?LlmWireProtocol
+    public let dialectId: String
+    public let eventType: String
+    public let blockIndex: Int64
+    public let toolCallId: String
+    public let providerRequestId: String
     public init(
         kind: LlmTransportErrorKind, code: String, message: String,
         retryable!: Bool = false, httpStatus!: ?Int64 = None,
         retryAfterMillis!: ?Int64 = None, provider!: String = "",
-        providerErrorCode!: String = "", providerErrorType!: String = ""
+        providerErrorCode!: String = "", providerErrorType!: String = "",
+        diagnosticJson!: ?String = None, phase!: ?LlmTransportPhase = None,
+        protocol!: ?LlmWireProtocol = None, dialectId!: String = "",
+        eventType!: String = "", blockIndex!: Int64 = -1,
+        toolCallId!: String = "", providerRequestId!: String = ""
     ) {
         super(message)
         this.kind = kind; this.code = code; this.retryable = retryable
         this.httpStatus = httpStatus; this.retryAfterMillis = retryAfterMillis
         this.provider = provider; this.providerErrorCode = providerErrorCode
         this.providerErrorType = providerErrorType
+        this.diagnosticJson = diagnosticJson
+        this.phase = phase; this.protocol = protocol; this.dialectId = dialectId
+        this.eventType = eventType; this.blockIndex = blockIndex; this.toolCallId = toolCallId
+        this.providerRequestId = providerRequestId
     }
 }
 
@@ -49,54 +72,77 @@ public class SseEvent {
 
 public class SseDecoder {
     private let maxEventBytes: Int64
+    private let maxLineBytes: Int64
     private let maxBufferedBytes: Int64
+    private let maxEventsPerPush: Int64
+    private let maxOutputBytesPerPush: Int64
     private let line = ArrayList<Byte>()
     private let dataLines = ArrayList<String>()
+    private var dataLinesBytes: Int64 = 0
     private var eventType = ""
+    private var eventTypeBytes: Int64 = 0
     private var lastEventId = ""
+    private var lastEventIdBytes: Int64 = 0
     private var lastRetry: ?Int64 = None
     private var hasDataField = false
     private var eventBytes: Int64 = 0
     private var sawCarriageReturn = false
     private var firstLine = true
     private var closed = false
+    private var failed = false
+    private var pushOutputBytes: Int64 = 0
 
-    public init(maxEventBytes!: Int64 = 8388608, maxBufferedBytes!: Int64 = 16777216) {
-        if (maxEventBytes < 1 || maxBufferedBytes < maxEventBytes) { throw IllegalArgumentException("invalid SSE limits") }
+    public init(maxEventBytes!: Int64 = 8388608, maxLineBytes!: Int64 = 1048576, maxBufferedBytes!: Int64 = 16777216, maxEventsPerPush!: Int64 = 1024, maxOutputBytesPerPush!: Int64 = 16777216) {
+        if (maxEventBytes < 1 || maxLineBytes < 1 || maxBufferedBytes < 1 || maxEventsPerPush < 1 || maxOutputBytesPerPush < 1) { throw IllegalArgumentException("invalid SSE limits") }
         this.maxEventBytes = maxEventBytes; this.maxBufferedBytes = maxBufferedBytes
+        this.maxLineBytes = maxLineBytes; this.maxEventsPerPush = maxEventsPerPush; this.maxOutputBytesPerPush = maxOutputBytesPerPush
     }
 
     public func push(chunk: String): LlmResult<Array<SseEvent>> { push(chunk.toArray()) }
 
     public func push(chunk: Array<Byte>): LlmResult<Array<SseEvent>> {
+        if (failed) { return llmFailure<Array<SseEvent>>(LlmTransportErrorKind.InvalidState, "llm.sse_failed", "SSE decoder is poisoned by an earlier error") }
         if (closed) { return llmFailure<Array<SseEvent>>(LlmTransportErrorKind.InvalidState, "llm.sse_closed", "SSE decoder is closed") }
         let output = ArrayList<SseEvent>()
+        pushOutputBytes = 0
         try {
             for (byte in chunk) {
                 if (sawCarriageReturn) {
                     sawCarriageReturn = false
-                    if (byte == 10) { continue }
+                    if (byte == 10) {
+                        eventBytes++
+                        enforceLimits(output)
+                        processLine(output)
+                        continue
+                    }
+                    processLine(output)
                 }
-                if (byte == 13) { processLine(output); sawCarriageReturn = true }
-                else if (byte == 10) { processLine(output) }
-                else { line.add(byte); eventBytes++; enforceLimits() }
+                if (byte == 13) { eventBytes++; enforceLimits(output); sawCarriageReturn = true }
+                else if (byte == 10) { eventBytes++; enforceLimits(output); processLine(output) }
+                else { line.add(byte); eventBytes++; enforceLimits(output) }
             }
             LlmResult.Ok(output.toArray())
-        } catch (error: LlmTransportError) { LlmResult.Err(error) }
-        catch (error: Exception) { llmFailure<Array<SseEvent>>(LlmTransportErrorKind.Sse, "llm.sse_utf8_invalid", error.message) }
+        } catch (error: LlmTransportError) { failed = true; LlmResult.Err(error) }
+        catch (error: Exception) { failed = true; llmFailure<Array<SseEvent>>(LlmTransportErrorKind.Sse, "llm.sse_utf8_invalid", error.message) }
     }
 
     public func finish(): LlmResult<Array<SseEvent>> {
+        if (failed) { return llmFailure<Array<SseEvent>>(LlmTransportErrorKind.InvalidState, "llm.sse_failed", "SSE decoder is poisoned by an earlier error") }
         if (closed) { return llmFailure<Array<SseEvent>>(LlmTransportErrorKind.InvalidState, "llm.sse_closed", "SSE decoder is closed") }
-        closed = true
-        line.clear()
-        resetEvent()
-        LlmResult.Ok([])
+        pushOutputBytes = 0
+        let output = ArrayList<SseEvent>()
+        try {
+            if (sawCarriageReturn) { sawCarriageReturn = false; processLine(output) }
+            closed = true
+            line.clear()
+            resetEvent()
+            LlmResult.Ok(output.toArray())
+        } catch (error: LlmTransportError) { failed = true; LlmResult.Err(error) }
+        catch (error: Exception) { failed = true; llmFailure<Array<SseEvent>>(LlmTransportErrorKind.Sse, "llm.sse_utf8_invalid", error.message) }
     }
 
     private func processLine(output: ArrayList<SseEvent>): Unit {
-        eventBytes++
-        enforceLimits()
+        enforceLimits(output)
         var raw = String.fromUtf8(line.toArray())
         line.clear()
         if (firstLine) {
@@ -110,7 +156,10 @@ public class SseDecoder {
                     if (index > 0) { builder.append("\n") }
                     builder.append(dataLines[index])
                 }
-                output.add(SseEvent(if (eventType == "") { "message" } else { eventType }, builder.toString(), lastEventId, lastRetry))
+                let emitted = SseEvent(if (eventType == "") { "message" } else { eventType }, builder.toString(), lastEventId, lastRetry)
+                pushOutputBytes += Int64(emitted.data.toArray().size + emitted.event.toArray().size + emitted.id.toArray().size)
+                output.add(emitted)
+                enforceLimits(output)
             }
             resetEvent()
             return
@@ -125,32 +174,37 @@ public class SseDecoder {
         }
         if (value.startsWith(" ")) { value = value[1..] }
         match (name) {
-            case "data" => hasDataField = true; dataLines.add(value)
-            case "event" => eventType = value
-            case "id" => if (!value.contains("\u{0000}")) { lastEventId = value }
+            case "data" => hasDataField = true; dataLines.add(value); dataLinesBytes += Int64(value.toArray().size)
+            case "event" => eventType = value; eventTypeBytes = Int64(value.toArray().size)
+            case "id" => if (!value.contains("\u{0000}")) { lastEventId = value; lastEventIdBytes = Int64(value.toArray().size) }
             case "retry" => match (parseSseRetryMillis(value)) { case Some(found) => lastRetry = Some(found); case None => () }
             case _ => ()
         }
+        enforceLimits(output)
     }
 
-    private func enforceLimits(): Unit {
-        if (eventBytes > maxEventBytes) { throw LlmTransportError(LlmTransportErrorKind.BodyLimit, "llm.sse_event_too_large", "SSE event exceeds configured limit") }
-        if (eventBytes > maxBufferedBytes) { throw LlmTransportError(LlmTransportErrorKind.BodyLimit, "llm.sse_buffer_too_large", "SSE buffer exceeds configured limit") }
+    private func enforceLimits(output: ArrayList<SseEvent>): Unit {
+        if (eventBytes > maxEventBytes) { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, "llm.sse_event_too_large", "SSE event exceeds configured limit") }
+        if (line.size > maxLineBytes) { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, "llm.sse_line_too_large", "SSE line exceeds configured limit") }
+        let retained = Int64(line.size) + dataLinesBytes + eventTypeBytes + lastEventIdBytes
+        if (retained > maxBufferedBytes) { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, "llm.sse_buffer_too_large", "SSE parser retention exceeds configured limit") }
+        if (output.size > maxEventsPerPush) { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, "llm.sse_output_too_large", "SSE push produced too many events") }
+        if (pushOutputBytes > maxOutputBytesPerPush) { throw LlmTransportError(LlmTransportErrorKind.LimitExceeded, "llm.sse_output_bytes_too_large", "SSE push produced too many output bytes") }
     }
 
     private func resetEvent(): Unit {
-        dataLines.clear(); eventType = ""
+        dataLines.clear(); dataLinesBytes = 0; eventType = ""; eventTypeBytes = 0
         hasDataField = false; eventBytes = 0
     }
 }
 
-public func parseSseRetryMillis(value: String): ?Int64 { parseUnsignedDecimal(value.trimAscii()) }
+public func parseSseRetryMillis(value: String): ?Int64 { parseUnsignedDecimal(value) }
 
 public func parseRetryAfterMillis(value: String, nowEpochMillis: Int64): ?Int64 {
     let text = value.trimAscii()
     match (parseUnsignedDecimal(text)) {
         case Some(seconds) => if (seconds > Int64.Max / 1000) { Some(Int64.Max) } else { Some(seconds * 1000) }
-        case None => match (parseHttpDateEpochMillis(text)) {
+        case None => match (parseHttpDateEpochMillis(text, nowEpochMillis)) {
             case Some(epoch) => if (epoch <= nowEpochMillis) { Some(0) } else { Some(epoch - nowEpochMillis) }
             case None => None
         }
@@ -208,12 +262,12 @@ func parseUnsignedDecimal(text: String): ?Int64 {
     Some(result)
 }
 
-func parseHttpDateEpochMillis(text: String): ?Int64 {
+func parseHttpDateEpochMillis(text: String, nowEpochMillis: Int64): ?Int64 {
     try {
         match (text.indexOf(",")) {
             case Some(index) =>
                 let rest = text[index + 1..].trimAscii()
-                if (rest.contains("-")) { parseRfc850Date(rest) } else { parseImfDate(rest) }
+                if (rest.contains("-")) { parseRfc850Date(rest, nowEpochMillis) } else { parseImfDate(rest) }
             case None => parseAsctimeDate(text)
         }
     } catch (_: Exception) { None }
@@ -231,13 +285,31 @@ func parseImfDate(rest: String): ?Int64 {
     dateEpochMillis(Int64.parse(parts[2]), monthNumber(parts[1]), Int64.parse(parts[0]), parts[3])
 }
 
-func parseRfc850Date(rest: String): ?Int64 {
+func parseRfc850Date(rest: String, nowEpochMillis: Int64): ?Int64 {
     let parts = nonEmptyParts(rest, " ")
     if (parts.size != 3 || parts[2] != "GMT") { return None }
     let date = parts[0].split("-")
     if (date.size != 3) { return None }
     let shortYear = Int64.parse(date[2])
-    dateEpochMillis(if (shortYear >= 70) { 1900 + shortYear } else { 2000 + shortYear }, monthNumber(date[1]), Int64.parse(date[0]), parts[1])
+    if (shortYear < 0 || shortYear > 99) { return None }
+    let currentYear = yearAtEpochMillis(nowEpochMillis)
+    var year = (currentYear / 100) * 100 + shortYear
+    if (year > currentYear + 50) { year -= 100 }
+    dateEpochMillis(year, monthNumber(date[1]), Int64.parse(date[0]), parts[1])
+}
+
+func yearAtEpochMillis(epochMillis: Int64): Int64 {
+    if (epochMillis <= 0) { return 1970 }
+    let z = epochMillis / 1000 / 86400 + 719468
+    let era = z / 146097
+    let dayOfEra = z - era * 146097
+    let yearOfEra = (dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146096) / 365
+    var year = yearOfEra + era * 400
+    let dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100)
+    let monthPrime = (5 * dayOfYear + 2) / 153
+    let month = monthPrime + if (monthPrime < 10) { 3 } else { -9 }
+    if (month <= 2) { year++ }
+    year
 }
 
 func parseAsctimeDate(text: String): ?Int64 {

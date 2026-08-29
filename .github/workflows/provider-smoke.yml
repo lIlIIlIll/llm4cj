@@ -12,7 +12,9 @@ permissions:
 
 jobs:
   smoke:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: provider-smoke
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -21,15 +23,24 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: ${{ inputs.candidate_sha }}
-      - name: Verify exact candidate
-        run: test "$(git rev-parse HEAD)" = "${{ inputs.candidate_sha }}"
+          ref: ${{ github.sha }}
+      - name: Verify protected main candidate
+        env:
+          REQUESTED_SHA: ${{ inputs.candidate_sha }}
+          TRUSTED_SHA: ${{ github.sha }}
+        run: |
+          test "${GITHUB_REF}" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "${TRUSTED_SHA}"
+          test "${REQUESTED_SHA}" = "${TRUSTED_SHA}"
       - name: Setup latest stable Cangjie
         uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
         with:
           channel: sts
           version: latest
-      - name: Run secret-safe provider smoke
+      - name: Build public codec probe
+        working-directory: support/provider_probe
+        run: cjpm build
+      - name: Run protected-main provider smoke
         env:
           DIALECT: ${{ matrix.dialect }}
           PROVIDER_SMOKE_CONFIG: ${{ secrets.PROVIDER_SMOKE_CONFIG }}

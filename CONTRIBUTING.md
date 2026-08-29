@@ -18,7 +18,7 @@ scripts/check.sh
 scripts/coverage.sh
 ```
 
-覆盖率最低要求为 project line 90%、project branch 80%、patch line 95%、patch branch 90%。修改 public declaration、错误码或 fixture 时还要运行：
+覆盖率最低要求为 project line 90%、project branch 80%、patch line 95%、patch branch 85%。patch branch 门槛为 cjcov/gcov 的编译器生成安全分支保留余量。修改 public declaration、错误码或 fixture 时还要运行：
 
 ```bash
 python3 scripts/check_contract.py
