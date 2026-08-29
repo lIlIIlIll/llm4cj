@@ -1,0 +1,37 @@
+name: 功能建议
+description: 建议新的 canonical 语义、dialect 映射或工程能力
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题
+      description: 描述当前无法可靠完成的用户任务，不要只描述期望的 API 名称。
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: 建议契约
+      description: 说明成功、Unsupported、InvalidRequest 和 InvalidWire 的预期边界。
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 影响范围
+      options:
+        - canonical model
+        - request encoding
+        - fixed response decoding
+        - streaming
+        - dialect or model capability
+        - tooling, documentation, or CI
+    validations:
+      required: true
+  - type: textarea
+    id: provider
+    attributes:
+      label: Provider 依据
+      description: 如涉及 provider，请附官方规范、脱敏 fixture 和采集日期。
