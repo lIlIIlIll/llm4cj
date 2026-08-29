@@ -16,7 +16,7 @@ import llm4cj.*
 import std.convert.*
 
 main(): Int64 {
-    let codec = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
+    let codec = openAiResponsesCodec(openAiResponsesModelProfile("demo-model"))
     let request = LlmWireRequest(
         "demo-model",
         [LlmWireMessage(

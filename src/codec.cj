@@ -15,6 +15,32 @@ func encodeWireRequest(codec: LlmWireCodec, request: LlmWireRequest, streaming: 
     LlmWirePreparedRequest(body, requiredHeaders: headers.toArray(), featureRequirements: requirements.toArray(), streaming: streaming)
 }
 
+internal func encodeAnthropicCachePrewarm(codec: LlmWireCodec, request: LlmWireRequest): LlmWirePreparedRequest {
+    if (codec.dialect.contract.requestStyle != LlmWireRequestStyle.AnthropicMessages) {
+        throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.cache_prewarm_dialect_unsupported", "cache pre-warm is experimental and only supports Anthropic Messages")
+    }
+    match (request.maxOutputTokens) {
+        case Some(0) => ()
+        case _ => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.cache_prewarm_tokens_invalid", "cache pre-warm requires max output tokens equal to zero")
+    }
+    match (request.promptCache) {
+        case LlmWirePromptCache.Automatic(_) => ()
+        case _ => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.cache_prewarm_cache_missing", "cache pre-warm requires automatic prompt caching")
+    }
+    if (request.thinkingMode != LlmWireThinkingMode.ProviderDefault || request.reasoningEffort != LlmWireReasoningEffort.ProviderDefault) {
+        throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.cache_prewarm_thinking_unsupported", "cache pre-warm cannot enable thinking or effort")
+    }
+    match (request.structuredOutput) {
+        case LlmWireStructuredOutput.ProviderDefault | LlmWireStructuredOutput.Text => ()
+        case _ => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.cache_prewarm_structured_output_unsupported", "cache pre-warm cannot request structured output")
+    }
+    if (request.toolChoice == LlmWireToolChoice.Required) {
+        throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.cache_prewarm_tool_choice_unsupported", "cache pre-warm cannot require a tool")
+    }
+    validateWireRequest(codec, request, allowCachePrewarm: true)
+    encodeWireRequest(codec, request, false)
+}
+
 func outputTokenName(value: LlmWireOutputTokenField): String {
     match (value) {
         case LlmWireOutputTokenField.MaxOutputTokens => "max_output_tokens"

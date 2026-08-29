@@ -5,20 +5,20 @@ import std.collection.*
 import std.convert.*
 import std.fs.*
 
-func codecFor(name: String): LlmWireCodec {
+func codecFor(name: String, model!: String = "probe-model"): LlmWireCodec {
     match (name) {
-        case "openai-responses" => LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
-        case "openai-chat" => LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
-        case "anthropic-messages" => LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect())
-        case "deepseek-responses" => LlmWireCodec(LlmWireProtocol.Responses, deepSeekResponsesDialect())
-        case "deepseek-chat" => LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect())
-        case "deepseek-messages" => LlmWireCodec(LlmWireProtocol.Messages, deepSeekMessagesDialect())
+        case "openai-responses" => openAiResponsesCodec(openAiResponsesModelProfile(model))
+        case "openai-chat" => openAiChatCodec(openAiChatModelProfile(model))
+        case "anthropic-messages" => anthropicMessagesCodec(anthropicMessagesModelProfile(model))
+        case "deepseek-responses" => deepSeekResponsesCodec(deepSeekResponsesModelProfile(model))
+        case "deepseek-chat" => deepSeekChatCodec(deepSeekChatModelProfile(model))
+        case "deepseek-messages" => deepSeekMessagesCodec(deepSeekMessagesModelProfile(model))
         case _ => throw IllegalArgumentException("unknown dialect")
     }
 }
 
 func encode(name: String, model: String, streaming: Bool): Int64 {
-    let codec = codecFor(name)
+    let codec = codecFor(name, model: model)
     let request = LlmWireRequest(
         model,
         [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("hello"))])],

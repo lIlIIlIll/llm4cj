@@ -129,6 +129,24 @@ class MutableTestDialect <: LlmWireDialect {
     public prop protocol: LlmWireProtocol { get() { value.protocol } }
     func replace(contract: LlmWireDialectContract): Unit { value = contract }
 }
+
+// Test-only dialect keeps core contract validation covered without exposing custom
+// dialect construction from the stable package.
+class TestStandardDialect <: LlmWireDialect {
+    private let value: LlmWireDialectContract
+    init(contract: LlmWireDialectContract) {
+        if (isBuiltinCompatibilityId(contract.compatibilityId)) {
+            throw IllegalArgumentException("built-in dialect identity is reserved")
+        }
+        if (!customDialectThinkingIsReplaySafe(contract)) {
+            throw IllegalArgumentException("custom dialect thinking is not replay-safe")
+        }
+        this.value = contract
+    }
+    public prop contract: LlmWireDialectContract { get() { value } }
+    public prop compatibilityId: String { get() { value.compatibilityId } }
+    public prop protocol: LlmWireProtocol { get() { value.protocol } }
+}
 @Test
 class Llm4CjV02Tests {
     @TestCase
@@ -999,7 +1017,7 @@ class Llm4CjV02Tests {
 
     @TestCase
     func t036DialectUsageMergeStyleIsExplicit() {
-        let replace = LlmWireStandardDialect(LlmWireDialectContract(
+        let replace = TestStandardDialect(LlmWireDialectContract(
             "test.chat.replace", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat,
             LlmWireOutputTokenField.MaxCompletionTokens, usageMergeStyle: LlmWireUsageMergeStyle.ReplacePresent
         ))
@@ -1009,7 +1027,7 @@ class Llm4CjV02Tests {
         let _ = replaceDecoder.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}"))
         @Expect(succeededReply(replaceDecoder.push(event("[DONE]"))).usage.inputTokens, Some(3))
 
-        let delta = LlmWireStandardDialect(LlmWireDialectContract(
+        let delta = TestStandardDialect(LlmWireDialectContract(
             "test.chat.delta", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat,
             LlmWireOutputTokenField.MaxCompletionTokens, usageMergeStyle: LlmWireUsageMergeStyle.Delta
         ))
@@ -1019,7 +1037,7 @@ class Llm4CjV02Tests {
         let _ = deltaDecoder.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}"))
         @Expect(succeededReply(deltaDecoder.push(event("[DONE]"))).usage.inputTokens, Some(5))
 
-        let monotonic = LlmWireStandardDialect(LlmWireDialectContract(
+        let monotonic = TestStandardDialect(LlmWireDialectContract(
             "test.chat.monotonic", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat,
             LlmWireOutputTokenField.MaxCompletionTokens, usageMergeStyle: LlmWireUsageMergeStyle.Monotonic
         ))
@@ -1112,7 +1130,7 @@ class Llm4CjV02Tests {
         } catch (_: IllegalArgumentException) { () }
         try {
             let reserved = LlmWireDialectContract("openai.responses.v1", LlmWireProtocol.Responses, LlmWireRequestStyle.OpenAiResponses, LlmWireOutputTokenField.MaxOutputTokens)
-            let _ = LlmWireStandardDialect(reserved)
+            let _ = TestStandardDialect(reserved)
             @Fail("reserved compatibility ID")
         } catch (_: IllegalArgumentException) { () }
 
@@ -1259,7 +1277,7 @@ class Llm4CjV02Tests {
         expectIllegalArgument({ => let _ = LlmWireDialectContract("test.cache.none", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens, promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault]) })
         expectIllegalArgument({ => let _ = LlmWireDialectContract("test.deepseek.tier", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.DeepSeekChat, LlmWireOutputTokenField.MaxTokens, serviceTiers: [LlmWireServiceTier.Auto]) })
         expectIllegalArgument({ => let _ = LlmWireDialectContract("test.duplicate.level", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens, reasoningEfforts: [LlmWireReasoningEffort.Low, LlmWireReasoningEffort.Low]) })
-        @Expect(LlmWireStandardDialect(LlmWireDialectContract("test_a-b", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens)).compatibilityId, "test_a-b")
+        @Expect(TestStandardDialect(LlmWireDialectContract("test_a-b", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens)).compatibilityId, "test_a-b")
 
         let declared = [LlmWireReasoningEffort.Low]
         let immutable = LlmWireDialectContract("test.chat.immutable", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens, reasoningEfforts: declared)
@@ -1280,7 +1298,7 @@ class Llm4CjV02Tests {
         let usageUpdate = usage.push(event("{\"choices\":[],\"usage\":{\"prompt_tokens\":3}}"))
         match (usageUpdate.events[1]) { case LlmWireEvent.UsageUpdated(value) => @Expect(value.inputTokens, Some(3)); case _ => @Fail("usage update") }
 
-        let custom = LlmWireCodec(LlmWireProtocol.ChatCompletions, LlmWireStandardDialect(LlmWireDialectContract(
+        let custom = LlmWireCodec(LlmWireProtocol.ChatCompletions, TestStandardDialect(LlmWireDialectContract(
             "custom.deepseek.chat", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.DeepSeekChat,
             LlmWireOutputTokenField.MaxTokens
         )))
@@ -1395,7 +1413,7 @@ class Llm4CjV02Tests {
             toolChoice: LlmWireToolChoice.Required
         )).contains("\"tool_choice\":\"required\""), true)
 
-        expectIllegalArgument({ => let _ = LlmWireStandardDialect(LlmWireDialectContract(
+        expectIllegalArgument({ => let _ = TestStandardDialect(LlmWireDialectContract(
             "custom.thinking.chat", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat,
             LlmWireOutputTokenField.MaxCompletionTokens,
             thinkingModes: [LlmWireThinkingMode.ProviderDefault],
@@ -1751,7 +1769,7 @@ class Llm4CjV02Tests {
         deepSeek.encodeRequest(LlmWireRequest(
             "m", validMessages(), promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault)
         )).validateForSend(Some(SatisfiedRequirementResolver()))
-        let unsupportedCache = LlmWireCodec(LlmWireProtocol.ChatCompletions, LlmWireStandardDialect(LlmWireDialectContract(
+        let unsupportedCache = LlmWireCodec(LlmWireProtocol.ChatCompletions, TestStandardDialect(LlmWireDialectContract(
             "test.no.cache", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens
         )))
         expectLlmError("llm.cache_unsupported", { => encodePromptCache(

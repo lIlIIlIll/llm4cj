@@ -301,22 +301,6 @@ public interface LlmWireDialect { prop contract: LlmWireDialectContract; prop co
 @Derive[Equatable]
 public enum LlmWireBuiltinDialect { OpenAiResponses | OpenAiChat | AnthropicMessages | DeepSeekResponses | DeepSeekChat | DeepSeekMessages }
 
-public class LlmWireStandardDialect <: LlmWireDialect {
-    private let value: LlmWireDialectContract
-    public init(contract: LlmWireDialectContract) {
-        if (isBuiltinCompatibilityId(contract.compatibilityId)) {
-            throw IllegalArgumentException("built-in compatibility IDs are reserved")
-        }
-        if (!customDialectThinkingIsReplaySafe(contract)) {
-            throw IllegalArgumentException("custom dialects cannot declare provider-native thinking without a replay schema")
-        }
-        this.value = contract
-    }
-    public prop contract: LlmWireDialectContract { get() { value } }
-    public prop compatibilityId: String { get() { value.compatibilityId } }
-    public prop protocol: LlmWireProtocol { get() { value.protocol } }
-}
-
 func customDialectThinkingIsReplaySafe(contract: LlmWireDialectContract): Bool {
     if (!contract.reasoningEfforts.isEmpty()) { return false }
     for (mode in contract.thinkingModes) {
@@ -359,7 +343,7 @@ public class LlmWireCodec {
     public let capabilities: LlmWireCapabilities
     public let provider: String
     public let modelProfile: ?LlmWireModelProfile
-    public init(protocol: LlmWireProtocol, dialect: LlmWireDialect, capabilities!: LlmWireCapabilities = LlmWireCapabilities(), provider!: String = "", modelProfile!: ?LlmWireModelProfile = None) {
+    internal init(protocol: LlmWireProtocol, dialect: LlmWireDialect, capabilities!: LlmWireCapabilities = LlmWireCapabilities(), provider!: String = "", modelProfile!: ?LlmWireModelProfile = None) {
         let declaredProtocol = dialect.protocol
         let declaredIdentity = dialect.compatibilityId
         let declaredContract = dialect.contract
@@ -412,6 +396,13 @@ public class LlmWireCodec {
         try { LlmWireResult.Ok(LlmWireStreamDecoder(this, statusCode, headers, limits, sseLimits, nowEpochMillis: nowEpochMillis)) }
         catch (error: LlmWireError) { LlmWireResult.Err(withCodecContext(error, this, LlmTransportPhase.ResponseHeaders)) }
     }
+}
+
+internal func experimentalCodec(
+    protocol: LlmWireProtocol, dialect: LlmWireDialect,
+    capabilities!: LlmWireCapabilities = LlmWireCapabilities(), provider!: String = ""
+): LlmWireCodec {
+    LlmWireCodec(protocol, dialect, capabilities: capabilities, provider: provider)
 }
 
 public class LlmWireModelProfile {

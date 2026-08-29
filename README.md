@@ -30,7 +30,7 @@ import llm4cj.*
 import std.convert.*
 
 main(): Int64 {
-    let codec = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
+    let codec = openAiResponsesCodec(openAiResponsesModelProfile("demo-model"))
     let request = LlmWireRequest(
         "demo-model",
         [LlmWireMessage(
@@ -83,11 +83,12 @@ main(): Int64 {
 - canonical message 不允许为空；工具结果 turn 只能包含完整闭合当前 pending calls 的 ToolResult，不能与普通文本交错。ToolResult content 是有序的 text 或 image 列表。ToolCall name 与工具定义使用同一语法。
 - Responses 流维护 `item_id` 到 `call_id`/name 的状态映射；DeepSeek Chat 将 provider-native `reasoning_content` 与同一 assistant message 的 text/tool calls 一起回放。
 
-内置 dialect：`openai.responses.v1`、`openai.chat.v1`、`anthropic.messages.v1`、`deepseek.responses.v1`、`deepseek.chat.v1`、`deepseek.messages.v1`。这些 compatibility ID 保留给内置实现；自定义声明式 contract 必须使用独立 ID，并在构造时证明每项声明能力都有核心 encoder 映射。model 是否真正支持 thinking、tools 或 structured output，仍应由调用方提供 capability。
+内置 dialect：`openai.responses.v1`、`openai.chat.v1`、`anthropic.messages.v1`、`deepseek.responses.v1`、`deepseek.chat.v1`、`deepseek.messages.v1`。稳定包只通过六个 model-profile/codec 工厂创建 codec。自定义声明式 dialect、cache pre-warm、custom tool 和 grammar 位于 `llm4cj.experimental`，不享有 v0.2 稳定兼容承诺。model 是否真正支持 thinking、tools 或 structured output，仍应由调用方提供 capability。
 
 ## 文档
 
 - [安装与首个程序](docs/getting-started.md)
+- [实验 API](docs/experimental.md)
 - [协议与 dialect](docs/choosing-a-protocol.md)
 - [请求与响应](docs/requests-and-replies.md)
 - [流式与传输](docs/streaming-and-transport.md)

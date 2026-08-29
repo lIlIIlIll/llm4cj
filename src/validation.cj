@@ -77,7 +77,7 @@ func wireRequiredInt(value: JsonNode, name: String, provider!: String = ""): Int
     }
 }
 
-func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
+func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCachePrewarm!: Bool = false): Unit {
     if (request.model == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.model_missing", "model must not be empty") }
     match (codec.modelProfile) {
         case Some(profile) =>
@@ -88,7 +88,7 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
     }
     match (request.maxOutputTokens) {
         case Some(value) =>
-            if (value <= 0) {
+            if (value <= 0 && !(allowCachePrewarm && value == 0)) {
                 throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.max_output_tokens_invalid", "maxOutputTokens must be positive")
             }
         case None => ()

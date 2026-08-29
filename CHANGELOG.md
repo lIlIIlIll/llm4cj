@@ -20,7 +20,7 @@ All notable changes are recorded here.
 - Verify Provider Smoke workflow provenance and artifact digests before release, and record them in the release manifest.
 - Reject unrepresentable custom thinking dialects and invalid thinking/tool-choice combinations, and fail continuation projection before native replay order can change.
 - Encode Chat Files API blocks per dialect, reject unmodeled provider semantics, and make SSE retained-byte accounting incremental.
-- Keep cache pre-warm outside the v0.2 contract until explicit breakpoints and request-aware outcomes are modeled; reject lossy continuation projection.
+- Isolate custom dialects, cache pre-warm, custom tools, and grammars in `llm4cj.experimental`; bind pre-warm requests to request-aware response expectations.
 - Harden patch coverage against missing DA records, verify API changes against the latest release tag, and preserve SSE events emitted during transport finish.
 
 This release intentionally breaks the v0.1 API. See [the migration guide](docs/migrating-from-v0.1.md).

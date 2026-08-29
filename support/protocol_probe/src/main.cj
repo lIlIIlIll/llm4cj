@@ -7,12 +7,12 @@ import std.io.*
 
 func codecFor(name: String): LlmWireCodec {
     match (name) {
-        case "openai-responses" => LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), provider: name)
-        case "openai-chat" => LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), provider: name)
-        case "anthropic-messages" => LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), provider: name)
-        case "deepseek-responses" => LlmWireCodec(LlmWireProtocol.Responses, deepSeekResponsesDialect(), provider: name)
-        case "deepseek-chat" => LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect(), provider: name)
-        case "deepseek-messages" => LlmWireCodec(LlmWireProtocol.Messages, deepSeekMessagesDialect(), provider: name)
+        case "openai-responses" => openAiResponsesCodec(openAiResponsesModelProfile("probe-model"), provider: name)
+        case "openai-chat" => openAiChatCodec(openAiChatModelProfile("probe-model"), provider: name)
+        case "anthropic-messages" => anthropicMessagesCodec(anthropicMessagesModelProfile("probe-model"), provider: name)
+        case "deepseek-responses" => deepSeekResponsesCodec(deepSeekResponsesModelProfile("probe-model"), provider: name)
+        case "deepseek-chat" => deepSeekChatCodec(deepSeekChatModelProfile("probe-model"), provider: name)
+        case "deepseek-messages" => deepSeekMessagesCodec(deepSeekMessagesModelProfile("probe-model"), provider: name)
         case _ => throw IllegalArgumentException("unknown dialect: " + name)
     }
 }

@@ -29,7 +29,6 @@ class LlmWireReply
 class LlmWireRequest
 class LlmWireRequestBuilder
 class LlmWireSseLimits
-class LlmWireStandardDialect
 class LlmWireStreamDecoder
 class LlmWireStreamLimits
 class LlmWireStreamUpdate

@@ -8,6 +8,7 @@
 - [Tools、thinking 与 structured output](tools-thinking-and-structured-output.md)
 - [错误与限制](errors-and-limits.md)
 - [从 v0.1 迁移](migrating-from-v0.1.md)
+- [实验 API](experimental.md)
 - [API reference](api-reference.md)
 - [架构](architecture.md)
 - [测试与发布](testing-and-releasing.md)

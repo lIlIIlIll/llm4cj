@@ -2,6 +2,12 @@ llm.body_limit_invalid
 llm.body_read_failed
 llm.body_too_large
 llm.cache_lifetime_unsupported
+llm.cache_prewarm_cache_missing
+llm.cache_prewarm_dialect_unsupported
+llm.cache_prewarm_structured_output_unsupported
+llm.cache_prewarm_thinking_unsupported
+llm.cache_prewarm_tokens_invalid
+llm.cache_prewarm_tool_choice_unsupported
 llm.cache_unsupported
 llm.chat_block_unsupported
 llm.chat_choice_index_invalid

@@ -18,7 +18,7 @@ v0.2.0 是一次有意的 breaking release，不提供旧 API shim。
 | ToolResult 保存单个字符串 | `LlmWireToolResultContent` 的有序 text/image 数组 |
 | 仅有 SSE event 大小限制 | `LlmWireStreamLimits` 同时限制跨事件累计的语义输出和输入 provider event 数 |
 
-迁移时优先为每个 endpoint 选择六个内置 dialect，再从真实 model catalog 构造 capability。自定义 `LlmWireStandardDialect` 必须使用非保留 compatibility ID，且只能声明 request style 已有的可编码能力；因为 v0.2 不向 custom dialect 开放 native replay schema，自定义 contract 的 thinking 只能是 `ProviderDefault` 且不能声明 effort levels。codec 会冻结其构造时 contract。不要为了通过校验把所有 capability 都设为 true。把所有终态 match 改为穷尽处理，且仅将 schema version 1、assistant-turn scope、allowlist 类型的完整 native replay block 回放给原内置 dialect。Anthropic structured output 应迁移为 `JsonSchemaDocument`；OpenAI 风格的命名 schema 继续使用 `JsonSchema`。
+迁移时为每个 endpoint 选择六个内置 model-profile/codec 工厂，再从真实 model catalog 构造 capability。稳定包不再公开自由 codec 构造器。自定义 `LlmWireStandardDialect` 已移动到 `llm4cj.experimental`，只能使用非保留 compatibility ID、`ProviderDefault` thinking，且不提供 native replay schema。不要为了通过校验把所有 capability 都设为 true。把所有终态 match 改为穷尽处理，且仅将 schema version 1、assistant-turn scope、allowlist 类型的完整 native replay block 回放给原内置 dialect。Anthropic structured output 应迁移为 `JsonSchemaDocument`；OpenAI 风格的命名 schema 继续使用 `JsonSchema`。
 
 图片输入现在必须通过 `LlmWireCapabilities(input: LlmWireInputCapabilities(modalities: [Text, Image]))` 按模型显式开启。thinking mode 与 reasoning effort 也迁移到独立字段和 `LlmWireThinkingCapabilities`。`LlmWireImageSourceKind.File` 表示 Files API `file_id`；Messages 编码会产生所需 beta header。OpenAI automatic cache 的显式 lifetime 已从 deprecated 24h retention 迁移为 `prompt_cache_options.ttl=30m`。
 
