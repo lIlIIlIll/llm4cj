@@ -3,13 +3,13 @@ package llm4cj
 import std.collection.*
 import yjson.*
 
-func encodeWireRequest(codec: LlmWireCodec, request: LlmWireRequest): LlmWireEncodedRequest {
+func encodeWireRequest(codec: LlmWireCodec, request: LlmWireRequest, streaming: Bool): LlmWireEncodedRequest {
     let headers = ArrayList<LlmWireHeader>()
     let requirements = ArrayList<LlmWireFeatureRequirement>()
     let body = match (codec.protocol) {
-        case LlmWireProtocol.Responses => encodeResponsesRequest(codec, request, requirements)
-        case LlmWireProtocol.ChatCompletions => encodeChatRequest(codec, request, requirements)
-        case LlmWireProtocol.Messages => encodeMessagesRequest(codec, request, headers, requirements)
+        case LlmWireProtocol.Responses => encodeResponsesRequest(codec, request, requirements, streaming)
+        case LlmWireProtocol.ChatCompletions => encodeChatRequest(codec, request, requirements, streaming)
+        case LlmWireProtocol.Messages => encodeMessagesRequest(codec, request, headers, requirements, streaming)
     }
     LlmWireEncodedRequest(body, requiredHeaders: headers.toArray(), featureRequirements: requirements.toArray())
 }
@@ -22,10 +22,10 @@ func outputTokenName(value: LlmWireOutputTokenField): String {
     }
 }
 
-func baseRequest(codec: LlmWireCodec, request: LlmWireRequest): JsonNode {
+func baseRequest(codec: LlmWireCodec, request: LlmWireRequest, streaming: Bool): JsonNode {
     let root = wireJsonObject([WireJsonField("model", wireJsonString(request.model))])
     match (request.maxOutputTokens) { case Some(value) => root.put(outputTokenName(codec.dialect.contract.outputTokenField), wireJsonNumber(value.toString())); case None => () }
-    match (request.streaming) { case Some(value) => root.put("stream", wireJsonBool(value)); case None => () }
+    if (streaming) { root.put("stream", wireJsonBool(true)) }
     root
 }
 
@@ -46,9 +46,8 @@ func addDialectOptions(codec: LlmWireCodec, root: JsonNode, request: LlmWireRequ
     encodePromptCache(codec, root, request.promptCache, requirements)
 }
 
-func encodeResponsesRequest(codec: LlmWireCodec, request: LlmWireRequest, requirements: ArrayList<LlmWireFeatureRequirement>): String {
-    let root = baseRequest(codec, request); addDialectOptions(codec, root, request, requirements)
-    if (request.system != "") { root.put("instructions", wireJsonString(request.system)) }
+func encodeResponsesRequest(codec: LlmWireCodec, request: LlmWireRequest, requirements: ArrayList<LlmWireFeatureRequirement>, streaming: Bool): String {
+    let root = baseRequest(codec, request, streaming); addDialectOptions(codec, root, request, requirements)
     match (request.structuredOutput) {
         case LlmWireStructuredOutput.Text => root.put("text", wireJsonObject([WireJsonField("format", wireJsonObject([WireJsonField("type", wireJsonString("text"))]))]))
         case LlmWireStructuredOutput.JsonObject => root.put("text", wireJsonObject([WireJsonField("format", wireJsonObject([WireJsonField("type", wireJsonString("json_object"))]))]))
@@ -56,6 +55,12 @@ func encodeResponsesRequest(codec: LlmWireCodec, request: LlmWireRequest, requir
         case _ => ()
     }
     let input = wireJsonArray([])
+    for (instruction in request.instructions) {
+        input.add(wireJsonObject([
+            WireJsonField("role", wireJsonString(instructionRoleName(instruction.role))),
+            WireJsonField("content", wireJsonArray([wireJsonObject([WireJsonField("type", wireJsonString("input_text")), WireJsonField("text", wireJsonString(instruction.text))])]))
+        ]))
+    }
     for (message in request.messages) {
         var content = wireJsonArray([])
         for (block in message.blocks) { match (block) {
@@ -65,7 +70,7 @@ func encodeResponsesRequest(codec: LlmWireCodec, request: LlmWireRequest, requir
                 input.add(wireJsonObject([WireJsonField("type", wireJsonString("function_call")), WireJsonField("call_id", wireJsonString(call.callId)), WireJsonField("name", wireJsonString(call.name)), WireJsonField("arguments", wireJsonString(toolArgumentsRaw(call.arguments)))]))
             case LlmWireBlock.ToolResult(result) =>
                 flushResponsesMessage(input, message.role, content); content = wireJsonArray([])
-                input.add(wireJsonObject([WireJsonField("type", wireJsonString("function_call_output")), WireJsonField("call_id", wireJsonString(result.callId)), WireJsonField("output", wireJsonString(result.content))]))
+                input.add(wireJsonObject([WireJsonField("type", wireJsonString("function_call_output")), WireJsonField("call_id", wireJsonString(result.callId)), WireJsonField("output", encodeResponsesToolResult(result))]))
             case LlmWireBlock.NativeReplay(value) =>
                 flushResponsesMessage(input, message.role, content); content = wireJsonArray([])
                 input.add(value.payload())
@@ -76,8 +81,8 @@ func encodeResponsesRequest(codec: LlmWireCodec, request: LlmWireRequest, requir
     root.put("input", input); addResponsesTools(root, request.tools); root.stringify()
 }
 
-func encodeChatRequest(codec: LlmWireCodec, request: LlmWireRequest, requirements: ArrayList<LlmWireFeatureRequirement>): String {
-    let root = baseRequest(codec, request); addDialectOptions(codec, root, request, requirements)
+func encodeChatRequest(codec: LlmWireCodec, request: LlmWireRequest, requirements: ArrayList<LlmWireFeatureRequirement>, streaming: Bool): String {
+    let root = baseRequest(codec, request, streaming); addDialectOptions(codec, root, request, requirements)
     match (request.structuredOutput) {
         case LlmWireStructuredOutput.Text => root.put("response_format", wireJsonObject([WireJsonField("type", wireJsonString("text"))]))
         case LlmWireStructuredOutput.JsonObject => root.put("response_format", wireJsonObject([WireJsonField("type", wireJsonString("json_object"))]))
@@ -85,7 +90,7 @@ func encodeChatRequest(codec: LlmWireCodec, request: LlmWireRequest, requirement
         case _ => ()
     }
     let messages = wireJsonArray([])
-    if (request.system != "") { messages.add(wireJsonObject([WireJsonField("role", wireJsonString("system")), WireJsonField("content", wireJsonString(request.system))])) }
+    for (instruction in request.instructions) { messages.add(wireJsonObject([WireJsonField("role", wireJsonString(instructionRoleName(instruction.role))), WireJsonField("content", wireJsonString(instruction.text))])) }
     for (message in request.messages) {
         let content = StringBuilder()
         let contentParts = wireJsonArray([])
@@ -94,7 +99,7 @@ func encodeChatRequest(codec: LlmWireCodec, request: LlmWireRequest, requirement
         var reasoningContent: ?String = None
         for (block in message.blocks) { match (block) {
             case LlmWireBlock.Text(value) => content.append(value.text); contentParts.add(wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(value.text))]))
-            case LlmWireBlock.ToolResult(result) => messages.add(wireJsonObject([WireJsonField("role", wireJsonString("tool")), WireJsonField("tool_call_id", wireJsonString(result.callId)), WireJsonField("content", wireJsonString(result.content))]))
+            case LlmWireBlock.ToolResult(result) => messages.add(wireJsonObject([WireJsonField("role", wireJsonString("tool")), WireJsonField("tool_call_id", wireJsonString(result.callId)), WireJsonField("content", encodeChatToolResult(codec, result))]))
             case LlmWireBlock.ToolCall(call) => calls.add(wireJsonObject([WireJsonField("id", wireJsonString(call.callId)), WireJsonField("type", wireJsonString("function")), WireJsonField("function", wireJsonObject([WireJsonField("name", wireJsonString(call.name)), WireJsonField("arguments", wireJsonString(toolArgumentsRaw(call.arguments)))]))]))
             case LlmWireBlock.NativeReplay(value) =>
                 if (codec.dialect.contract.requestStyle != LlmWireRequestStyle.DeepSeekChat || value.nativeType != "reasoning_content") { unsupportedRequest("llm.chat_opaque_unsupported", "Chat Completions cannot replay this native block") }
@@ -114,9 +119,13 @@ func encodeChatRequest(codec: LlmWireCodec, request: LlmWireRequest, requirement
     root.put("messages", messages); addChatTools(root, request.tools); root.stringify()
 }
 
-func encodeMessagesRequest(codec: LlmWireCodec, request: LlmWireRequest, headers: ArrayList<LlmWireHeader>, requirements: ArrayList<LlmWireFeatureRequirement>): String {
-    let root = baseRequest(codec, request); encodeThinking(codec, root, request.thinkingMode, request.reasoningEffort)
-    if (request.system != "") { root.put("system", wireJsonString(request.system)) }
+func encodeMessagesRequest(codec: LlmWireCodec, request: LlmWireRequest, headers: ArrayList<LlmWireHeader>, requirements: ArrayList<LlmWireFeatureRequirement>, streaming: Bool): String {
+    let root = baseRequest(codec, request, streaming); encodeThinking(codec, root, request.thinkingMode, request.reasoningEffort)
+    if (!request.instructions.isEmpty()) {
+        let system = wireJsonArray([])
+        for (instruction in request.instructions) { system.add(wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(instruction.text))])) }
+        root.put("system", system)
+    }
     if (request.serviceTier != LlmWireServiceTier.ProviderDefault) { root.put("service_tier", wireJsonString(serviceTierName(request.serviceTier))) }
     if (request.generationSpeed != LlmWireGenerationSpeed.ProviderDefault) {
         root.put("speed", wireJsonString(generationSpeedName(request.generationSpeed)))
@@ -262,23 +271,57 @@ func encodeMessagesContent(block: LlmWireBlock): JsonNode {
     match (block) {
         case LlmWireBlock.Text(value) => wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(value.text))])
         case LlmWireBlock.Image(value) =>
-            let source = match (value.sourceKind) {
-                case LlmWireImageSourceKind.Url => wireJsonObject([WireJsonField("type", wireJsonString("url")), WireJsonField("url", wireJsonString(value.data))])
-                case LlmWireImageSourceKind.Base64 => wireJsonObject([WireJsonField("type", wireJsonString("base64")), WireJsonField("media_type", wireJsonString(value.mediaType)), WireJsonField("data", wireJsonString(value.data))])
-                case LlmWireImageSourceKind.File => wireJsonObject([WireJsonField("type", wireJsonString("file")), WireJsonField("file_id", wireJsonString(value.data))])
-            }
-            wireJsonObject([WireJsonField("type", wireJsonString("image")), WireJsonField("source", source)])
+            encodeMessagesImage(value)
         case LlmWireBlock.ToolCall(value) => wireJsonObject([
             WireJsonField("type", wireJsonString("tool_use")), WireJsonField("id", wireJsonString(value.callId)),
             WireJsonField("name", wireJsonString(value.name)), WireJsonField("input", toolArgumentsObject(value.arguments))
         ])
         case LlmWireBlock.ToolResult(value) => wireJsonObject([
             WireJsonField("type", wireJsonString("tool_result")), WireJsonField("tool_use_id", wireJsonString(value.callId)),
-            WireJsonField("content", wireJsonString(value.content)), WireJsonField("is_error", wireJsonBool(value.isError))
+            WireJsonField("content", encodeMessagesToolResult(value)), WireJsonField("is_error", wireJsonBool(value.isError))
         ])
         case LlmWireBlock.NativeReplay(value) => value.payload()
         case LlmWireBlock.Reasoning(_) | LlmWireBlock.Refusal(_) | LlmWireBlock.Opaque(_) => unsupportedRequest("llm.messages_block_unsupported", "display and diagnostic blocks cannot be encoded as request content")
     }
+}
+
+func encodeResponsesToolResult(value: LlmWireToolResultBlock): JsonNode {
+    let output = wireJsonArray([])
+    for (part in value.content) { match (part) {
+        case LlmWireToolResultContent.Text(text) => output.add(wireJsonObject([WireJsonField("type", wireJsonString("input_text")), WireJsonField("text", wireJsonString(text.text))]))
+        case LlmWireToolResultContent.Image(image) => output.add(match (image.sourceKind) {
+            case LlmWireImageSourceKind.File => wireJsonObject([WireJsonField("type", wireJsonString("input_image")), WireJsonField("file_id", wireJsonString(image.data))])
+            case _ => wireJsonObject([WireJsonField("type", wireJsonString("input_image")), WireJsonField("image_url", wireJsonString(imageUrl(image))), WireJsonField("detail", wireJsonString(imageDetail(image.detail)))])
+        })
+    } }
+    output
+}
+
+func encodeChatToolResult(codec: LlmWireCodec, value: LlmWireToolResultBlock): JsonNode {
+    let output = wireJsonArray([])
+    for (part in value.content) { match (part) {
+        case LlmWireToolResultContent.Text(text) => output.add(wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(text.text))]))
+        case LlmWireToolResultContent.Image(image) => output.add(encodeChatImage(codec, image))
+    } }
+    output
+}
+
+func encodeMessagesToolResult(value: LlmWireToolResultBlock): JsonNode {
+    let output = wireJsonArray([])
+    for (part in value.content) { match (part) {
+        case LlmWireToolResultContent.Text(text) => output.add(wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(text.text))]))
+        case LlmWireToolResultContent.Image(image) => output.add(encodeMessagesImage(image))
+    } }
+    output
+}
+
+func encodeMessagesImage(value: LlmWireImageBlock): JsonNode {
+    let source = match (value.sourceKind) {
+        case LlmWireImageSourceKind.Url => wireJsonObject([WireJsonField("type", wireJsonString("url")), WireJsonField("url", wireJsonString(value.data))])
+        case LlmWireImageSourceKind.Base64 => wireJsonObject([WireJsonField("type", wireJsonString("base64")), WireJsonField("media_type", wireJsonString(value.mediaType)), WireJsonField("data", wireJsonString(value.data))])
+        case LlmWireImageSourceKind.File => wireJsonObject([WireJsonField("type", wireJsonString("file")), WireJsonField("file_id", wireJsonString(value.data))])
+    }
+    wireJsonObject([WireJsonField("type", wireJsonString("image")), WireJsonField("source", source)])
 }
 
 func toolArgumentsRaw(arguments: LlmWireToolArguments): String {
@@ -300,6 +343,7 @@ func toolArgumentsObject(arguments: LlmWireToolArguments): JsonNode {
 }
 
 func roleName(role: LlmWireRole): String { match (role) { case LlmWireRole.User => "user"; case LlmWireRole.Assistant => "assistant" } }
+func instructionRoleName(role: LlmWireInstructionRole): String { match (role) { case LlmWireInstructionRole.System => "system"; case LlmWireInstructionRole.Developer => "developer" } }
 func imageDetail(value: LlmWireImageDetail): String { match (value) { case LlmWireImageDetail.Auto => "auto"; case LlmWireImageDetail.Low => "low"; case LlmWireImageDetail.High => "high" } }
 func imageUrl(value: LlmWireImageBlock): String { match (value.sourceKind) { case LlmWireImageSourceKind.Url => value.data; case LlmWireImageSourceKind.Base64 => "data:" + value.mediaType + ";base64," + value.data; case LlmWireImageSourceKind.File => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.image_file_shape_invalid", "file images require a provider-native file_id field") } }
 
@@ -321,6 +365,10 @@ func encodeChatImage(codec: LlmWireCodec, value: LlmWireImageBlock): JsonNode {
 func requestHasFileImage(request: LlmWireRequest): Bool {
     for (message in request.messages) { for (block in message.blocks) { match (block) {
         case LlmWireBlock.Image(value) => if (value.sourceKind == LlmWireImageSourceKind.File) { return true }
+        case LlmWireBlock.ToolResult(value) => for (part in value.content) { match (part) {
+            case LlmWireToolResultContent.Image(image) => if (image.sourceKind == LlmWireImageSourceKind.File) { return true }
+            case _ => ()
+        } }
         case _ => ()
     } } }
     false

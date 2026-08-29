@@ -334,9 +334,16 @@ public class LlmWireCodec {
         }
         this.protocol = protocol; this.dialect = FrozenWireDialect(frozen); this.capabilities = capabilities; this.provider = provider; this.modelProfile = modelProfile
     }
-    public func encodeRequest(request: LlmWireRequest): LlmWireEncodedRequest {
-        try { validateWireRequest(this, request); encodeWireRequest(this, request) }
+    public func encodeRequest(request: LlmWireRequest, streaming!: Bool = false): LlmWireEncodedRequest {
+        try { validateWireRequest(this, request); encodeWireRequest(this, request, streaming) }
         catch (error: LlmWireError) { throw withCodecContext(error, this, LlmTransportPhase.Encode) }
+    }
+    public func newRequestBuilder(model!: String = ""): LlmWireRequestBuilder {
+        let resolved = if (model != "") { model } else { match (modelProfile) {
+            case Some(profile) => profile.model
+            case None => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.model_missing", "a codec without a model profile requires an explicit builder model")
+        } }
+        LlmWireRequestBuilder(this, resolved)
     }
     public func decodeResponse(source: String): LlmWireResponseState {
         try { decodeWireResponse(this, source) }

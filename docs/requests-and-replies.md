@@ -1,6 +1,8 @@
 # 请求与响应
 
-请求由 `LlmWireRequest`、按顺序排列的 `LlmWireMessage` 和封闭的 `LlmWireBlock` 组成。可选 provider 字段默认不发送。
+请求由 `LlmWireRequest`、按顺序排列的 `LlmWireInstruction`、`LlmWireMessage` 和封闭的 `LlmWireBlock` 组成。可选 provider 字段默认不发送。streaming 是编码操作的选择，不属于可复用请求的语义。
+
+`LlmWireRequestBuilder` 由 codec 创建。它保存 codec 与 model profile 的绑定，立即检查空模型、空 instruction 和非法 token 上限，并在 `build()` 时执行 dialect、capability 与 conversation 的完整校验。
 
 固定响应返回 `LlmWireResponseState`：
 
@@ -20,5 +22,7 @@ usage counter 使用 `Option<Int64>`。`None` 表示 provider 没有返回该字
 conversation 只接受可发送的 canonical history：assistant tool call 之后必须由一个 user tool-result turn 完整闭合当前 pending calls，不能混入普通内容、拆成不完整批次或在闭合前继续新对话。本库不提供会删除或重排非法历史的 lenient 编码模式。
 
 空 block 列表和只包含空文本的 message 会以 `llm.message_empty` 拒绝。ToolResult turn 不允许与 Text 交错，因此 Chat encoder 不会重新排序“文本 + 工具结果”这种非法 canonical 输入。`Complete` tool arguments 在所有协议中都必须是 JSON object；历史 ToolCall name 与工具定义采用相同的 1–64 字节 ASCII 名称语法。
+
+`LlmWireToolResultBlock.content` 是有序的 `LlmWireToolResultContent` 数组。text 与 image content 会按 provider dialect 编码。图片仍受 model profile 的 image capability、source 和 media type 规则约束。
 
 `LlmWireReply.toContinuationInput()` 只投影可安全继续发送的 text、完整 tool call 和 native replay block。`InvalidJson`、`InvalidShape` 或 `Partial` tool arguments 会明确失败；存在 display reasoning、refusal 或未知诊断 block 时也会以 `llm.continuation_projection_lossy` 失败，绝不静默丢弃语义。如果删除较早的不可回放 block 会改变后续 `NativeReplay.blockOrder`，projection 会以 `llm.native_replay_projection_order_invalid` 失败，而不是生成下一次请求必然拒绝的历史。Responses encoder 只聚合相邻普通 content，native item 与 message 的相对顺序保持不变。

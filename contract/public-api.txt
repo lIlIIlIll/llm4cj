@@ -10,6 +10,7 @@ class LlmWireFeatureRequirement
 class LlmWireHeader
 class LlmWireImageBlock
 class LlmWireInputCapabilities
+class LlmWireInstruction
 class LlmWireJson
 class LlmWireJsonField
 class LlmWireJsonSchema
@@ -22,6 +23,7 @@ class LlmWireReasoningBlock
 class LlmWireRefusalBlock
 class LlmWireReply
 class LlmWireRequest
+class LlmWireRequestBuilder
 class LlmWireStandardDialect
 class LlmWireStreamLimits
 class LlmWireStreamUpdate
@@ -45,6 +47,7 @@ enum LlmWireImageDetail
 enum LlmWireImageSourceKind
 enum LlmWireIncompleteReason
 enum LlmWireInputModality
+enum LlmWireInstructionRole
 enum LlmWireJsonKind
 enum LlmWireNativeReplayScope
 enum LlmWireOpaqueCompletion
@@ -68,6 +71,7 @@ enum LlmWireTerminal
 enum LlmWireThinkingMode
 enum LlmWireToolArguments
 enum LlmWireToolChoice
+enum LlmWireToolResultContent
 enum LlmWireUsageMergeStyle
 func anthropicMessagesCodec
 func anthropicMessagesDialect

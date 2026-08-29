@@ -22,10 +22,9 @@ func encode(name: String, model: String, streaming: Bool): Int64 {
     let request = LlmWireRequest(
         model,
         [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("hello"))])],
-        maxOutputTokens: Some(256),
-        streaming: if (streaming) { Some(true) } else { None }
+        maxOutputTokens: Some(256)
     )
-    let encoded = codec.encodeRequest(request)
+    let encoded = codec.encodeRequest(request, streaming: streaming)
     if (!encoded.requiredHeaders.isEmpty() || !encoded.featureRequirements.isEmpty()) { return 3 }
     println(encoded.body)
     0

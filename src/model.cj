@@ -9,6 +9,8 @@ public enum LlmWireProtocol { Responses | ChatCompletions | Messages }
 @Derive[Equatable]
 public enum LlmWireRole { User | Assistant }
 @Derive[Equatable]
+public enum LlmWireInstructionRole { System | Developer }
+@Derive[Equatable]
 public enum LlmWireInputModality { Text | Image }
 @Derive[Equatable]
 public enum LlmWireImageSourceKind { Url | Base64 | File }
@@ -56,6 +58,12 @@ public class LlmWireTextBlock {
     public init(text: String) { this.text = text }
 }
 
+public class LlmWireInstruction {
+    public let role: LlmWireInstructionRole
+    public let text: String
+    public init(role: LlmWireInstructionRole, text: String) { this.role = role; this.text = text }
+}
+
 public class LlmWireReasoningBlock {
     public let text: String
     public let replayDialectId: String
@@ -83,11 +91,15 @@ public class LlmWireToolCallBlock {
     }
 }
 
+public enum LlmWireToolResultContent {
+    Text(LlmWireTextBlock) | Image(LlmWireImageBlock)
+}
+
 public class LlmWireToolResultBlock {
     public let callId: String
-    public let content: String
+    public let content: Array<LlmWireToolResultContent>
     public let isError: Bool
-    public init(callId: String, content: String, isError!: Bool = false) {
+    public init(callId: String, content: Array<LlmWireToolResultContent>, isError!: Bool = false) {
         this.callId = callId
         this.content = content
         this.isError = isError
@@ -283,13 +295,12 @@ public enum LlmWireStructuredOutput {
 
 public class LlmWireRequest {
     public let model: String
-    public let system: String
+    public let instructions: Array<LlmWireInstruction>
     public let messages: Array<LlmWireMessage>
     public let tools: Array<LlmWireTool>
     public let thinkingMode: LlmWireThinkingMode
     public let reasoningEffort: LlmWireReasoningEffort
     public let maxOutputTokens: ?Int64
-    public let streaming: ?Bool
     public let parallelToolCalls: ?Bool
     public let serviceTier: LlmWireServiceTier
     public let generationSpeed: LlmWireGenerationSpeed
@@ -301,12 +312,11 @@ public class LlmWireRequest {
     public init(
         model: String,
         messages: Array<LlmWireMessage>,
-        system!: String = "",
+        instructions!: Array<LlmWireInstruction> = [],
         tools!: Array<LlmWireTool> = [],
         thinkingMode!: LlmWireThinkingMode = LlmWireThinkingMode.ProviderDefault,
         reasoningEffort!: LlmWireReasoningEffort = LlmWireReasoningEffort.ProviderDefault,
         maxOutputTokens!: ?Int64 = None,
-        streaming!: ?Bool = None,
         parallelToolCalls!: ?Bool = None,
         serviceTier!: LlmWireServiceTier = LlmWireServiceTier.ProviderDefault,
         generationSpeed!: LlmWireGenerationSpeed = LlmWireGenerationSpeed.ProviderDefault,
@@ -317,12 +327,11 @@ public class LlmWireRequest {
     ) {
         this.model = model
         this.messages = messages
-        this.system = system
+        this.instructions = instructions
         this.tools = tools
         this.thinkingMode = thinkingMode
         this.reasoningEffort = reasoningEffort
         this.maxOutputTokens = maxOutputTokens
-        this.streaming = streaming
         this.parallelToolCalls = parallelToolCalls
         this.serviceTier = serviceTier
         this.generationSpeed = generationSpeed

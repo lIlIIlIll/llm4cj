@@ -96,9 +96,15 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
     if (codec.dialect.contract.requireMaxOutputTokens && request.maxOutputTokens.isNone()) {
         throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.max_output_tokens_required", "this dialect requires maxOutputTokens")
     }
+    for (instruction in request.instructions) {
+        if (instruction.text.trimAscii() == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.instruction_empty", "instruction text must not be empty") }
+        if (codec.protocol == LlmWireProtocol.Messages && instruction.role == LlmWireInstructionRole.Developer) {
+            unsupportedRequest("llm.developer_instruction_unsupported", "Messages does not represent developer instructions")
+        }
+    }
     match (codec.protocol) {
         case LlmWireProtocol.Responses =>
-            if (request.messages.isEmpty() && request.system == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.responses_input_required", "Responses requires input messages or instructions") }
+            if (request.messages.isEmpty() && request.instructions.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.responses_input_required", "Responses requires input messages or instructions") }
         case LlmWireProtocol.ChatCompletions =>
             if (request.messages.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.chat_messages_required", "Chat Completions requires at least one message") }
         case LlmWireProtocol.Messages =>
@@ -141,6 +147,11 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest): Unit {
                         if (deepSeekReasoningBlocks > 1) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_cardinality_invalid", "DeepSeek Chat assistant turns may contain only one reasoning_content replay block") }
                     }
                 case LlmWireBlock.ToolResult(value) =>
+                    if (value.content.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty", "tool results require at least one content part") }
+                    for (part in value.content) { match (part) {
+                        case LlmWireToolResultContent.Text(text) => if (text.text == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty", "tool-result text must not be empty") }
+                        case LlmWireToolResultContent.Image(image) => validateBlockShape(LlmWireBlock.Image(image)); validateImageCapability(codec, message, image)
+                    } }
                     if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.DeepSeekMessages && value.isError) {
                         unsupportedRequest("llm.tool_result_error_semantics_unsupported", "DeepSeek Messages does not preserve tool-result error semantics")
                     }
