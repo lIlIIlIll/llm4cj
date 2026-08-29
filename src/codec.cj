@@ -3,7 +3,7 @@ package llm4cj
 import std.collection.*
 import yjson.*
 
-func encodeWireRequest(codec: LlmWireCodec, request: LlmWireRequest, streaming: Bool): LlmWireEncodedRequest {
+func encodeWireRequest(codec: LlmWireCodec, request: LlmWireRequest, streaming: Bool): LlmWirePreparedRequest {
     let headers = ArrayList<LlmWireHeader>()
     let requirements = ArrayList<LlmWireFeatureRequirement>()
     let body = match (codec.protocol) {
@@ -11,7 +11,7 @@ func encodeWireRequest(codec: LlmWireCodec, request: LlmWireRequest, streaming: 
         case LlmWireProtocol.ChatCompletions => encodeChatRequest(codec, request, requirements, streaming)
         case LlmWireProtocol.Messages => encodeMessagesRequest(codec, request, headers, requirements, streaming)
     }
-    LlmWireEncodedRequest(body, requiredHeaders: headers.toArray(), featureRequirements: requirements.toArray())
+    LlmWirePreparedRequest(body, requiredHeaders: headers.toArray(), featureRequirements: requirements.toArray(), streaming: streaming)
 }
 
 func outputTokenName(value: LlmWireOutputTokenField): String {
@@ -381,6 +381,82 @@ func decodeWireResponse(codec: LlmWireCodec, source: String): LlmWireResponseSta
         case LlmWireProtocol.ChatCompletions => decodeChatResponse(codec, root)
         case LlmWireProtocol.Messages => decodeMessagesResponse(codec, root)
     }
+}
+
+func decodeHttpResponse(codec: LlmWireCodec, response: LlmWireHttpResponse, nowEpochMillis: Int64): LlmWireResult<LlmWireResponseState> {
+    if (response.statusCode < 100 || response.statusCode > 599) {
+        return LlmWireResult.Err(withCodecContext(
+            LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.http_status_invalid", "HTTP status must be between 100 and 599"),
+            codec, LlmTransportPhase.ResponseHeaders
+        ))
+    }
+    let requestId = responseHeader(response.headers, ["x-request-id", "request-id"])
+    let retryAfter: ?Int64 = match (responseHeaderOption(response.headers, "retry-after")) {
+        case Some(value) => parseRetryAfterMillis(value, nowEpochMillis)
+        case None => None
+    }
+    let source = try { String.fromUtf8(response.body) } catch (_: Exception) {
+        return LlmWireResult.Err(withCodecContext(LlmWireError(
+            LlmWireErrorKind.InvalidWire, "llm.response_utf8_invalid", "HTTP response body is not valid UTF-8",
+            httpStatus: Some(response.statusCode), providerRequestId: requestId
+        ), codec, LlmTransportPhase.WireDecode))
+    }
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+        try { return LlmWireResult.Ok(decodeWireResponse(codec, source)) }
+        catch (error: LlmWireError) {
+            return LlmWireResult.Err(withHttpContext(withCodecContext(error, codec, LlmTransportPhase.WireDecode), response.statusCode, retryAfter, requestId))
+        }
+    }
+    try {
+        let decoded = decodeWireResponse(codec, source)
+        match (decoded) {
+            case LlmWireResponseState.Terminal(LlmWireTerminal.Failed(failure)) =>
+                LlmWireResult.Ok(LlmWireResponseState.Terminal(LlmWireTerminal.Failed(withHttpFailureContext(failure, response.statusCode, retryAfter, requestId))))
+            case _ => LlmWireResult.Ok(httpFailureState(codec, response.statusCode, retryAfter, requestId))
+        }
+    } catch (_: LlmWireError) {
+        LlmWireResult.Ok(httpFailureState(codec, response.statusCode, retryAfter, requestId))
+    }
+}
+
+func responseHeader(headers: Array<LlmWireHeader>, names: Array<String>): String {
+    for (header in headers) { for (name in names where header.name == name) { return header.value } }
+    ""
+}
+
+func responseHeaderOption(headers: Array<LlmWireHeader>, name: String): ?String {
+    for (header in headers where header.name == name) { return Some(header.value) }
+    None
+}
+
+func httpStatusRetryable(status: Int64): Bool { status == 408 || status == 409 || status == 429 || status >= 500 }
+
+func httpFailureState(codec: LlmWireCodec, status: Int64, retryAfter: ?Int64, requestId: String): LlmWireResponseState {
+    LlmWireResponseState.Terminal(LlmWireTerminal.Failed(LlmWireFailure(
+        LlmWireFailureKind.ProviderError, "provider returned HTTP " + status.toString(),
+        provider: codec.provider, retryable: httpStatusRetryable(status), httpStatus: Some(status),
+        retryAfterMillis: retryAfter, providerRequestId: requestId
+    )))
+}
+
+func withHttpFailureContext(failure: LlmWireFailure, status: Int64, retryAfter: ?Int64, requestId: String): LlmWireFailure {
+    LlmWireFailure(
+        failure.kind, failure.message, provider: failure.provider,
+        providerErrorCode: failure.providerErrorCode, providerErrorType: failure.providerErrorType,
+        retryable: failure.retryable || httpStatusRetryable(status), httpStatus: Some(status),
+        retryAfterMillis: retryAfter, providerRequestId: requestId
+    )
+}
+
+func withHttpContext(error: LlmWireError, status: Int64, retryAfter: ?Int64, requestId: String): LlmWireError {
+    LlmWireError(
+        error.kind, error.code, error.message, retryable: error.retryable,
+        httpStatus: Some(status), retryAfterMillis: retryAfter, provider: error.provider,
+        providerErrorCode: error.providerErrorCode, providerErrorType: error.providerErrorType,
+        diagnosticJson: error.diagnosticJson, phase: error.phase, protocol: error.protocol,
+        dialectId: error.dialectId, eventType: error.eventType, blockIndex: error.blockIndex,
+        toolCallId: error.toolCallId, providerRequestId: if (error.providerRequestId == "") { requestId } else { error.providerRequestId }
+    )
 }
 
 func decodeResponsesResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseState {

@@ -13,6 +13,7 @@ llm4cj = { path = "../llm4cj" }
 package llm4cj_external_consumer
 
 import llm4cj.*
+import std.convert.*
 
 main(): Int64 {
     let codec = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
@@ -23,12 +24,19 @@ main(): Int64 {
             [LlmWireBlock.Text(LlmWireTextBlock("你好"))]
         )]
     )
-    let payload = codec.encodeRequest(request)
-    if (!payload.body.contains("demo-model")) { return 1 }
+    let payload = match (codec.encodeRequest(request).materialize()) {
+        case LlmWireResult.Ok(value) => value
+        case LlmWireResult.Err(_) => return 1
+    }
+    if (!String.fromUtf8(payload.body).contains("demo-model")) { return 1 }
 
-    let state = codec.decodeResponse(
-        "{\"id\":\"resp_demo\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"你好，仓颉！\"}]}],\"usage\":{}}"
-    )
+    let state = match (codec.decodeResponse(LlmWireHttpResponse(
+        200, [LlmWireHeader("x-request-id", "req_demo")],
+        "{\"id\":\"resp_demo\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"你好，仓颉！\"}]}],\"usage\":{}}".toArray()
+    ))) {
+        case LlmWireResult.Ok(value) => value
+        case LlmWireResult.Err(_) => return 1
+    }
     match (state) {
         case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply)) =>
             for (block in reply.blocks) {
@@ -43,4 +51,4 @@ main(): Int64 {
 }
 ```
 
-预期输出是 `你好，仓颉！`。程序不创建 HTTP client；把 `payload` 交给应用自己的传输层，再把响应体交回 codec。
+预期输出是 `你好，仓颉！`。程序不创建 HTTP client。`payload.body` 是 UTF-8 bytes，`payload.headers` 包含 codec 要求的全部 header。把这两个值交给应用自己的传输层，再把响应交回 codec。

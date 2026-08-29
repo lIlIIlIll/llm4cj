@@ -26,10 +26,12 @@ main(): Int64 {
     let file = File(arguments[2], OpenMode.Read)
     let response = String.fromUtf8(readToEnd(file))
     file.close()
-    match (codecFor(arguments[1]).decodeResponse(response)) {
-        case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(_)) => println("protocol probe passed: " + arguments[1]); 0
-        case LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(_, _)) => println("protocol probe received an incomplete response"); 1
-        case LlmWireResponseState.Terminal(LlmWireTerminal.Failed(failure)) => println("protocol probe received provider failure: " + failure.providerErrorType); 1
-        case LlmWireResponseState.Pending(_) => println("protocol probe received a pending response"); 1
+    let decoded = codecFor(arguments[1]).decodeResponse(LlmWireHttpResponse(200, [], response.toArray()))
+    match (decoded) {
+        case LlmWireResult.Err(error) => println("protocol probe failed: " + error.code); 1
+        case LlmWireResult.Ok(LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(_))) => println("protocol probe passed: " + arguments[1]); 0
+        case LlmWireResult.Ok(LlmWireResponseState.Terminal(LlmWireTerminal.Incomplete(_, _))) => println("protocol probe received an incomplete response"); 1
+        case LlmWireResult.Ok(LlmWireResponseState.Terminal(LlmWireTerminal.Failed(failure))) => println("protocol probe received provider failure: " + failure.providerErrorType); 1
+        case LlmWireResult.Ok(LlmWireResponseState.Pending(_)) => println("protocol probe received a pending response"); 1
     }
 }

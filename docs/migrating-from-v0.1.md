@@ -13,7 +13,7 @@ v0.2.0 是一次有意的 breaking release，不提供旧 API shim。
 | tool arguments 字符串 | `Complete`、`InvalidJson`、`InvalidShape`、`Partial` |
 | 可回放 reasoning/opaque | display-only `Reasoning`、dialect-bound `NativeReplay`、diagnostic-only `Opaque` |
 | usage 缺失时为 0 | `Option<Int64>` 区分缺失与明确的零 |
-| request encoder 返回 JSON 字符串 | `LlmWireEncodedRequest` 同时携带 body、required headers 与 feature requirements |
+| request encoder 返回 JSON 字符串 | `LlmWirePreparedRequest.materialize` 返回 UTF-8 body 与已协调 headers |
 | system 字符串与 request 内 streaming 开关 | 有序 `LlmWireInstruction`，streaming 在 `encodeRequest` 调用时选择 |
 | ToolResult 保存单个字符串 | `LlmWireToolResultContent` 的有序 text/image 数组 |
 | 仅有 SSE event 大小限制 | `LlmWireStreamLimits` 同时限制跨事件累计的语义输出和输入 provider event 数 |

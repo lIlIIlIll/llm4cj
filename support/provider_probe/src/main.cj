@@ -24,9 +24,34 @@ func encode(name: String, model: String, streaming: Bool): Int64 {
         [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("hello"))])],
         maxOutputTokens: Some(256)
     )
-    let encoded = codec.encodeRequest(request, streaming: streaming)
-    if (!encoded.requiredHeaders.isEmpty() || !encoded.featureRequirements.isEmpty()) { return 3 }
-    println(encoded.body)
+    let prepared = codec.encodeRequest(request, streaming: streaming)
+    let materialized = match (prepared.materialize()) {
+        case LlmWireResult.Ok(value) => value
+        case LlmWireResult.Err(_) => return 3
+    }
+    let body = match (LlmWireJson.parse(String.fromUtf8(materialized.body))) {
+        case LlmWireResult.Ok(value) => value
+        case LlmWireResult.Err(_) => return 3
+    }
+    let headers = ArrayList<LlmWireJson>()
+    for (header in materialized.headers) {
+        let encodedHeader = match (LlmWireJson.object([
+            LlmWireJsonField("name", LlmWireJson.string(header.name)),
+            LlmWireJsonField("value", LlmWireJson.string(header.value))
+        ])) {
+            case LlmWireResult.Ok(value) => value
+            case LlmWireResult.Err(_) => return 3
+        }
+        headers.add(encodedHeader)
+    }
+    let output = match (LlmWireJson.object([
+        LlmWireJsonField("body", body),
+        LlmWireJsonField("headers", LlmWireJson.array(headers.toArray()))
+    ])) {
+        case LlmWireResult.Ok(value) => value
+        case LlmWireResult.Err(_) => return 3
+    }
+    println(output.stringify())
     0
 }
 

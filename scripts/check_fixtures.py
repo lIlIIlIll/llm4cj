@@ -55,8 +55,20 @@ def main() -> None:
                 [stream_executable, "encode-fixture", dialect, "fixture-model"], cwd=ROOT,
                 check=True, text=True, capture_output=True,
             ).stdout
-            if json.loads(encoded) != json.loads(fixture.read_text(encoding="utf-8")):
+            plan = json.loads(encoded)
+            if plan.get("body") != json.loads(fixture.read_text(encoding="utf-8")):
                 raise SystemExit(f"public encoder drifted from request fixture: {fixture.name}")
+            headers = plan.get("headers")
+            if not isinstance(headers, list) or not all(
+                isinstance(value, dict) and isinstance(value.get("name"), str) and isinstance(value.get("value"), str)
+                for value in headers
+            ):
+                raise SystemExit(f"materialized request headers are invalid: {fixture.name}")
+            by_name = {value["name"]: value["value"] for value in headers}
+            if len(by_name) != len(headers):
+                raise SystemExit(f"materialized request headers contain duplicates: {fixture.name}")
+            if by_name.get("content-type") != "application/json" or by_name.get("accept") != "application/json":
+                raise SystemExit(f"materialized request omitted JSON transport headers: {fixture.name}")
         for fixture in stream_records:
             record = json.loads(fixture.read_text(encoding="utf-8"))
             dialect = fixture.stem

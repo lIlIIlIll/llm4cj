@@ -27,6 +27,11 @@ func toolResultText(callId: String, text: String, isError!: Bool = false): LlmWi
     LlmWireToolResultBlock(callId, [LlmWireToolResultContent.Text(LlmWireTextBlock(text))], isError: isError)
 }
 
+func headerValue(headers: Array<LlmWireHeader>, name: String): String {
+    for (header in headers where header.name == name) { return header.value }
+    ""
+}
+
 func expectLlmError(code: String, body: () -> Unit): Unit {
     try {
         body()
@@ -808,7 +813,7 @@ class Llm4CjV02Tests {
             (LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect()), "{\"model\":\"fixture-model\",\"max_tokens\":256,\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}"),
             (LlmWireCodec(LlmWireProtocol.Messages, deepSeekMessagesDialect()), "{\"model\":\"fixture-model\",\"max_tokens\":256,\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hello\"}]}]}")
         ]
-        for ((codec, expected) in cases) { @Expect(codec.encodeRequest(request).body, expected) }
+        for ((codec, expected) in cases) { @Expect(codec.encodeRequest(request).bodyText(), expected) }
     }
 
     @TestCase
@@ -816,16 +821,16 @@ class Llm4CjV02Tests {
         let capabilities = allCapabilities()
         let anthropic = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), capabilities: capabilities)
         let plan = anthropic.encodeRequest(LlmWireRequest("claude", validMessages(), maxOutputTokens: Some(2048), generationSpeed: LlmWireGenerationSpeed.Fast))
-        @Expect(plan.requiredHeaders.size, 1)
-        @Expect(plan.featureRequirements.size, 1)
-        plan.validateForSend(SatisfiedRequirementResolver())
-        expectLlmError("llm.feature_requirement_unresolved", { => plan.validateForSend(UnknownRequirementResolver()) })
-        let merged = plan.mergeHeaders([LlmWireHeader("Anthropic-Beta", "other-feature")])
+        @Expect(plan.requiredHeadersForTest().size, 1)
+        @Expect(plan.featureRequirementsForTest().size, 1)
+        plan.validateForSend(Some(SatisfiedRequirementResolver()))
+        expectLlmError("llm.feature_requirement_unresolved", { => plan.validateForSend(Some(UnknownRequirementResolver())) })
+        let merged = plan.mergeHeadersForTest([LlmWireHeader("Anthropic-Beta", "other-feature")])
         @Expect(merged[0].value, "fast-mode-2026-02-01,other-feature")
-        expectLlmError("llm.required_header_conflict", { => let _ = LlmWireEncodedRequest("{}", requiredHeaders: [LlmWireHeader("x-mode", "required")]).mergeHeaders([LlmWireHeader("X-Mode", "different")]) })
+        expectLlmError("llm.required_header_conflict", { => let _ = LlmWirePreparedRequest("{}", requiredHeaders: [LlmWireHeader("x-mode", "required")]).mergeHeadersForTest([LlmWireHeader("X-Mode", "different")]) })
 
         let responses = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
-        let grouped = responses.encodeRequest(LlmWireRequest("m", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("a")), LlmWireBlock.Text(LlmWireTextBlock("b"))])])).body
+        let grouped = responses.encodeRequest(LlmWireRequest("m", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("a")), LlmWireBlock.Text(LlmWireTextBlock("b"))])])).bodyText()
         @Expect(grouped, "{\"model\":\"m\",\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"a\"},{\"type\":\"input_text\",\"text\":\"b\"}]}]}")
 
         let chat = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
@@ -867,7 +872,7 @@ class Llm4CjV02Tests {
         let capabilities = allCapabilities()
         let chat = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: capabilities)
         let schema = LlmWireStructuredOutput.JsonSchema(LlmWireJsonSchema("answer", testJson("{\"type\":\"object\"}")))
-        let encodedSchema = chat.encodeRequest(LlmWireRequest("m", validMessages(), structuredOutput: schema)).body
+        let encodedSchema = chat.encodeRequest(LlmWireRequest("m", validMessages(), structuredOutput: schema)).bodyText()
         @Expect(encodedSchema.contains("\"json_schema\":{\"name\":\"answer\""), true)
         @Expect(encodedSchema.contains("\"json_schema\":{\"type\":\"json_schema\""), false)
 
@@ -878,13 +883,13 @@ class Llm4CjV02Tests {
         let continuation = ArrayList<LlmWireMessage>()
         for (message in reply.toContinuationInput()) { continuation.add(message) }
         continuation.add(LlmWireMessage(LlmWireRole.User, [LlmWireBlock.ToolResult(toolResultText("c", "ok"))]))
-        let replay = deepSeek.encodeRequest(LlmWireRequest("m", continuation.toArray(), tools: [LlmWireTool("f", "", testJson("{}"))])).body
+        let replay = deepSeek.encodeRequest(LlmWireRequest("m", continuation.toArray(), tools: [LlmWireTool("f", "", testJson("{}"))])).bodyText()
         @Expect(replay.contains("\"reasoning_content\":\"reason\""), true)
 
         let responses = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
         let decoded = responses.decodeResponse("{\"model\":\"m\",\"status\":\"completed\",\"output\":[{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"why\"}]},{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"answer\"}]}]}")
         let responseReply = match (decoded) { case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(value)) => value; case _ => @Fail("Responses reply") }
-        let ordered = responses.encodeRequest(LlmWireRequest("m", responseReply.toContinuationInput())).body
+        let ordered = responses.encodeRequest(LlmWireRequest("m", responseReply.toContinuationInput())).bodyText()
         let reasoningAt = match (ordered.indexOf("\"type\":\"reasoning\"")) { case Some(value) => value; case None => @Fail("missing reasoning") }
         let messageAt = match (ordered.indexOf("\"role\":\"assistant\"")) { case Some(value) => value; case None => @Fail("missing message") }
         @Expect(reasoningAt < messageAt, true)
@@ -1080,12 +1085,12 @@ class Llm4CjV02Tests {
         let cachePlan = LlmWireCodec(LlmWireProtocol.Responses, deepSeekResponsesDialect(), capabilities: allCapabilities()).encodeRequest(
             LlmWireRequest("m", validMessages(), promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault))
         )
-        @Expect(cachePlan.featureRequirements.size, 1)
-        @Expect(cachePlan.featureRequirements[0].featureId, "provider.prompt_cache_automatic")
+        @Expect(cachePlan.featureRequirementsForTest().size, 1)
+        @Expect(cachePlan.featureRequirementsForTest()[0].featureId, "provider.prompt_cache_automatic")
         let openAiCachePlan = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: allCapabilities()).encodeRequest(
             LlmWireRequest("m", validMessages(), promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault))
         )
-        @Expect(openAiCachePlan.featureRequirements[0].featureId, "openai.prompt_cache_automatic")
+        @Expect(openAiCachePlan.featureRequirementsForTest()[0].featureId, "openai.prompt_cache_automatic")
     }
 
     @TestCase
@@ -1267,7 +1272,7 @@ class Llm4CjV02Tests {
             maxOutputTokens: Some(8)
         ))
         @Expect(filePlan.contains("\"file_id\":\"file-api-test\""), true)
-        @Expect(filePlan.requiredHeaders[0].value, "files-api-2025-04-14")
+        @Expect(filePlan.requiredHeadersForTest()[0].value, "files-api-2025-04-14")
         let visionCapabilities = LlmWireCapabilities(input: LlmWireInputCapabilities(modalities: [LlmWireInputModality.Text, LlmWireInputModality.Image]))
         let visionChat = LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect(), capabilities: visionCapabilities)
         @Expect(visionChat.encodeRequest(LlmWireRequest("deepseek-v4-flash-vision-exp", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Image(LlmWireImageBlock(LlmWireImageSourceKind.File, "file-api-chat"))])])).contains("\"type\":\"file\""), true)
@@ -1551,26 +1556,26 @@ class Llm4CjV02Tests {
         for (invalidValue in ["bad\rvalue", "bad\nvalue", "bad\u{0001}value", "bad\u{007f}value"]) {
             expectLlmError("llm.header_invalid", { => let _ = LlmWireHeader("x-test", invalidValue) })
         }
-        let merged = LlmWireEncodedRequest("{}", requiredHeaders: [
+        let merged = LlmWirePreparedRequest("{}", requiredHeaders: [
             LlmWireHeader("anthropic-beta", "one,, two"), LlmWireHeader("x-test", "same")
-        ]).mergeHeaders([
+        ]).mergeHeadersForTest([
             LlmWireHeader("Anthropic-Beta", "two,three"), LlmWireHeader("X-Test", "same")
         ])
         @Expect(merged[0].value, "one,two,three")
-        expectLlmError("llm.required_header_conflict", { => let _ = LlmWireEncodedRequest(
+        expectLlmError("llm.required_header_conflict", { => let _ = LlmWirePreparedRequest(
             "{}", requiredHeaders: [LlmWireHeader("x-test", "one")]
-        ).mergeHeaders([LlmWireHeader("x-test", "two")]) })
+        ).mergeHeadersForTest([LlmWireHeader("x-test", "two")]) })
 
-        LlmWireEncodedRequest("{}", featureRequirements: [
+        LlmWirePreparedRequest("{}", featureRequirements: [
             LlmWireFeatureRequirement("ready", LlmWireRequirementState.Satisfied),
             LlmWireFeatureRequirement("resolve", LlmWireRequirementState.Unknown("resolve me"))
-        ]).validateForSend(SatisfiedRequirementResolver())
-        expectLlmError("llm.feature_requirement_unsatisfied", { => LlmWireEncodedRequest(
+        ]).validateForSend(Some(SatisfiedRequirementResolver()))
+        expectLlmError("llm.feature_requirement_unsatisfied", { => LlmWirePreparedRequest(
             "{}", featureRequirements: [LlmWireFeatureRequirement("blocked", LlmWireRequirementState.Unsatisfied("blocked"))]
-        ).validateForSend(SatisfiedRequirementResolver()) })
-        expectLlmError("llm.feature_requirement_unresolved", { => LlmWireEncodedRequest(
+        ).validateForSend(Some(SatisfiedRequirementResolver())) })
+        expectLlmError("llm.feature_requirement_unresolved", { => LlmWirePreparedRequest(
             "{}", featureRequirements: [LlmWireFeatureRequirement("unknown", LlmWireRequirementState.Unknown("unknown"))]
-        ).validateForSend(UnknownRequirementResolver()) })
+        ).validateForSend(Some(UnknownRequirementResolver())) })
     }
 
     @TestCase
@@ -1675,7 +1680,7 @@ class Llm4CjV02Tests {
         let automatic = openAi.encodeRequest(LlmWireRequest(
             "m", validMessages(), promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault)
         ))
-        automatic.validateForSend(SatisfiedRequirementResolver())
+        automatic.validateForSend(Some(SatisfiedRequirementResolver()))
         let schema = LlmWireJsonSchema("answer", testJson("{}"), description: "desc", strict: false)
         for (format in [LlmWireStructuredOutput.Text, LlmWireStructuredOutput.JsonObject, LlmWireStructuredOutput.JsonSchema(schema)]) {
             @Expect(openAi.encodeRequest(LlmWireRequest("m", validMessages(), structuredOutput: format)).contains("format"), true)
@@ -1699,7 +1704,7 @@ class Llm4CjV02Tests {
         let deepSeek = LlmWireCodec(LlmWireProtocol.ChatCompletions, deepSeekChatDialect(), capabilities: capabilities)
         deepSeek.encodeRequest(LlmWireRequest(
             "m", validMessages(), promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault)
-        )).validateForSend(SatisfiedRequirementResolver())
+        )).validateForSend(Some(SatisfiedRequirementResolver()))
         let unsupportedCache = LlmWireCodec(LlmWireProtocol.ChatCompletions, LlmWireStandardDialect(LlmWireDialectContract(
             "test.no.cache", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens
         )))
@@ -2010,23 +2015,75 @@ class Llm4CjV02Tests {
         let tool = LlmWireTool("inspect", "inspect an image", testJson("{}"))
 
         let responses = openAiResponsesCodec(openAiResponsesModelProfile("model", capabilities: allCapabilities()))
-        let responsesBody = responses.encodeRequest(LlmWireRequest("model", history, tools: [tool])).body
+        let responsesBody = responses.encodeRequest(LlmWireRequest("model", history, tools: [tool])).bodyText()
         for (needle in ["function_call_output", "visible result", "input_image", "file-1"]) {
             @Expect(responsesBody.contains(needle), true)
         }
 
         let openAiChat = openAiChatCodec(openAiChatModelProfile("model", capabilities: allCapabilities()))
-        let openAiBody = openAiChat.encodeRequest(LlmWireRequest("model", history, tools: [tool])).body
+        let openAiBody = openAiChat.encodeRequest(LlmWireRequest("model", history, tools: [tool])).bodyText()
         @Expect(openAiBody.contains("\"file\":{\"file_id\":\"file-1\"}"), true)
 
         let deepSeekChat = deepSeekChatCodec(deepSeekChatModelProfile("model", capabilities: allCapabilities()))
-        let deepSeekBody = deepSeekChat.encodeRequest(LlmWireRequest("model", history, tools: [tool])).body
+        let deepSeekBody = deepSeekChat.encodeRequest(LlmWireRequest("model", history, tools: [tool])).bodyText()
         @Expect(deepSeekBody.contains("\"type\":\"file\",\"file_id\":\"file-1\""), true)
 
         let messages = anthropicMessagesCodec(anthropicMessagesModelProfile("model", capabilities: allCapabilities()))
         let messagesPlan = messages.encodeRequest(LlmWireRequest("model", history, tools: [tool], maxOutputTokens: Some(128)))
-        @Expect(messagesPlan.body.contains("\"type\":\"tool_result\""), true)
-        @Expect(messagesPlan.body.contains("\"type\":\"file\",\"file_id\":\"file-1\""), true)
-        @Expect(messagesPlan.requiredHeaders[0].value, "files-api-2025-04-14")
+        @Expect(messagesPlan.bodyText().contains("\"type\":\"tool_result\""), true)
+        @Expect(messagesPlan.bodyText().contains("\"type\":\"file\",\"file_id\":\"file-1\""), true)
+        @Expect(messagesPlan.requiredHeadersForTest()[0].value, "files-api-2025-04-14")
+    }
+
+    @TestCase
+    func t061PreparedRequestsAndHttpResponsesCloseTheTransportBoundary() {
+        let codec = openAiResponsesCodec(openAiResponsesModelProfile("model"))
+        let prepared = codec.encodeRequest(LlmWireRequest("model", validMessages()), streaming: true)
+        let materialized = match (prepared.materialize(userHeaders: [LlmWireHeader("authorization", "Bearer token")])) {
+            case LlmWireResult.Ok(value) => value
+            case LlmWireResult.Err(error) => throw error
+        }
+        @Expect(String.fromUtf8(materialized.body).contains("\"stream\":true"), true)
+        @Expect(headerValue(materialized.headers, "content-type"), "application/json")
+        @Expect(headerValue(materialized.headers, "accept"), "text/event-stream")
+        @Expect(headerValue(materialized.headers, "authorization"), "Bearer token")
+
+        let requiring = anthropicMessagesCodec(anthropicMessagesModelProfile("claude", capabilities: allCapabilities()))
+            .encodeRequest(LlmWireRequest("claude", validMessages(), maxOutputTokens: Some(32), generationSpeed: LlmWireGenerationSpeed.Fast))
+        match (requiring.materialize()) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.feature_requirement_unresolved")
+            case _ => @Fail("unknown feature requirements must fail closed")
+        }
+        @Expect(requiring.materialize(resolver: Some(SatisfiedRequirementResolver())).isOk(), true)
+
+        let success = LlmWireHttpResponse(
+            200, [LlmWireHeader("x-request-id", "req-ok")],
+            "{\"status\":\"completed\",\"output\":[]}".toArray()
+        )
+        match (codec.decodeResponse(success)) {
+            case LlmWireResult.Ok(LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(_))) => ()
+            case _ => @Fail("2xx response must decode through the protocol codec")
+        }
+
+        let throttled = LlmWireHttpResponse(
+            429, [LlmWireHeader("retry-after", "3"), LlmWireHeader("x-request-id", "req-rate")],
+            "{\"error\":{\"type\":\"rate_limit\",\"code\":\"slow_down\",\"message\":\"retry later\"}}".toArray()
+        )
+        match (codec.decodeResponse(throttled)) {
+            case LlmWireResult.Ok(LlmWireResponseState.Terminal(LlmWireTerminal.Failed(failure))) =>
+                @Expect(failure.httpStatus, Some(429))
+                @Expect(failure.retryAfterMillis, Some(3000))
+                @Expect(failure.providerRequestId, "req-rate")
+                @Expect(failure.retryable, true)
+            case _ => @Fail("non-2xx provider errors must remain wire outcomes")
+        }
+        match (codec.decodeResponse(LlmWireHttpResponse(99, [], []))) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.http_status_invalid")
+            case _ => @Fail("invalid HTTP status must be a local error")
+        }
+        match (codec.decodeResponse(LlmWireHttpResponse(200, [], [255u8]))) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.response_utf8_invalid")
+            case _ => @Fail("invalid response UTF-8 must be a local error")
+        }
     }
 }

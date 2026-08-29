@@ -401,13 +401,24 @@ public class LlmWireFailure {
     public let providerErrorCode: String
     public let providerErrorType: String
     public let retryable: Bool
-    public init(kind: LlmWireFailureKind, message: String, provider!: String = "", providerErrorCode!: String = "", providerErrorType!: String = "", retryable!: Bool = false) {
+    public let httpStatus: ?Int64
+    public let retryAfterMillis: ?Int64
+    public let providerRequestId: String
+    public init(
+        kind: LlmWireFailureKind, message: String, provider!: String = "",
+        providerErrorCode!: String = "", providerErrorType!: String = "",
+        retryable!: Bool = false, httpStatus!: ?Int64 = None,
+        retryAfterMillis!: ?Int64 = None, providerRequestId!: String = ""
+    ) {
         this.kind = kind
         this.message = message
         this.provider = provider
         this.providerErrorCode = providerErrorCode
         this.providerErrorType = providerErrorType
         this.retryable = retryable
+        this.httpStatus = httpStatus
+        this.retryAfterMillis = retryAfterMillis
+        this.providerRequestId = providerRequestId
     }
 }
 public enum LlmWireTerminal {

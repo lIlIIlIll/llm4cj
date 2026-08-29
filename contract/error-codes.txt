@@ -37,6 +37,7 @@ llm.field_missing
 llm.field_type_invalid
 llm.generation_speed_unsupported
 llm.header_invalid
+llm.http_status_invalid
 llm.image_base64_invalid
 llm.image_file_invalid
 llm.image_file_shape_invalid
@@ -104,6 +105,7 @@ llm.reasoning_effort_mode_unsupported
 llm.reasoning_effort_unsupported
 llm.refusal_display_only
 llm.required_header_conflict
+llm.response_utf8_invalid
 llm.responses_arguments_without_item
 llm.responses_block_unsupported
 llm.responses_content_index_invalid

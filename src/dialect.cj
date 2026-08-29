@@ -53,19 +53,66 @@ public class LlmWireFeatureRequirement {
 
 public interface LlmWireRequirementResolver { func resolve(requirement: LlmWireFeatureRequirement): LlmWireRequirementState }
 
-public class LlmWireEncodedRequest {
-    public let body: String
-    public let requiredHeaders: Array<LlmWireHeader>
-    public let featureRequirements: Array<LlmWireFeatureRequirement>
-    public init(body: String, requiredHeaders!: Array<LlmWireHeader> = [], featureRequirements!: Array<LlmWireFeatureRequirement> = []) {
-        this.body = body; this.requiredHeaders = requiredHeaders; this.featureRequirements = featureRequirements
+public class LlmWireHttpResponse {
+    public let statusCode: Int64
+    private let headersValue: Array<LlmWireHeader>
+    private let bodyValue: Array<Byte>
+    public init(statusCode: Int64, headers: Array<LlmWireHeader>, body: Array<Byte>) {
+        this.statusCode = statusCode
+        this.headersValue = copyValues(headers)
+        this.bodyValue = copyValues(body)
     }
-    // Inspection helpers; transport adapters must still consume the full plan.
-    public func contains(fragment: String): Bool { body.contains(fragment) }
-    public func indexOf(fragment: String): ?Int64 { body.indexOf(fragment) }
-    public func validateForSend(resolver: LlmWireRequirementResolver): Unit {
+    public prop headers: Array<LlmWireHeader> { get() { copyValues(headersValue) } }
+    public prop body: Array<Byte> { get() { copyValues(bodyValue) } }
+}
+
+public class LlmWireMaterializedRequest {
+    private let bodyValue: Array<Byte>
+    private let headersValue: Array<LlmWireHeader>
+    init(body: Array<Byte>, headers: Array<LlmWireHeader>) {
+        bodyValue = copyValues(body)
+        headersValue = copyValues(headers)
+    }
+    public prop body: Array<Byte> { get() { copyValues(bodyValue) } }
+    public prop headers: Array<LlmWireHeader> { get() { copyValues(headersValue) } }
+}
+
+public class LlmWirePreparedRequest {
+    private let body: String
+    private let requiredHeaders: Array<LlmWireHeader>
+    private let featureRequirements: Array<LlmWireFeatureRequirement>
+    private let streaming: Bool
+    init(body: String, requiredHeaders!: Array<LlmWireHeader> = [], featureRequirements!: Array<LlmWireFeatureRequirement> = [], streaming!: Bool = false) {
+        this.body = body
+        this.requiredHeaders = copyValues(requiredHeaders)
+        this.featureRequirements = copyValues(featureRequirements)
+        this.streaming = streaming
+    }
+    // Package-only inspection helpers for deterministic codec tests.
+    func contains(fragment: String): Bool { body.contains(fragment) }
+    func indexOf(fragment: String): ?Int64 { body.indexOf(fragment) }
+    func bodyText(): String { body }
+    func requiredHeadersForTest(): Array<LlmWireHeader> { copyValues(requiredHeaders) }
+    func featureRequirementsForTest(): Array<LlmWireFeatureRequirement> { copyValues(featureRequirements) }
+    public func materialize(resolver!: ?LlmWireRequirementResolver = None, userHeaders!: Array<LlmWireHeader> = []): LlmWireResult<LlmWireMaterializedRequest> {
+        try {
+            validateForSend(resolver)
+            let output = ArrayList<LlmWireHeader>()
+            mergeOneHeader(output, LlmWireHeader("content-type", "application/json"))
+            mergeOneHeader(output, LlmWireHeader("accept", if (streaming) { "text/event-stream" } else { "application/json" }))
+            for (required in requiredHeaders) { mergeOneHeader(output, required) }
+            for (provided in userHeaders) { mergeOneHeader(output, provided) }
+            LlmWireResult.Ok(LlmWireMaterializedRequest(body.toArray(), output.toArray()))
+        } catch (error: LlmWireError) {
+            LlmWireResult.Err(withPhaseIfMissing(error, LlmTransportPhase.Request))
+        }
+    }
+    func validateForSend(resolver: ?LlmWireRequirementResolver): Unit {
         for (requirement in featureRequirements) {
-            let state = match (requirement.state) { case LlmWireRequirementState.Unknown(_) => resolver.resolve(requirement); case value => value }
+            let state = match (requirement.state) {
+                case LlmWireRequirementState.Unknown(_) => match (resolver) { case Some(value) => value.resolve(requirement); case None => requirement.state }
+                case value => value
+            }
             match (state) {
                 case LlmWireRequirementState.Satisfied => ()
                 case LlmWireRequirementState.Unsatisfied(message) => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.feature_requirement_unsatisfied", message)
@@ -73,7 +120,7 @@ public class LlmWireEncodedRequest {
             }
         }
     }
-    public func mergeHeaders(userHeaders: Array<LlmWireHeader>): Array<LlmWireHeader> {
+    func mergeHeadersForTest(userHeaders: Array<LlmWireHeader>): Array<LlmWireHeader> {
         let output = ArrayList<LlmWireHeader>()
         for (required in requiredHeaders) { mergeOneHeader(output, required) }
         for (provided in userHeaders) { mergeOneHeader(output, provided) }
@@ -334,7 +381,7 @@ public class LlmWireCodec {
         }
         this.protocol = protocol; this.dialect = FrozenWireDialect(frozen); this.capabilities = capabilities; this.provider = provider; this.modelProfile = modelProfile
     }
-    public func encodeRequest(request: LlmWireRequest, streaming!: Bool = false): LlmWireEncodedRequest {
+    public func encodeRequest(request: LlmWireRequest, streaming!: Bool = false): LlmWirePreparedRequest {
         try { validateWireRequest(this, request); encodeWireRequest(this, request, streaming) }
         catch (error: LlmWireError) { throw withCodecContext(error, this, LlmTransportPhase.Encode) }
     }
@@ -348,6 +395,9 @@ public class LlmWireCodec {
     public func decodeResponse(source: String): LlmWireResponseState {
         try { decodeWireResponse(this, source) }
         catch (error: LlmWireError) { throw withCodecContext(error, this, LlmTransportPhase.WireDecode) }
+    }
+    public func decodeResponse(response: LlmWireHttpResponse, nowEpochMillis!: Int64 = 0): LlmWireResult<LlmWireResponseState> {
+        decodeHttpResponse(this, response, nowEpochMillis)
     }
     public func newStreamDecoder(limits!: LlmWireStreamLimits = LlmWireStreamLimits()): LlmWireStreamDecoder { newWireStreamDecoder(this, limits) }
 }
@@ -414,6 +464,19 @@ func withCodecContext(error: LlmWireError, codec: LlmWireCodec, defaultPhase: Ll
         protocol: match (error.protocol) { case Some(value) => Some(value); case None => Some(codec.protocol) },
         dialectId: if (error.dialectId == "") { codec.dialect.compatibilityId } else { error.dialectId },
         eventType: error.eventType, blockIndex: error.blockIndex, toolCallId: error.toolCallId,
+        providerRequestId: error.providerRequestId
+    )
+}
+
+func withPhaseIfMissing(error: LlmWireError, phase: LlmTransportPhase): LlmWireError {
+    LlmWireError(
+        error.kind, error.code, error.message, retryable: error.retryable, httpStatus: error.httpStatus,
+        retryAfterMillis: error.retryAfterMillis, provider: error.provider,
+        providerErrorCode: error.providerErrorCode, providerErrorType: error.providerErrorType,
+        diagnosticJson: error.diagnosticJson,
+        phase: match (error.phase) { case Some(value) => Some(value); case None => Some(phase) },
+        protocol: error.protocol, dialectId: error.dialectId, eventType: error.eventType,
+        blockIndex: error.blockIndex, toolCallId: error.toolCallId,
         providerRequestId: error.providerRequestId
     )
 }

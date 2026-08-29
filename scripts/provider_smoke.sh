@@ -23,11 +23,19 @@ model = entry["body"].get("model")
 if not isinstance(model, str) or not model:
     raise SystemExit(f"provider smoke model is missing for {dialect}")
 encoded = subprocess.run([probe, "encode", dialect, model], check=True, text=True, capture_output=True).stdout.strip()
-body = json.loads(encoded)
+plan = json.loads(encoded)
+body = plan["body"]
 if body.get("model") != model or body.get("stream") is not True:
     raise SystemExit(f"public encoder did not produce the expected streaming request for {dialect}")
+headers = dict(entry.get("headers", {}))
+for header in plan["headers"]:
+    existing = next((key for key in headers if key.lower() == header["name"]), None)
+    if existing is not None and headers[existing] != header["value"]:
+        raise SystemExit(f"materialized request header conflicts with provider config: {header['name']}")
+    headers[existing or header["name"]] = header["value"]
+wire_body = json.dumps(body, separators=(",", ":")).encode()
 request = urllib.request.Request(
-    entry["endpoint"], data=encoded.encode(), headers=entry.get("headers", {}), method="POST",
+    entry["endpoint"], data=wire_body, headers=headers, method="POST",
 )
 try:
     with urllib.request.urlopen(request, timeout=60) as response:

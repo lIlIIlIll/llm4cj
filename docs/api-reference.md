@@ -6,7 +6,9 @@
 
 `LlmWireCodec`、`LlmWireCapabilities`、`LlmWireDialect`、`LlmWireDialectContract`、`LlmWireBuiltinDialect`、`LlmWireStandardDialect`、`LlmWireRequestStyle`、`LlmWireOutputTokenField`、`LlmWireStructuredOutputMode`、`LlmWireParallelToolStyle`、`LlmWirePromptCacheStyle`、`LlmWireUsageMergeStyle`、`openAiResponsesDialect`、`openAiChatDialect`、`anthropicMessagesDialect`、`deepSeekResponsesDialect`、`deepSeekChatDialect`、`deepSeekMessagesDialect`。
 
-`LlmWireEncodedRequest` 同时携带 JSON body、必需 header 和待解析的 feature requirement。transport 必须先调用 `validateForSend`，再用 `mergeHeaders` 合并调用方 header；仅发送 `body` 不构成完整请求。
+`LlmWireCodec.encodeRequest` 返回 opaque `LlmWirePreparedRequest`。调用 `materialize` 后才得到 `LlmWireMaterializedRequest`。后者公开 UTF-8 `body` bytes 和合并后的 headers。未解析的 feature requirement、冲突 header 或不安全 header 会返回 `LlmWireResult.Err`。
+
+`LlmWireHttpResponse` 保存 status、headers 和有界读取后的 body bytes。`decodeResponse(LlmWireHttpResponse)` 返回 `LlmWireResult<LlmWireResponseState>`。2xx body 进入协议 decoder；非 2xx provider 错误保持为 `Terminal(Failed)`，并保留 status、`Retry-After` 和 provider request ID。
 
 ## 请求、block 与响应
 
@@ -24,7 +26,7 @@
 
 公开 JSON 值使用不可变的 `LlmWireJson`，其类型由 `LlmWireJsonKind` 表示，对象工厂接收 `LlmWireJsonField`。它保留 canonical JSON 文本，并提供 object、array、number、string、boolean 和 null 工厂；`yjson.JsonNode` 不再出现在 public API 中。
 
-请求计划与 header 协调 API 为 `LlmWireHeader`、`LlmWireFeatureRequirement`、`LlmWireRequirementState`、`LlmWireRequirementResolver`、`LlmWireEncodedRequest`。
+请求计划与 header 协调 API 为 `LlmWireHeader`、`LlmWireFeatureRequirement`、`LlmWireRequirementState`、`LlmWireRequirementResolver`、`LlmWirePreparedRequest` 和 `LlmWireMaterializedRequest`。
 
 ## 流式
 
