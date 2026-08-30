@@ -488,7 +488,8 @@ public class LlmWireReply {
         this.choices = if (choices.isEmpty()) {
             [LlmWireChoice(0, blocks, inferChoiceOutcome(rawStopReason, blocks), rawStopReason: rawStopReason)]
         } else { copyValues(choices) }
-        this.blocks = if (this.choices.isEmpty()) { [] } else { copyValues(this.choices[0].blocks) }
+        // The constructor above always creates at least one canonical choice.
+        this.blocks = copyValues(this.choices[0].blocks)
         this.usage = usage
         this.rawStopReason = rawStopReason
     }

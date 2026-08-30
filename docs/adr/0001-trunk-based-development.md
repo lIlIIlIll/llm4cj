@@ -21,6 +21,8 @@
 6. 允许 auto-merge，但所有 required checks、对话解决和高风险确认仍必须满足。
 7. 不再创建长期 `dev`。依赖中的工作使用短期 stacked PR，前序合入后立即 restack。
 
+上述 GitHub 设置由 `.github/settings.yml` 声明，并通过 `scripts/bootstrap_repository.py` 预览或显式应用。配置文件是期望状态的唯一来源；bootstrap 默认只输出计划，不修改远端。
+
 PR 是否关联 Issue 由风险决定：
 
 - routine 变更可关联开放 Issue，也可写 `Issue: N/A: <具体原因>`；

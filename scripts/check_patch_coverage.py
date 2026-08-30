@@ -109,6 +109,48 @@ def has_candidate_code(path: Path, numbers: set[int]) -> bool:
     return False
 
 
+DECISION_TOKEN = re.compile(r"\b(?:if|else|for|while|match|case|catch|where)\b")
+
+
+def source_decision_lines(path: Path, numbers: set[int]) -> set[int]:
+    """Return changed lines that contain an explicit source-level decision.
+
+    Cangjie gcov emits BRDA records for exception unwinding, enum deriving, and
+    cleanup edges on ordinary calls inside ``try`` blocks. Those compiler arcs
+    are not decisions a source test can intentionally select. Patch branch
+    coverage therefore uses only BRDA records attached to explicit Cangjie
+    control-flow syntax, while project coverage continues to report every arc.
+    """
+    if not path.exists():
+        return set()
+    lines = path.read_text(encoding="utf-8").splitlines()
+    decisions: set[int] = set()
+    for number in numbers:
+        if number < 1 or number > len(lines):
+            continue
+        text = lines[number - 1].split("//", 1)[0]
+        if DECISION_TOKEN.search(text) or "&&" in text or "||" in text:
+            decisions.add(number)
+    return decisions
+
+
+def compact_ranges(numbers: list[int]) -> str:
+    if not numbers:
+        return "-"
+    ranges: list[str] = []
+    start = numbers[0]
+    end = start
+    for number in numbers[1:]:
+        if number == end + 1:
+            end = number
+            continue
+        ranges.append(str(start) if start == end else f"{start}-{end}")
+        start = number
+        end = number
+    ranges.append(str(start) if start == end else f"{start}-{end}")
+    return ",".join(ranges)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     diff_source = parser.add_mutually_exclusive_group(required=True)
@@ -148,6 +190,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         source: numbers & instrumented.get(source, set())
         for source, numbers in production_changed.items()
     }
+    decision_changed = {
+        source: source_decision_lines(root / source, numbers)
+        for source, numbers in production_changed.items()
+    }
     missing_da = sorted(
         f"{source}:{number}"
         for source, numbers in executable_changed.items()
@@ -166,7 +212,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         count
         for source, source_branches in branches.items()
         for number, count in source_branches
-        if number in changed.get(source, set())
+        if number in decision_changed.get(source, set())
     ]
 
     candidate_files = [source for source, numbers in production_changed.items() if has_candidate_code(root / source, numbers)]
@@ -180,6 +226,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     baseline = tomllib.loads(args.baseline.read_text(encoding="utf-8"))
     line_minimum = float(baseline["patch_line_percent"])
     branch_minimum = float(baseline["patch_branch_percent"])
+
+    for source in sorted(executable_changed):
+        source_lines = sorted(executable_changed[source])
+        covered_lines = [number for number in source_lines if lines[source][number] > 0]
+        uncovered_lines = [number for number in source_lines if lines[source][number] == 0]
+        source_branches = [count for number, count in branches.get(source, []) if number in decision_changed.get(source, set())]
+        covered_branches = sum(count > 0 for count in source_branches)
+        uncovered_branch_lines = sorted({
+            number for number, count in branches.get(source, [])
+            if number in decision_changed.get(source, set()) and count == 0
+        })
+        print(
+            f"patch file {source}: lines {len(covered_lines)}/{len(source_lines)}, "
+            f"branches {covered_branches}/{len(source_branches)}, "
+            f"uncovered={compact_ranges(uncovered_lines)}, "
+            f"uncovered-branch-lines={compact_ranges(uncovered_branch_lines)}"
+        )
 
     print(
         f"patch line coverage: {line_hit}/{len(line_counts)} = {line_percent:.1f}% "

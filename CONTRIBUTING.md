@@ -36,6 +36,21 @@ python3 scripts/check_contract.py
 
 7. 解决所有 review conversation，并等待 required checks。仓库只使用 squash merge；squash 标题采用 PR 标题，正文为空。合并后源分支自动删除。
 
+仓库期望设置保存在 [`.github/settings.yml`](.github/settings.yml)。维护者初始化新 fork 或审计设置漂移时先预览变更：
+
+```bash
+python3 scripts/bootstrap_repository.py --repository OWNER/REPOSITORY
+```
+
+确认预览后，才可使用具备 Administration 写权限的 token 显式应用：
+
+```bash
+GITHUB_TOKEN=... python3 scripts/bootstrap_repository.py \
+  --repository OWNER/REPOSITORY --apply
+```
+
+该工具不会在默认模式修改远端。设置清单要求 `main` 保护、五项 required checks、review conversation、线性历史、squash-only、auto-merge 和合并后自动删除源分支。
+
 不要在测试或文档中放入真实 API key，不要依赖真实 provider 网络获得确定性结果。完整示例必须能编译；核心 Quick Start 必须离线运行。
 
 AI coding agent 还必须遵守根目录 [AGENTS.md](AGENTS.md)：保留无关工作、区分证据层级，并且不得提交 `.agents/`、`.claude/` 或 `.codex/`。
