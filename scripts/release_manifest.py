@@ -39,8 +39,10 @@ parser.add_argument("--cjc-version", required=True)
 parser.add_argument("--cjpm-version", required=True)
 parser.add_argument("--smoke-evidence", type=Path, required=True)
 parser.add_argument("--smoke-provenance", type=Path, required=True)
+parser.add_argument("--api-compatibility", type=Path, required=True)
 args = parser.parse_args()
 smoke_provenance = json.loads(args.smoke_provenance.read_text(encoding="utf-8"))
+api_compatibility = json.loads(args.api_compatibility.read_text(encoding="utf-8"))
 
 evidence = {
     "package": "llm4cj",
@@ -54,6 +56,8 @@ evidence = {
         "publicApiSha256": sha256(ROOT / "contract/public-api.txt"),
         "errorCodesSha256": sha256(ROOT / "contract/error-codes.txt"),
         "fixtureDigest": (ROOT / "contract/fixture-digest.txt").read_text().strip(),
+        "apiCompatibilitySha256": sha256(args.api_compatibility),
+        "apiCompatibility": api_compatibility,
     },
     "providerSmoke": {
         "candidateCommit": args.source_commit,
@@ -63,6 +67,9 @@ evidence = {
         "workflowPath": smoke_provenance["workflowPath"],
         "artifactDigests": smoke_provenance["artifactDigests"],
     },
-    "gates": ["check", "coverage", "contract", "exact Git consumer", "provider smoke"],
+    "gates": [
+        "check", "coverage", "contract", "stable API versus release tag",
+        "exact Git stable consumer", "exact Git experimental consumer", "provider smoke",
+    ],
 }
 args.output.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

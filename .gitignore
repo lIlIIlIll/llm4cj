@@ -8,8 +8,14 @@
 /*.gcov
 /.idea/
 /.vscode/
+/.agents/
+/.claude/
+/.codex/
 *.log
 __pycache__/
+
+# Root AI collaboration contract must override developer-global ignores.
+!/AGENTS.md
 
 # Repository contract and provider fixtures must override developer-global ignores.
 !/contract/*.txt

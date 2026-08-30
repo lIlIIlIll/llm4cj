@@ -17,7 +17,8 @@ if [[ "$tag_commit" != "$candidate" ]]; then
 fi
 
 consumer_root=$(mktemp -d -t llm4cj-tag-consumer.XXXXXX)
-trap 'rm -rf -- "$consumer_root"' EXIT
+experimental_consumer_root=$(mktemp -d -t llm4cj-experimental-tag-consumer.XXXXXX)
+trap 'rm -rf -- "$consumer_root" "$experimental_consumer_root"' EXIT
 cp -a "$root/support/external_consumer/." "$consumer_root/"
 python3 - "$consumer_root/cjpm.toml" "$tag" <<'PY'
 import pathlib, re, sys
@@ -42,6 +43,28 @@ PY
   fi
   if ! grep -Fq "commitId = \"$candidate\"" cjpm.lock; then
     printf 'tag consumer did not resolve %s to candidate %s\n' "$tag" "$candidate" >&2
+    exit 1
+  fi
+)
+
+cp -a "$root/support/experimental_consumer/." "$experimental_consumer_root/"
+python3 - "$experimental_consumer_root/cjpm.toml" "$tag" <<'PY'
+import pathlib, re, sys
+path, tag = pathlib.Path(sys.argv[1]), sys.argv[2]
+text = path.read_text()
+text, count = re.subn(r'(llm4cj = \{ git = "[^"]+", tag = ")[^"]+(" \})', rf'\g<1>{tag}\2', text)
+if count != 1:
+    raise SystemExit("experimental consumer tag dependency shape drifted")
+path.write_text(text)
+PY
+(
+  cd "$experimental_consumer_root"
+  cjpm clean
+  cjpm check
+  cjpm build
+  target/release/bin/main
+  if ! grep -Fq "commitId = \"$candidate\"" cjpm.lock; then
+    printf 'experimental tag consumer did not resolve %s to candidate %s\n' "$tag" "$candidate" >&2
     exit 1
   fi
 )

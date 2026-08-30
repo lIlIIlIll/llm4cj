@@ -15,6 +15,7 @@ REQUIRED = [
     "docs/tools-thinking-and-structured-output.md", "docs/errors-and-limits.md",
     "docs/api-reference.md", "docs/architecture.md", "docs/testing-and-releasing.md",
     "docs/migrating-from-v0.1.md", "docs/v0.2-test-plan.md",
+    "docs/experimental.md",
 ]
 
 

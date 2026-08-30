@@ -36,8 +36,8 @@ func parseWireJson(source: String): JsonNode {
             )
         )
     } catch (error: JsonException) {
-        throw LlmTransportError(
-            LlmTransportErrorKind.InvalidWire,
+        throw LlmWireError(
+            LlmWireErrorKind.InvalidWire,
             "llm.json_invalid",
             error.message
         )
@@ -53,8 +53,8 @@ func wireJsonObject(fields: Array<WireJsonField>): JsonNode {
     let value = JsonObjectValue()
     for (field in fields) {
         if (value.contains(field.name)) {
-            throw LlmTransportError(
-                LlmTransportErrorKind.InvalidWire,
+            throw LlmWireError(
+                LlmWireErrorKind.InvalidWire,
                 "llm.json_duplicate_key",
                 "duplicate JSON object key: " + field.name
             )

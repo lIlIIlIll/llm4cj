@@ -1,6 +1,6 @@
 # Tools、thinking 与 structured output
 
-thinking 控制分为 `ProviderDefault`、`Disabled`、`Enabled`、`Effort`、`Budget` 和 `Adaptive`。默认值不发送字段；显式值必须同时得到 capability 和 dialect 映射支持。Anthropic adaptive effort 写入 `output_config.effort`，不会错误地嵌入 `thinking`。DeepSeek Responses 把关闭和开启分别编码为 `reasoning.effort=none` 与 `reasoning.effort=high`；DeepSeek Chat 的显式 effort 会同时写入 `thinking.type=enabled` 和 `reasoning_effort`。
+thinking mode 与 reasoning effort 是两个独立维度。mode 包含 `ProviderDefault`、`Disabled`、`Enabled`、`Budget` 和 `Adaptive`；effort 包含 `ProviderDefault`、`Minimal`、`Low`、`Medium`、`High`、`XHigh` 和 `Max`。显式值必须同时得到 model profile 和 dialect 支持，非法组合会在编码前失败。Anthropic 只有 adaptive mode 可携带 effort；DeepSeek Chat/Messages 只有 enabled mode 可携带 effort。DeepSeek Responses 把关闭和开启分别编码为 `reasoning.effort=none` 与默认 `high`。
 
 校验始终严格：tool call 必须属于 assistant，tool result 必须属于 user；call ID 必须非空且唯一，result 只能匹配此前尚未消费的 call，并且发送前不能留下未解决 call。非法、孤立或未来匹配的数据会失败，不提供会删改历史的 lenient 模式。
 

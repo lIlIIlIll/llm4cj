@@ -8,7 +8,7 @@ class CanonicalReplyAssembler {
     private let model: String
     private let rawStopReason: String
     private let requireExecutableToolCalls: Bool
-    private let blocks = ArrayList<LlmWireBlock>()
+    private let blocks = ArrayList<LlmWireOutputBlock>()
     private let toolCallIds = HashSet<String>()
     private var usage: LlmWireUsage
 
@@ -16,36 +16,35 @@ class CanonicalReplyAssembler {
         this.responseId = responseId; this.model = model; this.rawStopReason = rawStopReason; this.usage = usage
         this.requireExecutableToolCalls = requireExecutableToolCalls
     }
-    func add(block: LlmWireBlock): Unit {
+    func add(block: LlmWireOutputBlock): Unit {
         match (block) {
-            case LlmWireBlock.ToolCall(call) =>
+            case LlmWireOutputBlock.ToolCall(call) =>
                 if (requireExecutableToolCalls) {
                     if (call.callId == "") { invalidWire("llm.tool_call_id_missing", "a successful reply contains an empty tool call ID") }
                     if (toolCallIds.contains(call.callId)) { invalidWire("llm.tool_call_id_duplicate", "a successful reply contains duplicate tool call IDs") }
                     if (!validToolName(call.name)) { invalidWire("llm.tool_call_name_invalid", "a successful reply contains an invalid tool name") }
                     match (call.arguments) {
                         case LlmWireToolArguments.Complete(value) =>
-                            if (value.wireKind != WireJsonKind.Object) { invalidWire("llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object") }
+                            if (value.jsonNode().wireKind != WireJsonKind.Object) { invalidWire("llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object") }
                         case _ => invalidWire("llm.tool_arguments_not_executable", "a successful reply contains tool arguments that are not a complete JSON object")
                     }
                     toolCallIds.add(call.callId)
                 }
                 blocks.add(block)
-            case LlmWireBlock.NativeReplay(value) =>
+            case LlmWireOutputBlock.NativeReplay(value) =>
                 if (requireExecutableToolCalls && value.completion != LlmWireOpaqueCompletion.Complete) {
                     invalidWire("llm.native_replay_incomplete", "a successful reply contains incomplete native replay state")
                 }
                 blocks.add(block)
-            case LlmWireBlock.Opaque(_) => throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.semantic_block_unsupported", "unknown semantic content cannot enter a canonical reply", phase: Some(LlmTransportPhase.SemanticAssembly))
             case _ => blocks.add(block)
         }
     }
-    func addAll(values: Array<LlmWireBlock>): Unit { for (value in values) { add(value) } }
+    func addAll(values: Array<LlmWireOutputBlock>): Unit { for (value in values) { add(value) } }
     func finish(): LlmWireReply { LlmWireReply(responseId: responseId, model: model, blocks: blocks.toArray(), usage: usage, rawStopReason: rawStopReason) }
 }
 
 func assembleCanonicalReply(
-    responseId: String, model: String, blocks: Array<LlmWireBlock>, usage: LlmWireUsage, rawStopReason: String,
+    responseId: String, model: String, blocks: Array<LlmWireOutputBlock>, usage: LlmWireUsage, rawStopReason: String,
     requireExecutableToolCalls!: Bool = true
 ): LlmWireReply {
     let assembler = CanonicalReplyAssembler(responseId, model, rawStopReason, usage: usage, requireExecutableToolCalls: requireExecutableToolCalls)
@@ -55,7 +54,7 @@ func assembleCanonicalReply(
 
 func validateReplyToolStop(reply: LlmWireReply, stop: String, toolStop: String, ordinaryStops: Array<String>): Unit {
     var hasToolCall = false
-    for (block in reply.blocks) { match (block) { case LlmWireBlock.ToolCall(_) => hasToolCall = true; case _ => () } }
+    for (block in reply.blocks) { match (block) { case LlmWireOutputBlock.ToolCall(_) => hasToolCall = true; case _ => () } }
     if (stop == toolStop && !hasToolCall) { invalidWire("llm.tool_stop_without_call", "provider reported a tool-call stop without a tool call") }
     for (ordinary in ordinaryStops where stop == ordinary && hasToolCall) { invalidWire("llm.tool_call_stop_mismatch", "provider returned a tool call under a non-tool stop reason") }
 }
@@ -66,7 +65,11 @@ func mergeWireUsage(current: LlmWireUsage, next: LlmWireUsage, style: LlmWireUsa
         outputTokens: mergeUsageValue(current.outputTokens, next.outputTokens, style),
         reasoningTokens: mergeUsageValue(current.reasoningTokens, next.reasoningTokens, style),
         cacheReadTokens: mergeUsageValue(current.cacheReadTokens, next.cacheReadTokens, style),
-        cacheWriteTokens: mergeUsageValue(current.cacheWriteTokens, next.cacheWriteTokens, style)
+        cacheWriteTokens: mergeUsageValue(current.cacheWriteTokens, next.cacheWriteTokens, style),
+        totalTokens: mergeUsageValue(current.totalTokens, next.totalTokens, style),
+        webSearchRequests: mergeUsageValue(current.webSearchRequests, next.webSearchRequests, style),
+        webFetchRequests: mergeUsageValue(current.webFetchRequests, next.webFetchRequests, style),
+        serviceTier: match (next.serviceTier) { case Some(_) => next.serviceTier; case None => current.serviceTier }
     )
 }
 
@@ -76,11 +79,11 @@ func mergeUsageValue(current: ?Int64, next: ?Int64, style: LlmWireUsageMergeStyl
         case Some(value) => match (style) {
             case LlmWireUsageMergeStyle.ReplacePresent => Some(value)
             case LlmWireUsageMergeStyle.Monotonic => match (current) {
-                case Some(previous) => if (value < previous) { throw LlmTransportError(LlmTransportErrorKind.InvalidWire, "llm.usage_decreased", "monotonic usage counter decreased", phase: Some(LlmTransportPhase.SemanticAssembly)) } else { Some(value) }
+                case Some(previous) => if (value < previous) { throw LlmWireError(LlmWireErrorKind.InvalidWire, "llm.usage_decreased", "monotonic usage counter decreased", phase: Some(LlmTransportPhase.SemanticAssembly)) } else { Some(value) }
                 case None => Some(value)
             }
             case LlmWireUsageMergeStyle.Delta => match (current) {
-                case Some(previous) => if (value > Int64.Max - previous) { throw LlmTransportError(LlmTransportErrorKind.InvalidWire, "llm.usage_overflow", "usage delta overflowed Int64", phase: Some(LlmTransportPhase.SemanticAssembly)) } else { Some(previous + value) }
+                case Some(previous) => if (value > Int64.Max - previous) { throw LlmWireError(LlmWireErrorKind.InvalidWire, "llm.usage_overflow", "usage delta overflowed Int64", phase: Some(LlmTransportPhase.SemanticAssembly)) } else { Some(previous + value) }
                 case None => Some(value)
             }
         }
@@ -100,8 +103,8 @@ func unsupportedSemantic(codec: LlmWireCodec, nativeType: String, payload: JsonN
         WireJsonField("truncated", wireJsonBool(!includeRaw))
     ])
     if (includeRaw) { diagnostic.put("raw_fragment", wireJsonString(raw)) }
-    throw LlmTransportError(
-        LlmTransportErrorKind.Unsupported, code, "provider content is valid but cannot be represented safely",
+    throw LlmWireError(
+        LlmWireErrorKind.Unsupported, code, "provider content is valid but cannot be represented safely",
         provider: codec.provider, diagnosticJson: Some(diagnostic.stringify()), phase: Some(LlmTransportPhase.SemanticAssembly),
         protocol: Some(codec.protocol), dialectId: codec.dialect.compatibilityId, eventType: eventType, blockIndex: blockIndex
     )
