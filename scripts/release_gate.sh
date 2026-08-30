@@ -58,7 +58,8 @@ scripts/check.sh
 scripts/coverage.sh
 
 consumer_root=$(mktemp -d -t llm4cj-consumer.XXXXXX)
-trap 'rm -rf -- "$consumer_root"' EXIT
+experimental_consumer_root=$(mktemp -d -t llm4cj-experimental-consumer.XXXXXX)
+trap 'rm -rf -- "$consumer_root" "$experimental_consumer_root"' EXIT
 cp -a support/external_consumer/. "$consumer_root/"
 python3 - "$consumer_root/cjpm.toml" "$candidate" <<'PY'
 import pathlib, re, sys
@@ -85,6 +86,23 @@ PY
   fi
 )
 
+cp -a support/experimental_consumer/. "$experimental_consumer_root/"
+python3 - "$experimental_consumer_root/cjpm.toml" "$candidate" <<'PY'
+import pathlib, re, sys
+path, candidate = pathlib.Path(sys.argv[1]), sys.argv[2]
+text = path.read_text()
+text, count = re.subn(r'llm4cj = \{ git = "([^"]+)", tag = "[^"]+" \}', rf'llm4cj = {{ git = "\1", commitId = "{candidate}" }}', text)
+if count != 1:
+    raise SystemExit("experimental consumer dependency shape drifted")
+path.write_text(text)
+PY
+(
+  cd "$experimental_consumer_root"
+  cjpm check
+  cjpm build
+  target/release/bin/main
+)
+
 yjson_commit=$(grep -E '^ *yjson = ' cjpm.lock | grep -Eo 'commitId = "[0-9a-f]{40}"' | grep -Eo '[0-9a-f]{40}')
 if [[ "$yjson_commit" != "92858f75aedc3dd6f7322789117854514549e62c" ]]; then
   printf 'yjson is not pinned to the approved commit\n' >&2
@@ -92,6 +110,7 @@ if [[ "$yjson_commit" != "92858f75aedc3dd6f7322789117854514549e62c" ]]; then
 fi
 
 mkdir -p dist
+python3 scripts/check_api_compat.py --output dist/api-compatibility.json
 python3 scripts/release_manifest.py \
   --output dist/release-manifest.json \
   --version "$version" \
@@ -100,10 +119,11 @@ python3 scripts/release_manifest.py \
   --cjc-version "$(cjc -v 2>&1 | head -n 1)" \
   --cjpm-version "$(cjpm --version 2>&1 | head -n 1)" \
   --smoke-evidence "$smoke_dir" \
-  --smoke-provenance "$smoke_provenance"
+  --smoke-provenance "$smoke_provenance" \
+  --api-compatibility dist/api-compatibility.json
 (
   cd dist
-  sha256sum release-manifest.json > SHA256SUMS
+  sha256sum api-compatibility.json release-manifest.json > SHA256SUMS
 )
 
 printf 'llm4cj release gate passed: %s at %s\n' "$version" "$candidate"

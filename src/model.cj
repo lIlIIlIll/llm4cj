@@ -9,18 +9,17 @@ public enum LlmWireProtocol { Responses | ChatCompletions | Messages }
 @Derive[Equatable]
 public enum LlmWireRole { User | Assistant }
 @Derive[Equatable]
+public enum LlmWireInstructionRole { System | Developer }
+@Derive[Equatable]
 public enum LlmWireInputModality { Text | Image }
 @Derive[Equatable]
 public enum LlmWireImageSourceKind { Url | Base64 | File }
 @Derive[Equatable]
 public enum LlmWireImageDetail { Auto | Low | High }
 @Derive[Equatable]
-public enum LlmWireThinkingLevel { Minimal | Low | Medium | High | XHigh | Max }
+public enum LlmWireReasoningEffort { ProviderDefault | Minimal | Low | Medium | High | XHigh | Max }
 @Derive[Equatable]
-public enum LlmWireThinkingControl {
-    ProviderDefault | Disabled | Enabled | Effort(LlmWireThinkingLevel) |
-    Budget(Int64) | Adaptive(?LlmWireThinkingLevel)
-}
+public enum LlmWireThinkingMode { ProviderDefault | Disabled | Enabled | Budget(Int64) | Adaptive }
 @Derive[Equatable]
 public enum LlmWireServiceTier {
     ProviderDefault | Auto | Default | StandardOnly | Flex | Priority | Fast | Ultrafast
@@ -40,6 +39,12 @@ public enum LlmWireToolChoice { ProviderDefault | Auto | NoTools | Required }
 public enum LlmWireOpaqueCompletion { Complete | Partial }
 @Derive[Equatable]
 public enum LlmWireNativeReplayScope { AssistantTurn | Conversation }
+@Derive[Equatable]
+public enum LlmWireOutputPhase { Unspecified | Analysis | Commentary | Final }
+@Derive[Equatable]
+public enum LlmWireCitationKind {
+    Url | File | CharacterRange | PageRange | ContentBlockRange | WebSearchResult | SearchResult
+}
 
 public class LlmWireImageBlock {
     public let sourceKind: LlmWireImageSourceKind
@@ -54,9 +59,75 @@ public class LlmWireImageBlock {
     }
 }
 
+public class LlmWireCitation {
+    public let kind: LlmWireCitationKind
+    public let citedText: String
+    public let documentIndex: ?Int64
+    public let documentTitle: String
+    public let startIndex: ?Int64
+    public let endIndex: ?Int64
+    public let startPage: ?Int64
+    public let endPage: ?Int64
+    public let startBlock: ?Int64
+    public let endBlock: ?Int64
+    public let url: String
+    public let title: String
+    public let fileId: String
+    public let filename: String
+    public init(
+        kind: LlmWireCitationKind, citedText!: String = "", documentIndex!: ?Int64 = None,
+        documentTitle!: String = "", startIndex!: ?Int64 = None, endIndex!: ?Int64 = None,
+        startPage!: ?Int64 = None, endPage!: ?Int64 = None, startBlock!: ?Int64 = None,
+        endBlock!: ?Int64 = None, url!: String = "", title!: String = "", fileId!: String = "",
+        filename!: String = ""
+    ) {
+        this.kind = kind; this.citedText = citedText; this.documentIndex = documentIndex
+        this.documentTitle = documentTitle; this.startIndex = startIndex; this.endIndex = endIndex
+        this.startPage = startPage; this.endPage = endPage; this.startBlock = startBlock; this.endBlock = endBlock
+        this.url = url; this.title = title; this.fileId = fileId; this.filename = filename
+    }
+}
+
+public enum LlmWireAnnotation { UrlCitation(LlmWireCitation) | FileCitation(LlmWireCitation) }
+
+public class LlmWireTokenLogprobCandidate {
+    public let token: String
+    public let bytes: Array<Int64>
+    public let logprob: LlmWireJson
+    public init(token: String, logprob: LlmWireJson, bytes!: Array<Int64> = []) {
+        this.token = token; this.logprob = logprob; this.bytes = copyValues(bytes)
+    }
+}
+
+public class LlmWireTokenLogprob {
+    public let token: String
+    public let bytes: Array<Int64>
+    public let logprob: LlmWireJson
+    public let topLogprobs: Array<LlmWireTokenLogprobCandidate>
+    public init(token: String, logprob: LlmWireJson, bytes!: Array<Int64> = [], topLogprobs!: Array<LlmWireTokenLogprobCandidate> = []) {
+        this.token = token; this.logprob = logprob; this.bytes = copyValues(bytes); this.topLogprobs = copyValues(topLogprobs)
+    }
+}
+
 public class LlmWireTextBlock {
     public let text: String
-    public init(text: String) { this.text = text }
+    public let citations: Array<LlmWireCitation>
+    public let annotations: Array<LlmWireAnnotation>
+    public let logprobs: Array<LlmWireTokenLogprob>
+    public let phase: LlmWireOutputPhase
+    public init(
+        text: String, citations!: Array<LlmWireCitation> = [], annotations!: Array<LlmWireAnnotation> = [],
+        logprobs!: Array<LlmWireTokenLogprob> = [], phase!: LlmWireOutputPhase = LlmWireOutputPhase.Unspecified
+    ) {
+        this.text = text; this.citations = copyValues(citations); this.annotations = copyValues(annotations)
+        this.logprobs = copyValues(logprobs); this.phase = phase
+    }
+}
+
+public class LlmWireInstruction {
+    public let role: LlmWireInstructionRole
+    public let text: String
+    public init(role: LlmWireInstructionRole, text: String) { this.role = role; this.text = text }
 }
 
 public class LlmWireReasoningBlock {
@@ -69,9 +140,9 @@ public class LlmWireReasoningBlock {
 }
 
 public enum LlmWireToolArguments {
-    Complete(JsonNode)
+    Complete(LlmWireJson)
     | InvalidJson(String)
-    | InvalidShape(JsonNode)
+    | InvalidShape(LlmWireJson)
     | Partial(String)
 }
 
@@ -86,11 +157,15 @@ public class LlmWireToolCallBlock {
     }
 }
 
+public enum LlmWireToolResultContent {
+    Text(LlmWireTextBlock) | Image(LlmWireImageBlock)
+}
+
 public class LlmWireToolResultBlock {
     public let callId: String
-    public let content: String
+    public let content: Array<LlmWireToolResultContent>
     public let isError: Bool
-    public init(callId: String, content: String, isError!: Bool = false) {
+    public init(callId: String, content: Array<LlmWireToolResultContent>, isError!: Bool = false) {
         this.callId = callId
         this.content = content
         this.isError = isError
@@ -99,7 +174,12 @@ public class LlmWireToolResultBlock {
 
 public class LlmWireRefusalBlock {
     public let text: String
-    public init(text: String) { this.text = text }
+    public let category: ?String
+    public let explanation: ?String
+    public let logprobs: Array<LlmWireTokenLogprob>
+    public init(text: String, category!: ?String = None, explanation!: ?String = None, logprobs!: Array<LlmWireTokenLogprob> = []) {
+        this.text = text; this.category = category; this.explanation = explanation; this.logprobs = copyValues(logprobs)
+    }
 }
 
 public class LlmWireOpaqueBlock {
@@ -109,14 +189,14 @@ public class LlmWireOpaqueBlock {
 
     init(nativeType: String, payload: JsonNode, completion!: LlmWireOpaqueCompletion = LlmWireOpaqueCompletion.Complete) {
         if (nativeType == "" || payload.wireKind != WireJsonKind.Object) {
-            throw LlmTransportError(LlmTransportErrorKind.InvalidWire, "llm.opaque_payload_invalid", "opaque diagnostic payload must be a typed object")
+            throw LlmWireError(LlmWireErrorKind.InvalidWire, "llm.opaque_payload_invalid", "opaque diagnostic payload must be a typed object")
         }
         this.nativeType = nativeType
         this.completion = completion
         this.diagnosticJson = payload.stringify()
     }
 
-    public func payload(): JsonNode { parseWireJson(diagnosticJson) }
+    func payload(): JsonNode { parseWireJson(diagnosticJson) }
     public func snapshot(): String { diagnosticJson }
 }
 
@@ -154,7 +234,7 @@ public class LlmWireNativeReplayBlock {
     public static func restore(snapshot: String): LlmWireNativeReplayBlock {
         let root = wireObject(parseWireJson(snapshot), "native replay snapshot")
         let complete = wireRequiredField(root, "complete")
-        if (complete.wireKind != WireJsonKind.Boolean || !complete.bool) { throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.native_replay_incomplete", "only complete native state can be restored for replay") }
+        if (complete.wireKind != WireJsonKind.Boolean || !complete.bool) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_incomplete", "only complete native state can be restored for replay") }
         nativeReplayFromPayload(
             parseProtocol(wireRequiredString(root, "protocol")), wireRequiredString(root, "dialect_id"), wireRequiredString(root, "native_type"),
             wireObject(wireRequiredField(root, "payload"), "native replay payload"), schemaVersion: wireRequiredInt(root, "schema_version"),
@@ -164,7 +244,7 @@ public class LlmWireNativeReplayBlock {
         )
     }
 
-    public func payload(): JsonNode { parseWireJson(canonicalReplayJson) }
+    func payload(): JsonNode { parseWireJson(canonicalReplayJson) }
     public func snapshot(): String {
         let root = wireJsonObject([
             WireJsonField("protocol", wireJsonString(protocolName(protocol))), WireJsonField("dialect_id", wireJsonString(dialectId)),
@@ -188,14 +268,14 @@ func nativeReplayFromPayload(
     displayReasoning!: ?String = None
 ): LlmWireNativeReplayBlock {
     if (dialectId == "" || nativeType == "" || schemaVersion != 1 || assistantTurnIndex != 0 || blockOrder < 0 || payload.wireKind != WireJsonKind.Object) {
-        throw LlmTransportError(LlmTransportErrorKind.InvalidWire, "llm.native_replay_payload_invalid", "native replay metadata and payload must be complete")
+        throw LlmWireError(LlmWireErrorKind.InvalidWire, "llm.native_replay_payload_invalid", "native replay metadata and payload must be complete")
     }
     if (scope != LlmWireNativeReplayScope.AssistantTurn) {
-        throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.native_replay_scope_unsupported", "conversation-scoped native replay is not supported")
+        throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.native_replay_scope_unsupported", "conversation-scoped native replay is not supported")
     }
     match (payload.field("type")) {
-        case Some(value) => if (value.wireKind != WireJsonKind.Text || value.text != nativeType) { throw LlmTransportError(LlmTransportErrorKind.InvalidWire, "llm.native_replay_type_mismatch", "native replay type does not match payload") }
-        case None => throw LlmTransportError(LlmTransportErrorKind.InvalidWire, "llm.native_replay_type_missing", "native replay payload must contain type")
+        case Some(value) => if (value.wireKind != WireJsonKind.Text || value.text != nativeType) { throw LlmWireError(LlmWireErrorKind.InvalidWire, "llm.native_replay_type_mismatch", "native replay type does not match payload") }
+        case None => throw LlmWireError(LlmWireErrorKind.InvalidWire, "llm.native_replay_type_missing", "native replay payload must contain type")
     }
     validateNativeReplayPayload(protocol, dialectId, nativeType, payload)
     LlmWireNativeReplayBlock(protocol, dialectId, nativeType, schemaVersion, modelConstraint, scope, assistantTurnIndex, blockOrder, completion, payload.stringify(), displayReasoning)
@@ -212,7 +292,7 @@ func validateNativeReplayPayload(protocol: LlmWireProtocol, dialectId: String, n
         case _ => false
     }
     if (!allowed) {
-        throw LlmTransportError(LlmTransportErrorKind.Unsupported, "llm.native_replay_type_unsupported", "native type is not replayable for this protocol and dialect")
+        throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.native_replay_type_unsupported", "native type is not replayable for this protocol and dialect")
     }
     match (nativeType) {
         case "thinking" =>
@@ -224,7 +304,7 @@ func validateNativeReplayPayload(protocol: LlmWireProtocol, dialectId: String, n
             let _ = wireRequiredString(payload, "id")
             let hasSummary = payload.field("summary").isSome()
             let hasContent = payload.field("content").isSome()
-            if (!hasSummary && !hasContent) { throw LlmTransportError(LlmTransportErrorKind.InvalidWire, "llm.native_replay_payload_invalid", "Responses reasoning replay requires summary or content") }
+            if (!hasSummary && !hasContent) { throw LlmWireError(LlmWireErrorKind.InvalidWire, "llm.native_replay_payload_invalid", "Responses reasoning replay requires summary or content") }
             if (hasSummary) { let _ = wireOptionalArray(payload, "summary") }
             if (hasContent) { let _ = wireOptionalArray(payload, "content") }
         case _ => ()
@@ -232,9 +312,9 @@ func validateNativeReplayPayload(protocol: LlmWireProtocol, dialectId: String, n
 }
 
 func protocolName(value: LlmWireProtocol): String { match (value) { case LlmWireProtocol.Responses => "responses"; case LlmWireProtocol.ChatCompletions => "chat_completions"; case LlmWireProtocol.Messages => "messages" } }
-func parseProtocol(value: String): LlmWireProtocol { match (value) { case "responses" => LlmWireProtocol.Responses; case "chat_completions" => LlmWireProtocol.ChatCompletions; case "messages" => LlmWireProtocol.Messages; case _ => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.native_replay_protocol_invalid", "unknown native replay protocol") } }
+func parseProtocol(value: String): LlmWireProtocol { match (value) { case "responses" => LlmWireProtocol.Responses; case "chat_completions" => LlmWireProtocol.ChatCompletions; case "messages" => LlmWireProtocol.Messages; case _ => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_protocol_invalid", "unknown native replay protocol") } }
 func replayScopeName(value: LlmWireNativeReplayScope): String { match (value) { case LlmWireNativeReplayScope.AssistantTurn => "assistant_turn"; case LlmWireNativeReplayScope.Conversation => "conversation" } }
-func parseReplayScope(value: String): LlmWireNativeReplayScope { match (value) { case "assistant_turn" => LlmWireNativeReplayScope.AssistantTurn; case "conversation" => LlmWireNativeReplayScope.Conversation; case _ => throw LlmTransportError(LlmTransportErrorKind.InvalidRequest, "llm.native_replay_scope_invalid", "unknown native replay scope") } }
+func parseReplayScope(value: String): LlmWireNativeReplayScope { match (value) { case "assistant_turn" => LlmWireNativeReplayScope.AssistantTurn; case "conversation" => LlmWireNativeReplayScope.Conversation; case _ => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_scope_invalid", "unknown native replay scope") } }
 
 public enum LlmWireBlock {
     Text(LlmWireTextBlock)
@@ -245,6 +325,14 @@ public enum LlmWireBlock {
     | Refusal(LlmWireRefusalBlock)
     | NativeReplay(LlmWireNativeReplayBlock)
     | Opaque(LlmWireOpaqueBlock)
+}
+
+public enum LlmWireOutputBlock {
+    Text(LlmWireTextBlock)
+    | Reasoning(LlmWireReasoningBlock)
+    | ToolCall(LlmWireToolCallBlock)
+    | Refusal(LlmWireRefusalBlock)
+    | NativeReplay(LlmWireNativeReplayBlock)
 }
 
 public class LlmWireMessage {
@@ -259,8 +347,8 @@ public class LlmWireMessage {
 public class LlmWireTool {
     public let name: String
     public let description: String
-    public let inputSchema: JsonNode
-    public init(name: String, description: String, inputSchema: JsonNode) {
+    public let inputSchema: LlmWireJson
+    public init(name: String, description: String, inputSchema: LlmWireJson) {
         this.name = name
         this.description = description
         this.inputSchema = inputSchema
@@ -270,9 +358,9 @@ public class LlmWireTool {
 public class LlmWireJsonSchema {
     public let name: String
     public let description: String
-    public let schema: JsonNode
+    public let schema: LlmWireJson
     public let strict: Bool
-    public init(name: String, schema: JsonNode, description!: String = "", strict!: Bool = true) {
+    public init(name: String, schema: LlmWireJson, description!: String = "", strict!: Bool = true) {
         this.name = name
         this.description = description
         this.schema = schema
@@ -281,17 +369,17 @@ public class LlmWireJsonSchema {
 }
 
 public enum LlmWireStructuredOutput {
-    ProviderDefault | Text | JsonObject | JsonSchema(LlmWireJsonSchema) | JsonSchemaDocument(JsonNode)
+    ProviderDefault | Text | JsonObject | JsonSchema(LlmWireJsonSchema) | JsonSchemaDocument(LlmWireJson)
 }
 
 public class LlmWireRequest {
     public let model: String
-    public let system: String
+    public let instructions: Array<LlmWireInstruction>
     public let messages: Array<LlmWireMessage>
     public let tools: Array<LlmWireTool>
-    public let thinking: LlmWireThinkingControl
+    public let thinkingMode: LlmWireThinkingMode
+    public let reasoningEffort: LlmWireReasoningEffort
     public let maxOutputTokens: ?Int64
-    public let streaming: ?Bool
     public let parallelToolCalls: ?Bool
     public let serviceTier: LlmWireServiceTier
     public let generationSpeed: LlmWireGenerationSpeed
@@ -303,11 +391,11 @@ public class LlmWireRequest {
     public init(
         model: String,
         messages: Array<LlmWireMessage>,
-        system!: String = "",
+        instructions!: Array<LlmWireInstruction> = [],
         tools!: Array<LlmWireTool> = [],
-        thinking!: LlmWireThinkingControl = LlmWireThinkingControl.ProviderDefault,
+        thinkingMode!: LlmWireThinkingMode = LlmWireThinkingMode.ProviderDefault,
+        reasoningEffort!: LlmWireReasoningEffort = LlmWireReasoningEffort.ProviderDefault,
         maxOutputTokens!: ?Int64 = None,
-        streaming!: ?Bool = None,
         parallelToolCalls!: ?Bool = None,
         serviceTier!: LlmWireServiceTier = LlmWireServiceTier.ProviderDefault,
         generationSpeed!: LlmWireGenerationSpeed = LlmWireGenerationSpeed.ProviderDefault,
@@ -318,11 +406,11 @@ public class LlmWireRequest {
     ) {
         this.model = model
         this.messages = messages
-        this.system = system
+        this.instructions = instructions
         this.tools = tools
-        this.thinking = thinking
+        this.thinkingMode = thinkingMode
+        this.reasoningEffort = reasoningEffort
         this.maxOutputTokens = maxOutputTokens
-        this.streaming = streaming
         this.parallelToolCalls = parallelToolCalls
         this.serviceTier = serviceTier
         this.generationSpeed = generationSpeed
@@ -339,51 +427,115 @@ public class LlmWireUsage {
     public let reasoningTokens: ?Int64
     public let cacheReadTokens: ?Int64
     public let cacheWriteTokens: ?Int64
-    public init(inputTokens!: ?Int64 = None, outputTokens!: ?Int64 = None, reasoningTokens!: ?Int64 = None, cacheReadTokens!: ?Int64 = None, cacheWriteTokens!: ?Int64 = None) {
+    public let totalTokens: ?Int64
+    public let webSearchRequests: ?Int64
+    public let webFetchRequests: ?Int64
+    public let serviceTier: ?String
+    public init(
+        inputTokens!: ?Int64 = None, outputTokens!: ?Int64 = None, reasoningTokens!: ?Int64 = None,
+        cacheReadTokens!: ?Int64 = None, cacheWriteTokens!: ?Int64 = None, totalTokens!: ?Int64 = None,
+        webSearchRequests!: ?Int64 = None, webFetchRequests!: ?Int64 = None, serviceTier!: ?String = None
+    ) {
         this.inputTokens = inputTokens
         this.outputTokens = outputTokens
         this.reasoningTokens = reasoningTokens
         this.cacheReadTokens = cacheReadTokens
         this.cacheWriteTokens = cacheWriteTokens
+        this.totalTokens = totalTokens
+        this.webSearchRequests = webSearchRequests
+        this.webFetchRequests = webFetchRequests
+        this.serviceTier = serviceTier
+    }
+}
+
+@Derive[Equatable]
+public enum LlmWireIncompleteReason {
+    MaxTokens | Length | ContentFilter | ModelContextWindowExceeded | PauseTurn | Other(String)
+}
+
+public enum LlmWireChoiceOutcome {
+    Completed | Incomplete(LlmWireIncompleteReason) | Refused(LlmWireRefusalBlock)
+}
+
+public class LlmWireChoice {
+    public let index: Int64
+    public let blocks: Array<LlmWireOutputBlock>
+    public let outcome: LlmWireChoiceOutcome
+    public let rawStopReason: String
+    public init(index: Int64, blocks: Array<LlmWireOutputBlock>, outcome: LlmWireChoiceOutcome, rawStopReason!: String = "") {
+        if (index < 0) { throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.choice_index_invalid", "choice index must be non-negative") }
+        this.index = index; this.blocks = copyValues(blocks); this.outcome = outcome; this.rawStopReason = rawStopReason
+    }
+    public func toContinuationInput(): LlmWireResult<Array<LlmWireMessage>> {
+        try { LlmWireResult.Ok(projectContinuationBlocks(blocks)) }
+        catch (error: LlmWireError) { LlmWireResult.Err(error) }
     }
 }
 
 public class LlmWireReply {
     public let responseId: String
     public let model: String
-    public let blocks: Array<LlmWireBlock>
+    public let blocks: Array<LlmWireOutputBlock>
     public let usage: LlmWireUsage
     public let rawStopReason: String
-    public init(responseId!: String = "", model!: String = "", blocks!: Array<LlmWireBlock> = [], usage!: LlmWireUsage = LlmWireUsage(), rawStopReason!: String = "") {
+    public let choices: Array<LlmWireChoice>
+    public init(
+        responseId!: String = "", model!: String = "", blocks!: Array<LlmWireOutputBlock> = [],
+        usage!: LlmWireUsage = LlmWireUsage(), rawStopReason!: String = "", choices!: Array<LlmWireChoice> = []
+    ) {
         this.responseId = responseId
         this.model = model
-        this.blocks = blocks
+        this.choices = if (choices.isEmpty()) {
+            [LlmWireChoice(0, blocks, inferChoiceOutcome(rawStopReason, blocks), rawStopReason: rawStopReason)]
+        } else { copyValues(choices) }
+        // The constructor above always creates at least one canonical choice.
+        this.blocks = copyValues(this.choices[0].blocks)
         this.usage = usage
         this.rawStopReason = rawStopReason
     }
     public func toContinuationInput(): Array<LlmWireMessage> {
+        if (choices.size != 1) {
+            throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.continuation_choice_required", "multi-choice replies require an explicit choice")
+        }
+        projectContinuationBlocks(choices[0].blocks)
+    }
+    public func toContinuationInput(choiceIndex: Int64): LlmWireResult<Array<LlmWireMessage>> {
+        for (choice in choices where choice.index == choiceIndex) { return choice.toContinuationInput() }
+        LlmWireResult.Err(LlmWireError(LlmWireErrorKind.InvalidState, "llm.continuation_choice_missing", "reply does not contain the selected choice"))
+    }
+}
+
+func projectContinuationBlocks(blocks: Array<LlmWireOutputBlock>): Array<LlmWireMessage> {
         let replayable = ArrayList<LlmWireBlock>()
         for (block in blocks) { match (block) {
-            case LlmWireBlock.Text(_) => replayable.add(block)
-            case LlmWireBlock.NativeReplay(value) =>
+            case LlmWireOutputBlock.Text(value) => replayable.add(LlmWireBlock.Text(value))
+            case LlmWireOutputBlock.NativeReplay(value) =>
                 if (value.blockOrder != replayable.size) {
-                    throw LlmTransportError(LlmTransportErrorKind.InvalidState, "llm.native_replay_projection_order_invalid", "continuation projection would change provider-native block order")
+                    throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.native_replay_projection_order_invalid", "continuation projection would change provider-native block order")
                 }
-                replayable.add(block)
-            case LlmWireBlock.ToolCall(value) => match (value.arguments) {
-                case LlmWireToolArguments.Complete(_) => replayable.add(block)
-                case _ => throw LlmTransportError(LlmTransportErrorKind.InvalidState, "llm.tool_arguments_not_executable", "diagnostic or partial tool arguments cannot be projected into continuation input")
+                replayable.add(LlmWireBlock.NativeReplay(value))
+            case LlmWireOutputBlock.ToolCall(value) => match (value.arguments) {
+                case LlmWireToolArguments.Complete(_) => replayable.add(LlmWireBlock.ToolCall(value))
+                case _ => throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.tool_arguments_not_executable", "diagnostic or partial tool arguments cannot be projected into continuation input")
             }
-            case _ => throw LlmTransportError(LlmTransportErrorKind.InvalidState, "llm.continuation_projection_lossy", "continuation projection would discard a semantic reply block")
+            case _ => throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.continuation_projection_lossy", "continuation projection would discard a semantic reply block")
         } }
         if (replayable.isEmpty()) { [] } else { [LlmWireMessage(LlmWireRole.Assistant, replayable.toArray())] }
+}
+
+func inferChoiceOutcome(rawStopReason: String, blocks: Array<LlmWireOutputBlock>): LlmWireChoiceOutcome {
+    for (block in blocks) { match (block) { case LlmWireOutputBlock.Refusal(value) => return LlmWireChoiceOutcome.Refused(value); case _ => () } }
+    match (rawStopReason) {
+        case "length" => LlmWireChoiceOutcome.Incomplete(LlmWireIncompleteReason.Length)
+        case "max_tokens" => LlmWireChoiceOutcome.Incomplete(LlmWireIncompleteReason.MaxTokens)
+        case "content_filter" => LlmWireChoiceOutcome.Incomplete(LlmWireIncompleteReason.ContentFilter)
+        case "model_context_window_exceeded" => LlmWireChoiceOutcome.Incomplete(LlmWireIncompleteReason.ModelContextWindowExceeded)
+        case "pause_turn" => LlmWireChoiceOutcome.Incomplete(LlmWireIncompleteReason.PauseTurn)
+        case _ => LlmWireChoiceOutcome.Completed
     }
 }
 
 public enum LlmWirePendingReply { Queued(LlmWireReply) | InProgress(LlmWireReply) }
-public enum LlmWireIncompleteReason {
-    MaxTokens | Length | ContentFilter | ModelContextWindowExceeded | PauseTurn | Other(String)
-}
 public enum LlmWireFailureKind { ProviderError | Cancelled | InsufficientSystemResource | Other }
 public class LlmWireFailure {
     public let kind: LlmWireFailureKind
@@ -392,18 +544,29 @@ public class LlmWireFailure {
     public let providerErrorCode: String
     public let providerErrorType: String
     public let retryable: Bool
-    public init(kind: LlmWireFailureKind, message: String, provider!: String = "", providerErrorCode!: String = "", providerErrorType!: String = "", retryable!: Bool = false) {
+    public let httpStatus: ?Int64
+    public let retryAfterMillis: ?Int64
+    public let providerRequestId: String
+    public init(
+        kind: LlmWireFailureKind, message: String, provider!: String = "",
+        providerErrorCode!: String = "", providerErrorType!: String = "",
+        retryable!: Bool = false, httpStatus!: ?Int64 = None,
+        retryAfterMillis!: ?Int64 = None, providerRequestId!: String = ""
+    ) {
         this.kind = kind
         this.message = message
         this.provider = provider
         this.providerErrorCode = providerErrorCode
         this.providerErrorType = providerErrorType
         this.retryable = retryable
+        this.httpStatus = httpStatus
+        this.retryAfterMillis = retryAfterMillis
+        this.providerRequestId = providerRequestId
     }
 }
 public enum LlmWireTerminal {
-    Succeeded(LlmWireReply)
-    | Incomplete(LlmWireReply, LlmWireIncompleteReason)
-    | Failed(LlmWireFailure)
+    Completed(LlmWireReply)
+    | ProviderFailed(LlmWireFailure)
+    | Cancelled(LlmWireFailure)
 }
 public enum LlmWireResponseState { Pending(LlmWirePendingReply) | Terminal(LlmWireTerminal) }

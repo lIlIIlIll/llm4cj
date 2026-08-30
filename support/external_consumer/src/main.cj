@@ -1,9 +1,10 @@
 package llm4cj_external_consumer
 
 import llm4cj.*
+import std.convert.*
 
 main(): Int64 {
-    let codec = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
+    let codec = openAiResponsesCodec(openAiResponsesModelProfile("demo-model"))
     let request = LlmWireRequest(
         "demo-model",
         [LlmWireMessage(
@@ -11,17 +12,24 @@ main(): Int64 {
             [LlmWireBlock.Text(LlmWireTextBlock("你好"))]
         )]
     )
-    let payload = codec.encodeRequest(request)
-    if (!payload.body.contains("demo-model")) { return 1 }
+    let payload = match (codec.encodeRequest(request).materialize()) {
+        case LlmWireResult.Ok(value) => value
+        case LlmWireResult.Err(_) => return 1
+    }
+    if (!String.fromUtf8(payload.body).contains("demo-model")) { return 1 }
 
-    let state = codec.decodeResponse(
-        "{\"id\":\"resp_demo\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"你好，仓颉！\"}]}],\"usage\":{}}"
-    )
+    let state = match (codec.decodeResponse(LlmWireHttpResponse(
+        200, [LlmWireHeader("x-request-id", "req_demo")],
+        "{\"id\":\"resp_demo\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"你好，仓颉！\"}]}],\"usage\":{}}".toArray()
+    ))) {
+        case LlmWireResult.Ok(value) => value
+        case LlmWireResult.Err(_) => return 1
+    }
     match (state) {
-        case LlmWireResponseState.Terminal(LlmWireTerminal.Succeeded(reply)) =>
+        case LlmWireResponseState.Terminal(LlmWireTerminal.Completed(reply)) =>
             for (block in reply.blocks) {
                 match (block) {
-                    case LlmWireBlock.Text(text) => println(text.text)
+                    case LlmWireOutputBlock.Text(text) => println(text.text)
                     case _ => ()
                 }
             }

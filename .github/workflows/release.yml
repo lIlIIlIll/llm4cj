@@ -75,4 +75,4 @@ jobs:
             echo "release $RELEASE_TAG already exists; refusing to replace immutable evidence" >&2
             exit 1
           fi
-          gh release create "$RELEASE_TAG" dist/release-manifest.json dist/SHA256SUMS --verify-tag --generate-notes --title "llm4cj $RELEASE_TAG"
+          gh release create "$RELEASE_TAG" dist/api-compatibility.json dist/release-manifest.json dist/SHA256SUMS --verify-tag --generate-notes --title "llm4cj $RELEASE_TAG"

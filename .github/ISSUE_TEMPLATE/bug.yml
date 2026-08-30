@@ -1,0 +1,49 @@
+name: 缺陷报告
+description: 报告可重复的编码、解码、流式或文档问题
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: 请移除凭据、prompt 和敏感 provider 响应，只保留最小复现证据。
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 实际行为
+      description: 说明发生了什么，以及对应 protocol、dialect 和 model。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 最小复现
+      description: 提供脱敏 fixture、代码或确定性步骤。
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: llm4cj 版本或 commit
+      placeholder: v0.1.0 或完整 SHA
+    validations:
+      required: true
+  - type: input
+    id: cangjie
+    attributes:
+      label: Cangjie SDK
+      placeholder: 1.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 已运行的验证
+      description: 列出实际运行的命令、结果和未运行的门禁。
+    validations:
+      required: true
