@@ -920,6 +920,7 @@ class Llm4CjV02Tests {
         @Expect(restored.dialectId, "anthropic.messages.v1")
         @Expect(restored.payload()["signature"].string, "sig")
         expectLlmError("llm.native_replay_incomplete", { => let _ = LlmWireNativeReplayBlock.restore(native.snapshot().replace("\"complete\":true", "\"complete\":false")) })
+        expectLlmError("llm.native_replay_incomplete", { => let _ = LlmWireNativeReplayBlock.restore(native.snapshot().replace("\"complete\":true", "\"complete\":\"yes\"")) })
         expectLlmError("llm.native_replay_model_mismatch", { => let _ = anthropic.encodeRequest(LlmWireRequest("other", [LlmWireMessage(LlmWireRole.Assistant, [LlmWireBlock.NativeReplay(restored)])], maxOutputTokens: Some(2048))) })
 
         let tool = LlmWireBlock.ToolCall(LlmWireToolCallBlock("c", "f", LlmWireToolArguments.Complete(testJson("{}"))))
@@ -2402,6 +2403,10 @@ class Llm4CjV02Tests {
         expectLlmError("llm.max_output_tokens_invalid", { => builder.setMaxOutputTokens(Some(0)) })
         expectLlmError("llm.max_output_tokens_invalid", { => builder.setMaxOutputTokens(Some(-1)) })
         expectLlmError("llm.prompt_cache_routing_key_invalid", { => builder.setPromptCache(LlmWirePromptCache.ProviderDefault, routingKey: Some("")) })
+
+        builder.setThinking(LlmWireThinkingMode.Budget(1024))
+        builder.setThinking(LlmWireThinkingMode.ProviderDefault)
+        builder.setPromptCache(LlmWirePromptCache.ProviderDefault)
 
         builder.addInstruction(LlmWireInstructionRole.System, "system")
         builder.addMessage(LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("hello"))]))
