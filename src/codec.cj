@@ -183,7 +183,7 @@ func encodeMessagesRequest(codec: LlmWireCodec, request: LlmWireRequest, headers
     encodePromptCache(codec, root, request.promptCache, requirements)
     if (requestHasFileImage(request)) { headers.add(LlmWireHeader("anthropic-beta", "files-api-2025-04-14")) }
     let messages = wireJsonArray([])
-    for (message in request.messages) { let content = wireJsonArray([]); for (block in message.blocks) { content.add(encodeMessagesContent(block)) }; messages.add(wireJsonObject([WireJsonField("role", wireJsonString(roleName(message.role))), WireJsonField("content", content)])) }
+    for (message in request.messages) { let content = wireJsonArray([]); for (block in message.blocks) { content.add(encodeMessagesContent(codec, block)) }; messages.add(wireJsonObject([WireJsonField("role", wireJsonString(roleName(message.role))), WireJsonField("content", content)])) }
     root.put("messages", messages)
     if (!request.tools.isEmpty()) { let tools = wireJsonArray([]); for (tool in request.tools) { tools.add(wireJsonObject([WireJsonField("name", wireJsonString(tool.name)), WireJsonField("description", wireJsonString(tool.description)), WireJsonField("input_schema", tool.inputSchema.jsonNode())])) }; root.put("tools", tools) }
     root.stringify()
@@ -294,7 +294,9 @@ func encodeResponsesContent(block: LlmWireBlock): JsonNode {
     }
 }
 
-func encodeMessagesContent(block: LlmWireBlock): JsonNode {
+const messagesToolErrorMarker: String = "[tool_error]"
+
+func encodeMessagesContent(codec: LlmWireCodec, block: LlmWireBlock): JsonNode {
     match (block) {
         case LlmWireBlock.Text(value) => wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(value.text))])
         case LlmWireBlock.Image(value) =>
@@ -303,10 +305,7 @@ func encodeMessagesContent(block: LlmWireBlock): JsonNode {
             WireJsonField("type", wireJsonString("tool_use")), WireJsonField("id", wireJsonString(value.callId)),
             WireJsonField("name", wireJsonString(value.name)), WireJsonField("input", toolArgumentsObject(value.arguments))
         ])
-        case LlmWireBlock.ToolResult(value) => wireJsonObject([
-            WireJsonField("type", wireJsonString("tool_result")), WireJsonField("tool_use_id", wireJsonString(value.callId)),
-            WireJsonField("content", encodeMessagesToolResult(value)), WireJsonField("is_error", wireJsonBool(value.isError))
-        ])
+        case LlmWireBlock.ToolResult(value) => encodeMessagesToolResultBlock(codec, value)
         case LlmWireBlock.NativeReplay(value) => value.payload()
         case LlmWireBlock.Reasoning(_) | LlmWireBlock.Refusal(_) | LlmWireBlock.Opaque(_) => unsupportedRequest("llm.messages_block_unsupported", "display and diagnostic blocks cannot be encoded as request content")
     }
@@ -335,6 +334,26 @@ func encodeChatToolResult(codec: LlmWireCodec, value: LlmWireToolResultBlock): J
 
 func encodeMessagesToolResult(value: LlmWireToolResultBlock): JsonNode {
     let output = wireJsonArray([])
+    for (part in value.content) { match (part) {
+        case LlmWireToolResultContent.Text(text) => output.add(wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(text.text))]))
+        case LlmWireToolResultContent.Image(image) => output.add(encodeMessagesImage(image))
+    } }
+    output
+}
+
+func encodeMessagesToolResultBlock(codec: LlmWireCodec, value: LlmWireToolResultBlock): JsonNode {
+    let errorStyle = codec.dialect.contract.toolErrorStyle
+    let fields = ArrayList<WireJsonField>()
+    fields.add(WireJsonField("type", wireJsonString("tool_result")))
+    fields.add(WireJsonField("tool_use_id", wireJsonString(value.callId)))
+    fields.add(WireJsonField("content", if (value.isError && errorStyle == LlmWireToolErrorStyle.ContentMarker) { encodeMessagesErrorMarkedContent(value) } else { encodeMessagesToolResult(value) }))
+    if (errorStyle == LlmWireToolErrorStyle.NativeField) { fields.add(WireJsonField("is_error", wireJsonBool(value.isError))) }
+    wireJsonObject(fields.toArray())
+}
+
+func encodeMessagesErrorMarkedContent(value: LlmWireToolResultBlock): JsonNode {
+    let output = wireJsonArray([])
+    output.add(wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(messagesToolErrorMarker))]))
     for (part in value.content) { match (part) {
         case LlmWireToolResultContent.Text(text) => output.add(wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(text.text))]))
         case LlmWireToolResultContent.Image(image) => output.add(encodeMessagesImage(image))

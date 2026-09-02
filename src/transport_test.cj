@@ -2490,11 +2490,37 @@ class Llm4CjV02Tests {
         )) })
 
         let call = LlmWireBlock.ToolCall(LlmWireToolCallBlock("call", "tool", LlmWireToolArguments.Complete(testJson("{}"))))
-        let result = LlmWireBlock.ToolResult(LlmWireToolResultBlock("call", [LlmWireToolResultContent.Text(LlmWireTextBlock("failed"))], isError: true))
-        expectLlmError("llm.tool_result_error_semantics_unsupported", { => let _ = deepSeekMessages.encodeRequest(LlmWireRequest(
-            "deepseek", [LlmWireMessage(LlmWireRole.Assistant, [call]), LlmWireMessage(LlmWireRole.User, [result])],
-            maxOutputTokens: Some(64), tools: [LlmWireTool("tool", "", testJson("{}"))]
+        let failed = LlmWireBlock.ToolResult(toolResultText("call", "failed", isError: true))
+        let errorConversation = [LlmWireMessage(LlmWireRole.Assistant, [call]), LlmWireMessage(LlmWireRole.User, [failed])]
+        let marked = deepSeekMessages.encodeRequest(LlmWireRequest(
+            "deepseek", errorConversation, maxOutputTokens: Some(64), tools: [LlmWireTool("tool", "", testJson("{}"))]
+        ))
+        @Expect(marked.contains("[tool_error]"), true)
+        @Expect(marked.contains("is_error"), false)
+        @Expect(marked.contains("failed"), true)
+        let plainConversation = [LlmWireMessage(LlmWireRole.Assistant, [call]), LlmWireMessage(LlmWireRole.User, [LlmWireBlock.ToolResult(toolResultText("call", "done"))])]
+        let plain = deepSeekMessages.encodeRequest(LlmWireRequest(
+            "deepseek", plainConversation, maxOutputTokens: Some(64), tools: [LlmWireTool("tool", "", testJson("{}"))]
+        ))
+        @Expect(plain.contains("[tool_error]"), false)
+        @Expect(plain.contains("is_error"), false)
+        let anthropicPlain = anthropic.encodeRequest(LlmWireRequest(
+            "claude", plainConversation, maxOutputTokens: Some(64), tools: [LlmWireTool("tool", "", testJson("{}"))]
+        ))
+        @Expect(anthropicPlain.contains("\"is_error\":false"), true)
+        let strictMessages = LlmWireCodec(LlmWireProtocol.Messages, TestStandardDialect(LlmWireDialectContract(
+            "test.messages.no.tool.error", LlmWireProtocol.Messages, LlmWireRequestStyle.AnthropicMessages,
+            LlmWireOutputTokenField.MaxTokens
+        )), capabilities: allCapabilities())
+        expectLlmError("llm.tool_result_error_semantics_unsupported", { => let _ = strictMessages.encodeRequest(LlmWireRequest(
+            "test", errorConversation, maxOutputTokens: Some(64), tools: [LlmWireTool("tool", "", testJson("{}"))]
         )) })
+        expectIllegalArgument({ => let _ = LlmWireDialectContract(
+            "test.chat.native.tool.error", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat,
+            LlmWireOutputTokenField.MaxCompletionTokens, toolErrorStyle: LlmWireToolErrorStyle.NativeField
+        ) })
+        @Expect(anthropic.dialect.contract.toolErrorStyle, LlmWireToolErrorStyle.NativeField)
+        @Expect(deepSeekMessages.dialect.contract.toolErrorStyle, LlmWireToolErrorStyle.ContentMarker)
         expectLlmError("llm.test_unsupported_wire", { => unsupportedWire("llm.test_unsupported_wire", "test") })
     }
 

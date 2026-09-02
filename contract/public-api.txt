@@ -85,6 +85,7 @@ enum LlmWireTerminal
 enum LlmWireThinkingMode
 enum LlmWireToolArguments
 enum LlmWireToolChoice
+enum LlmWireToolErrorStyle
 enum LlmWireToolResultContent
 enum LlmWireUsageMergeStyle
 func anthropicMessagesCodec
