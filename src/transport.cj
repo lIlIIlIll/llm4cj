@@ -33,6 +33,10 @@ public class LlmWireError <: Exception {
     public let blockIndex: Int64
     public let toolCallId: String
     public let providerRequestId: String
+    // Usage observed on the wire before the failure was raised (message
+    // start / delta totals). None when nothing was observable. Lets hosts
+    // bill abandoned attempts instead of losing their spend.
+    public let usage: ?LlmWireUsage
     public init(
         kind: LlmWireErrorKind, code: String, message: String,
         retryable!: Bool = false, httpStatus!: ?Int64 = None,
@@ -41,7 +45,8 @@ public class LlmWireError <: Exception {
         diagnosticJson!: ?String = None, phase!: ?LlmTransportPhase = None,
         protocol!: ?LlmWireProtocol = None, dialectId!: String = "",
         eventType!: String = "", blockIndex!: Int64 = -1,
-        toolCallId!: String = "", providerRequestId!: String = ""
+        toolCallId!: String = "", providerRequestId!: String = "",
+        usage!: ?LlmWireUsage = None
     ) {
         super(message)
         this.kind = kind; this.code = code; this.retryable = retryable
@@ -52,6 +57,7 @@ public class LlmWireError <: Exception {
         this.phase = phase; this.protocol = protocol; this.dialectId = dialectId
         this.eventType = eventType; this.blockIndex = blockIndex; this.toolCallId = toolCallId
         this.providerRequestId = providerRequestId
+        this.usage = usage
     }
 }
 

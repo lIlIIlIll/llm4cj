@@ -296,13 +296,18 @@ open class StreamLifecycle {
                 let error = LlmWireError(
                     LlmWireErrorKind.InvalidWire, "llm.stream_terminal_missing", "stream ended without a protocol terminal",
                     provider: codec.provider, phase: Some(LlmTransportPhase.SemanticAssembly), protocol: Some(codec.protocol), dialectId: codec.dialect.compatibilityId,
-                    diagnosticJson: Some(evidence.stringify())
+                    diagnosticJson: Some(evidence.stringify()), usage: observedUsage()
                 )
                 failed = Some(error); throw error
         }
     }
 
     protected open func terminalEvidence(): ?JsonNode { None }
+
+    // Usage observed on the wire before the stream ended without a terminal.
+    // Protocol decoders override this so abandoned attempts can still be
+    // billed for what already streamed; the base saw nothing.
+    protected open func observedUsage(): ?LlmWireUsage { None }
 
     protected func cancelStream(codec: LlmWireCodec): LlmWireTerminal {
         match (failed) {
@@ -840,6 +845,10 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
     public func finishTransport(): LlmWireTerminal {
         finish(codec)
     }
+
+    protected override func observedUsage(): ?LlmWireUsage {
+        if (usage.inputTokens.isNone() && usage.outputTokens.isNone()) { None } else { Some(usage) }
+    }
     public func cancel(): LlmWireTerminal { cancelStream(codec) }
 }
 
@@ -1112,6 +1121,10 @@ class MessagesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
             WireJsonField("open_content_block_count", wireJsonNumber(open.size.toString())),
             WireJsonField("open_content_blocks", wireJsonArray(open.toArray()))
         ]))
+    }
+
+    protected override func observedUsage(): ?LlmWireUsage {
+        if (usage.inputTokens.isNone() && usage.outputTokens.isNone()) { None } else { Some(usage) }
     }
     public func cancel(): LlmWireTerminal { cancelStream(codec) }
 

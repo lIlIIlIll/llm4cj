@@ -3,7 +3,7 @@ cjc-version = "1.1.0"
 name = "llm4cj"
 organization = ""
 description = "Provider-neutral LLM wire codecs, SSE framing, and bounded transport primitives"
-version = "0.1.1"
+version = "0.2.0"
 output-type = "static"
 
 [dependencies]

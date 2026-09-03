@@ -20,20 +20,20 @@ class CanonicalReplyAssembler {
         match (block) {
             case LlmWireOutputBlock.ToolCall(call) =>
                 if (requireExecutableToolCalls) {
-                    if (call.callId == "") { invalidWire("llm.tool_call_id_missing", "a successful reply contains an empty tool call ID") }
-                    if (toolCallIds.contains(call.callId)) { invalidToolAssembly("llm.tool_call_id_duplicate", "a successful reply contains duplicate tool call IDs", call.callId) }
-                    if (!validToolName(call.name)) { invalidToolAssembly("llm.tool_call_name_invalid", "a successful reply contains an invalid tool name", call.callId) }
+                    if (call.callId == "") { invalidWire("llm.tool_call_id_missing", "a successful reply contains an empty tool call ID", usage: Some(usage)) }
+                    if (toolCallIds.contains(call.callId)) { invalidToolAssembly("llm.tool_call_id_duplicate", "a successful reply contains duplicate tool call IDs", call.callId, usage: Some(usage)) }
+                    if (!validToolName(call.name)) { invalidToolAssembly("llm.tool_call_name_invalid", "a successful reply contains an invalid tool name", call.callId, usage: Some(usage)) }
                     match (call.arguments) {
                         case LlmWireToolArguments.Complete(value) =>
-                            if (value.jsonNode().wireKind != WireJsonKind.Object) { invalidToolAssembly("llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object", call.callId) }
-                        case _ => invalidToolAssembly("llm.tool_arguments_not_executable", "a successful reply contains tool arguments that are not a complete JSON object", call.callId)
+                            if (value.jsonNode().wireKind != WireJsonKind.Object) { invalidToolAssembly("llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object", call.callId, usage: Some(usage)) }
+                        case _ => invalidToolAssembly("llm.tool_arguments_not_executable", "a successful reply contains tool arguments that are not a complete JSON object", call.callId, usage: Some(usage))
                     }
                     toolCallIds.add(call.callId)
                 }
                 blocks.add(block)
             case LlmWireOutputBlock.NativeReplay(value) =>
                 if (requireExecutableToolCalls && value.completion != LlmWireOpaqueCompletion.Complete) {
-                    invalidWire("llm.native_replay_incomplete", "a successful reply contains incomplete native replay state")
+                    invalidWire("llm.native_replay_incomplete", "a successful reply contains incomplete native replay state", usage: Some(usage))
                 }
                 blocks.add(block)
             case _ => blocks.add(block)
@@ -43,8 +43,8 @@ class CanonicalReplyAssembler {
     func finish(): LlmWireReply { LlmWireReply(responseId: responseId, model: model, blocks: blocks.toArray(), usage: usage, rawStopReason: rawStopReason) }
 }
 
-func invalidToolAssembly(code: String, message: String, callId: String): Nothing {
-    throw LlmWireError(LlmWireErrorKind.InvalidWire, code, message, phase: Some(LlmTransportPhase.WireDecode), toolCallId: callId)
+func invalidToolAssembly(code: String, message: String, callId: String, usage!: ?LlmWireUsage = None): Nothing {
+    throw LlmWireError(LlmWireErrorKind.InvalidWire, code, message, phase: Some(LlmTransportPhase.WireDecode), toolCallId: callId, usage: usage)
 }
 
 func assembleCanonicalReply(

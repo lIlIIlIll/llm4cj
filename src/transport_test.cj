@@ -247,6 +247,58 @@ class Llm4CjV02Tests {
     }
 
     @TestCase
+    func t006bWireErrorsCarryObservedUsage() {
+        let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
+        try {
+            let _ = codec.decodeResponse("{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{\"id\":\"b\",\"type\":\"function\",\"function\":{\"name\":\"f\",\"arguments\":\"[]\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":7}}")
+            @Fail("expected llm.tool_arguments_not_executable")
+        } catch (error: LlmWireError) {
+            @Expect(error.code, "llm.tool_arguments_not_executable")
+            match (error.usage) {
+                case Some(usage) =>
+                    @Expect(usage.inputTokens, Some(12))
+                    @Expect(usage.outputTokens, Some(7))
+                case None => @Fail("expected observed usage on the wire error")
+            }
+        }
+
+        let messages = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect())
+        let decoder = messages.newStreamDecoder()
+                let _ = decoder.push(event("{\"type\":\"message_start\",\"message\":{\"id\":\"m1\",\"usage\":{\"input_tokens\":5}}}"))
+                let _ = decoder.push(event("{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"c1\",\"name\":\"f\",\"input\":{}}}"))
+                let _ = decoder.push(event("{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"tasks\\\":[\"}}"))
+                let _ = decoder.push(event("{\"type\":\"content_block_stop\",\"index\":0}"))
+                let _ = decoder.push(event("{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":7}}"))
+                try {
+                    let _ = decoder.push(event("{\"type\":\"message_stop\"}"))
+                    @Fail("expected llm.tool_arguments_not_executable")
+                } catch (error: LlmWireError) {
+                    @Expect(error.code, "llm.tool_arguments_not_executable")
+                    match (error.usage) {
+                        case Some(usage) =>
+                            @Expect(usage.inputTokens, Some(5))
+                            @Expect(usage.outputTokens, Some(7))
+                        case None => @Fail("expected observed usage on the streamed wire error")
+                    }
+                }
+
+        let truncated = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect())
+        let truncatedDecoder = truncated.newStreamDecoder()
+                let _ = truncatedDecoder.push(event("{\"type\":\"message_start\",\"message\":{\"id\":\"m2\",\"usage\":{\"input_tokens\":3}}}"))
+                let _ = truncatedDecoder.push(event("{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"c2\",\"name\":\"g\",\"input\":{}}}"))
+                let _ = truncatedDecoder.push(event("{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"tasks\\\":[\"}}"))
+        match (truncatedDecoder.finish()) {
+            case LlmWireResult.Err(error) =>
+                @Expect(error.code, "llm.stream_terminal_missing")
+                match (error.usage) {
+                    case Some(usage) => @Expect(usage.inputTokens, Some(3))
+                    case None => @Fail("expected observed usage on the truncated stream error")
+                }
+            case LlmWireResult.Ok(_) => @Fail("expected llm.stream_terminal_missing")
+        }
+    }
+
+    @TestCase
     func t007StrictRejectsInvalidToolHistory() {
         let blocks = [LlmWireBlock.ToolResult(toolResultText("future", "result")), LlmWireBlock.Text(LlmWireTextBlock("after"))]
         let strict = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), capabilities: allCapabilities())
