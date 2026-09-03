@@ -12,4 +12,4 @@
 - [API reference](api-reference.md)
 - [架构](architecture.md)
 - [测试与发布](testing-and-releasing.md)
-- [v0.2 测试矩阵](v0.2-test-plan.md)
+- [v0.1.1 测试矩阵](v0.1.1-test-plan.md)

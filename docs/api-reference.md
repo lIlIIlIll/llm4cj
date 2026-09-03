@@ -1,10 +1,10 @@
 # API reference
 
-本页列出 v0.2.0 的 public declaration。字段和构造参数以源码为准；语义见主题文档。
+本页列出 v0.1.1 的 public declaration。字段和构造参数以源码为准；语义见主题文档。
 
 ## Codec 与 dialect
 
-`LlmWireCodec`、`LlmWireCapabilities`、`LlmWireDialect`、`LlmWireDialectContract`、`LlmWireBuiltinDialect`、`LlmWireRequestStyle`、`LlmWireOutputTokenField`、`LlmWireStructuredOutputMode`、`LlmWireParallelToolStyle`、`LlmWirePromptCacheStyle`、`LlmWireUsageMergeStyle`、`openAiResponsesDialect`、`openAiChatDialect`、`anthropicMessagesDialect`、`deepSeekResponsesDialect`、`deepSeekChatDialect`、`deepSeekMessagesDialect`。
+`LlmWireCodec`、`LlmWireCapabilities`、`LlmWireDialect`、`LlmWireDialectContract`、`LlmWireBuiltinDialect`、`LlmWireRequestStyle`、`LlmWireOutputTokenField`、`LlmWireStructuredOutputMode`、`LlmWireParallelToolStyle`、`LlmWireToolErrorStyle`、`LlmWirePromptCacheStyle`、`LlmWireUsageMergeStyle`、`openAiResponsesDialect`、`openAiChatDialect`、`anthropicMessagesDialect`、`deepSeekResponsesDialect`、`deepSeekChatDialect`、`deepSeekMessagesDialect`。
 
 `LlmWireCodec.encodeRequest` 返回 opaque `LlmWirePreparedRequest`。调用 `materialize` 后才得到 `LlmWireMaterializedRequest`。后者公开 UTF-8 `body` bytes 和合并后的 headers。未解析的 feature requirement、冲突 header 或不安全 header 会返回 `LlmWireResult.Err`。
 
@@ -15,6 +15,10 @@
 `LlmWireProtocol`、`LlmWireRole`、`LlmWireInstructionRole`、`LlmWireInstruction`、`LlmWireInputModality`、`LlmWireImageSourceKind`、`LlmWireImageDetail`、`LlmWireReasoningEffort`、`LlmWireThinkingMode`、`LlmWireServiceTier`、`LlmWireGenerationSpeed`、`LlmWirePromptCacheLifetime`、`LlmWirePromptCache`、`LlmWireToolChoice`、`LlmWireOpaqueCompletion`、`LlmWireNativeReplayScope`、`LlmWireImageBlock`、`LlmWireTextBlock`、`LlmWireReasoningBlock`、`LlmWireToolArguments`、`LlmWireToolCallBlock`、`LlmWireToolResultContent`、`LlmWireToolResultBlock`、`LlmWireRefusalBlock`、`LlmWireNativeReplayBlock`、`LlmWireOpaqueBlock`、`LlmWireBlock`、`LlmWireOutputBlock`、`LlmWireOutputPhase`、`LlmWireCitation`、`LlmWireCitationKind`、`LlmWireAnnotation`、`LlmWireTokenLogprob`、`LlmWireTokenLogprobCandidate`、`LlmWireMessage`、`LlmWireTool`、`LlmWireJson`、`LlmWireJsonSchema`、`LlmWireStructuredOutput`、`LlmWireRequest`、`LlmWireRequestBuilder`、`LlmWireUsage`、`LlmWireChoice`、`LlmWireChoiceOutcome`、`LlmWireReply`、`LlmWirePendingReply`、`LlmWireIncompleteReason`、`LlmWireFailureKind`、`LlmWireFailure`、`LlmWireTerminal`、`LlmWireResponseState`。
 
 `LlmWireRequest.instructions` 保留 system 与 developer instruction 的顺序。Messages dialect 不表示 developer role，因此在构建请求时返回 `Unsupported`。`LlmWireToolResultBlock.content` 是 `LlmWireToolResultContent` 数组，每个元素是 text 或 image。
+
+`LlmWireDialectContract.toolErrorStyle` 声明工具失败语义的编码策略：`NativeField`（Anthropic Messages，发送原生 `is_error` 字段）、`ContentMarker`（DeepSeek Messages，失败结果在 `content` 前插入固定 text block `[tool_error]`，并不再发送被 provider 忽略的 `is_error`，属于有损兼容）或 `Unsupported`（Messages dialect 默认，`isError=true` 会以 `llm.tool_result_error_semantics_unsupported` 拒绝）。
+
+`validateReplyToolInputs(reply, tools, mode:)` 在 wire-valid reply 与工具执行之间提供协议无关的输入契约屏障，模式由 `LlmWireToolInputValidationMode` 声明：`Disabled` 不做任何检查，`ValidateSupportedSubset` 跳过不支持的 schema feature，`Strict` 以 `llm.tool_schema_unsupported` 拒绝。支持 `type`、`properties`、`required`、`additionalProperties`（仅 boolean 形式）、`items` 与 `enum`；其余关键字（含未知关键字）一律视为 unsupported。违例以 `llm.tool_arguments_schema_violation` 返回，携带 `toolCallId` 与有界 diagnostic（`tool_name`、`schema_path`、`instance_path`、`violation`、`expected`、`actual`），按 block 顺序与固定关键字优先级报告第一个违例。未声明工具的调用与参数不是完整 JSON object 的调用会被跳过。
 
 `LlmWireCapabilities` 由 `input`、`thinking`、`tools`、`output` 和 `cache` 五个不可变能力对象组成。`input.modalities` 默认为仅 `Text`。图片 source 支持 `Url`、`Base64` 与 `File`；是否可用由具体 model profile 决定。
 

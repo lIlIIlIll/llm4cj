@@ -3,7 +3,7 @@ cjc-version = "1.1.0"
 name = "llm4cj_protocol_probe"
 organization = ""
 description = "Internal fixed-response probe used by fixture and provider smoke gates"
-version = "0.2.0"
+version = "0.1.1"
 output-type = "executable"
 
 [dependencies]

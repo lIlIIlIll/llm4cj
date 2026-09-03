@@ -1,6 +1,6 @@
 # 实验 API
 
-`llm4cj.experimental` 包含尚未进入 v0.2 稳定兼容承诺的协议功能。它与稳定包一起构建和测试，但其声明、错误码和行为可以在 minor release 中调整；稳定 API/ABI 快照不会包含本包。
+`llm4cj.experimental` 包含尚未进入 v0.1.1 稳定兼容承诺的协议功能。它与稳定包一起构建和测试，但其声明、错误码和行为可以在 minor release 中调整；稳定 API/ABI 快照不会包含本包。
 
 ## 自定义 dialect
 

@@ -1,8 +1,8 @@
 # 从 v0.1 迁移
 
-v0.2.0 是一次有意的 breaking release，不提供旧 API shim。
+v0.1.1 是一次有意的 breaking release，不提供旧 API shim。
 
-| v0.1 | v0.2 |
+| v0.1.0 | v0.1.1 |
 | --- | --- |
 | 仅传 `LlmWireProtocol` 的自由函数 | 构造绑定 protocol/dialect/capability 的 `LlmWireCodec` |
 | 默认 medium thinking | 默认 `ProviderDefault`，不发送 thinking 字段 |
@@ -26,4 +26,4 @@ v0.2.0 是一次有意的 breaking release，不提供旧 API shim。
 
 重复构造同类请求时，改用 `codec.newRequestBuilder()`。setter 会检查局部值，`build()` 返回 `LlmWireResult<LlmWireRequest>`。同一个请求既可用于固定响应，也可通过 `encodeRequest(request, streaming: true)` 用于流式响应。
 
-v0.2 候选期将 dialect/capability 的公开可变 `Array` 字段改为返回 defensive copy 的只读 property，并为 `LlmWireEvent` 增加了显式 identity/usage 字段。这是有意的 source/ABI/行为不兼容变更：调用方不能再通过修改返回数组改变 codec 行为，应在构造 contract/capability 时传入最终值并重新编译。
+v0.1.1 候选期将 dialect/capability 的公开可变 `Array` 字段改为返回 defensive copy 的只读 property，并为 `LlmWireEvent` 增加了显式 identity/usage 字段。这是有意的 source/ABI/行为不兼容变更：调用方不能再通过修改返回数组改变 codec 行为，应在构造 contract/capability 时传入最终值并重新编译。

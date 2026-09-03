@@ -21,12 +21,12 @@ class CanonicalReplyAssembler {
             case LlmWireOutputBlock.ToolCall(call) =>
                 if (requireExecutableToolCalls) {
                     if (call.callId == "") { invalidWire("llm.tool_call_id_missing", "a successful reply contains an empty tool call ID") }
-                    if (toolCallIds.contains(call.callId)) { invalidWire("llm.tool_call_id_duplicate", "a successful reply contains duplicate tool call IDs") }
-                    if (!validToolName(call.name)) { invalidWire("llm.tool_call_name_invalid", "a successful reply contains an invalid tool name") }
+                    if (toolCallIds.contains(call.callId)) { invalidToolAssembly("llm.tool_call_id_duplicate", "a successful reply contains duplicate tool call IDs", call.callId) }
+                    if (!validToolName(call.name)) { invalidToolAssembly("llm.tool_call_name_invalid", "a successful reply contains an invalid tool name", call.callId) }
                     match (call.arguments) {
                         case LlmWireToolArguments.Complete(value) =>
-                            if (value.jsonNode().wireKind != WireJsonKind.Object) { invalidWire("llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object") }
-                        case _ => invalidWire("llm.tool_arguments_not_executable", "a successful reply contains tool arguments that are not a complete JSON object")
+                            if (value.jsonNode().wireKind != WireJsonKind.Object) { invalidToolAssembly("llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object", call.callId) }
+                        case _ => invalidToolAssembly("llm.tool_arguments_not_executable", "a successful reply contains tool arguments that are not a complete JSON object", call.callId)
                     }
                     toolCallIds.add(call.callId)
                 }
@@ -41,6 +41,10 @@ class CanonicalReplyAssembler {
     }
     func addAll(values: Array<LlmWireOutputBlock>): Unit { for (value in values) { add(value) } }
     func finish(): LlmWireReply { LlmWireReply(responseId: responseId, model: model, blocks: blocks.toArray(), usage: usage, rawStopReason: rawStopReason) }
+}
+
+func invalidToolAssembly(code: String, message: String, callId: String): Nothing {
+    throw LlmWireError(LlmWireErrorKind.InvalidWire, code, message, phase: Some(LlmTransportPhase.WireDecode), toolCallId: callId)
 }
 
 func assembleCanonicalReply(

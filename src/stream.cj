@@ -291,13 +291,18 @@ open class StreamLifecycle {
         match (terminal) {
             case Some(value) => closed = true; value
             case None =>
+                var evidence = wireJsonObject([WireJsonField("reason", wireJsonString("transport_ended_before_terminal"))])
+                match (terminalEvidence()) { case Some(value) => evidence.put("stream", value); case None => () }
                 let error = LlmWireError(
                     LlmWireErrorKind.InvalidWire, "llm.stream_terminal_missing", "stream ended without a protocol terminal",
-                    provider: codec.provider, phase: Some(LlmTransportPhase.SemanticAssembly), protocol: Some(codec.protocol), dialectId: codec.dialect.compatibilityId
+                    provider: codec.provider, phase: Some(LlmTransportPhase.SemanticAssembly), protocol: Some(codec.protocol), dialectId: codec.dialect.compatibilityId,
+                    diagnosticJson: Some(evidence.stringify())
                 )
                 failed = Some(error); throw error
         }
     }
+
+    protected open func terminalEvidence(): ?JsonNode { None }
 
     protected func cancelStream(codec: LlmWireCodec): LlmWireTerminal {
         match (failed) {
@@ -1087,6 +1092,27 @@ class MessagesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
     }
 
     public func finishTransport(): LlmWireTerminal { finish(codec) }
+
+    protected override func terminalEvidence(): ?JsonNode {
+        let open = ArrayList<JsonNode>()
+        for (block in blocks where !block.completed) {
+            let entry = wireJsonObject([
+                WireJsonField("index", wireJsonNumber(block.index.toString())),
+                WireJsonField("native_type", wireJsonString(block.nativeType))
+            ])
+            if (block.callId != "") { entry.put("tool_call_id", wireJsonString(block.callId)) }
+            if (block.name != "") { entry.put("name", wireJsonString(block.name)) }
+            let pending = block.arguments.toString()
+            if (pending != "") { entry.put("tool_input_fragment_bytes", wireJsonNumber(pending.toArray().size.toString())) }
+            open.add(entry)
+        }
+        Some(wireJsonObject([
+            WireJsonField("message_start_seen", wireJsonBool(phase != MessagesStreamPhase.AwaitingMessageStart)),
+            WireJsonField("stop_reason_seen", wireJsonBool(stopReason != "")),
+            WireJsonField("open_content_block_count", wireJsonNumber(open.size.toString())),
+            WireJsonField("open_content_blocks", wireJsonArray(open.toArray()))
+        ]))
+    }
     public func cancel(): LlmWireTerminal { cancelStream(codec) }
 
     private func requireMessagesPhase(expected: MessagesStreamPhase, code: String, message: String): Unit {

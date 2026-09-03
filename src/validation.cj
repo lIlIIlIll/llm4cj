@@ -152,8 +152,8 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCach
                         case LlmWireToolResultContent.Text(text) => if (text.text == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty", "tool-result text must not be empty") }
                         case LlmWireToolResultContent.Image(image) => validateBlockShape(LlmWireBlock.Image(image)); validateImageCapability(codec, message, image)
                     } }
-                    if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.DeepSeekMessages && value.isError) {
-                        unsupportedRequest("llm.tool_result_error_semantics_unsupported", "DeepSeek Messages does not preserve tool-result error semantics")
+                    if (codec.protocol == LlmWireProtocol.Messages && codec.dialect.contract.toolErrorStyle == LlmWireToolErrorStyle.Unsupported && value.isError) {
+                        unsupportedRequest("llm.tool_result_error_semantics_unsupported", "this Messages dialect does not declare tool-result error semantics")
                     }
                 case _ => ()
             }
