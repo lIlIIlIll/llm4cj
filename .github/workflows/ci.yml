@@ -69,7 +69,7 @@ jobs:
         run: |
           python3 scripts/check_patch_coverage.py --base-ref "$BASE_SHA" --lcov coverage/lcov.info --gcov-root cov_output --baseline coverage-baseline.toml
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
         with:
           use_oidc: true
           files: coverage/lcov.info
