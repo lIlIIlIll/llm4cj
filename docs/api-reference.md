@@ -1,6 +1,6 @@
 # API reference
 
-本页列出 v0.2.0 的 public declaration。字段和构造参数以源码为准；语义见主题文档。
+本页列出 v0.1.1 的 public declaration。字段和构造参数以源码为准；语义见主题文档。
 
 ## Codec 与 dialect
 

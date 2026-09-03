@@ -2,7 +2,7 @@
 
 All notable changes are recorded here.
 
-## [Unreleased]
+## [0.1.1]
 
 - Replace protocol-only entry points with `LlmWireCodec`, explicit provider dialects, model capabilities, and strict-only validation.
 - Make thinking provider-default by default and reject unsupported or unrepresentable controls.

@@ -356,7 +356,7 @@ public class LlmWireCodec {
             throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.dialect_identity_reserved", "built-in compatibility IDs may only be used by built-in dialects")
         }
         if (!isBuiltinCompatibilityId(declaredIdentity) && !customDialectThinkingIsReplaySafe(declaredContract)) {
-            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.dialect_thinking_replay_unsupported", "custom dialect thinking requires a replay schema that v0.2 does not expose")
+            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.dialect_thinking_replay_unsupported", "custom dialect thinking requires a replay schema that v0.1.1 does not expose")
         }
         let frozen = snapshotDialectContract(declaredContract)
         match (modelProfile) {

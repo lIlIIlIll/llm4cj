@@ -13,8 +13,8 @@ REQUIRED = [
     "docs/README.md", "docs/getting-started.md", "docs/choosing-a-protocol.md",
     "docs/requests-and-replies.md", "docs/streaming-and-transport.md",
     "docs/tools-thinking-and-structured-output.md", "docs/errors-and-limits.md",
-    "docs/api-reference.md", "docs/architecture.md", "docs/testing-and-releasing.md",
-    "docs/migrating-from-v0.1.md", "docs/v0.2-test-plan.md",
+    "docs/v0.1.1-test-plan.md",
+    "docs/v0.1.1-remediation-matrix.md",
     "docs/experimental.md",
 ]
 
