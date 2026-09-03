@@ -52,7 +52,7 @@ jobs:
             --candidate "${CANDIDATE_SHA}" \
             --output "${RUNNER_TEMP}/provider-smoke-provenance.json"
       - name: Download provider smoke evidence
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ inputs.provider_smoke_run_id }}
