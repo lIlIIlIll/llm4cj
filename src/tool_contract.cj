@@ -158,7 +158,6 @@ internal func toolSchemaUnsupportedFeature(schema: JsonNode): ?String {
     match (schema.field("enum")) {
         case Some(value) =>
             if (value.wireKind != WireJsonKind.List) { return Some("enum") }
-            for (entry in value.items) { if (entry.stringify().toArray().size > 256) { return Some("enum") } }
         case None => ()
     }
     None
@@ -167,6 +166,10 @@ internal func toolSchemaUnsupportedFeature(schema: JsonNode): ?String {
 // Strict mode fails on unsupported features and malformed forms before any
 // instance check; subset mode skips exactly those keywords instead.
 internal func checkToolInputValue(schema: JsonNode, value: JsonNode, schemaPath: String, instancePath: String, strict: Bool): ToolInputCheck {
+    if (schema.wireKind != WireJsonKind.Object) {
+        if (strict) { return ToolInputCheck.Unsupported("schema_not_object") }
+        return ToolInputCheck.Valid
+    }
     if (strict) {
         match (toolSchemaUnsupportedFeature(schema)) { case Some(feature) => return ToolInputCheck.Unsupported(feature); case None => () }
     }
@@ -205,7 +208,11 @@ internal func checkToolInputValue(schema: JsonNode, value: JsonNode, schemaPath:
     }
     match (schema.field("required")) {
         case Some(values) =>
-            if (values.wireKind == WireJsonKind.List && value.wireKind == WireJsonKind.Object) {
+            var requiredFormValid = values.wireKind == WireJsonKind.List
+            if (requiredFormValid) {
+                for (entry in values.items) { if (entry.wireKind != WireJsonKind.Text) { requiredFormValid = false } }
+            }
+            if (requiredFormValid && value.wireKind == WireJsonKind.Object) {
                 for (entry in values.items) {
                     if (value.field(entry.text).isNone()) {
                         return ToolInputCheck.Violation(ToolInputViolation(ToolInputViolationKind.MissingRequired, schemaPath + "/required", instancePath + "/" + entry.text, expected: toolInputTextRepr(entry.text)))

@@ -2498,6 +2498,12 @@ class Llm4CjV02Tests {
         @Expect(marked.contains("[tool_error]"), true)
         @Expect(marked.contains("is_error"), false)
         @Expect(marked.contains("failed"), true)
+        let markedImageConversation = [LlmWireMessage(LlmWireRole.Assistant, [call]), LlmWireMessage(LlmWireRole.User, [LlmWireBlock.ToolResult(LlmWireToolResultBlock("call", [LlmWireToolResultContent.Text(LlmWireTextBlock("failed")), LlmWireToolResultContent.Image(LlmWireImageBlock(LlmWireImageSourceKind.Base64, "AAAA", mediaType: "image/png"))], isError: true))])]
+        let markedImage = deepSeekMessages.encodeRequest(LlmWireRequest(
+            "deepseek", markedImageConversation, maxOutputTokens: Some(64), tools: [LlmWireTool("tool", "", testJson("{}"))]
+        ))
+        @Expect(markedImage.contains("[tool_error]"), true)
+        @Expect(markedImage.contains("base64"), true)
         let plainConversation = [LlmWireMessage(LlmWireRole.Assistant, [call]), LlmWireMessage(LlmWireRole.User, [LlmWireBlock.ToolResult(toolResultText("call", "done"))])]
         let plain = deepSeekMessages.encodeRequest(LlmWireRequest(
             "deepseek", plainConversation, maxOutputTokens: Some(64), tools: [LlmWireTool("tool", "", testJson("{}"))]
@@ -2508,6 +2514,8 @@ class Llm4CjV02Tests {
             "claude", plainConversation, maxOutputTokens: Some(64), tools: [LlmWireTool("tool", "", testJson("{}"))]
         ))
         @Expect(anthropicPlain.contains("\"is_error\":false"), true)
+        let chatForName = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: allCapabilities())
+        expectLlmError("llm.tool_call_name_invalid", { => let _ = chatForName.decodeResponse("{\"choices\":[{\"index\":0,\"finish_reason\":\"tool_calls\",\"message\":{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"bad name!\",\"arguments\":\"{}\"}}]}}]}") })
         let strictMessages = LlmWireCodec(LlmWireProtocol.Messages, TestStandardDialect(LlmWireDialectContract(
             "test.messages.no.tool.error", LlmWireProtocol.Messages, LlmWireRequestStyle.AnthropicMessages,
             LlmWireOutputTokenField.MaxTokens
@@ -2909,6 +2917,22 @@ class Llm4CjV02Tests {
             @Expect(error.code, "llm.tool_arguments_not_executable")
             @Expect(error.toolCallId, "call-9")
         }
+        let openText = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect()).newStreamDecoder()
+        let _ = openText.push(event("{\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"model\":\"x\"}}"))
+        let _ = openText.push(event("{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"done\"}}"))
+        let _ = openText.push(event("{\"type\":\"content_block_stop\",\"index\":0}"))
+        let _ = openText.push(event("{\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}"))
+        try {
+            let _ = openText.finishTransport()
+            @Fail("open text block must fail")
+        } catch (error: LlmWireError) {
+            @Expect(error.code, "llm.stream_terminal_missing")
+            let diagnostic = error.diagnosticJson.getOrThrow()
+            @Expect(diagnostic.contains("\"open_content_block_count\":1"), true)
+            @Expect(diagnostic.contains("\"native_type\":\"text\""), true)
+            @Expect(diagnostic.contains("tool_call_id"), false)
+            @Expect(diagnostic.contains("tool_input_fragment_bytes"), false)
+        }
     }
 
     @TestCase
@@ -2990,6 +3014,148 @@ class Llm4CjV02Tests {
             toolCall("call-6", "read_file", "{\"path\":1}"), toolCall("call-7", "read_file", "{\"path\":2}")
         ]), tools)
         match (first) { case LlmWireResult.Err(error) => @Expect(error.toolCallId, "call-6"); case _ => @Fail("first violation must win") }
+    }
+
+    @TestCase
+    func t076ToolContractEdgePathsStayDeterministic() {
+        println("T076V2-MARKER")
+        func replyWithCalls(calls: Array<LlmWireOutputBlock>): LlmWireReply { LlmWireReply(responseId: "r", model: "m", blocks: calls) }
+        func toolCall(id: String, name: String, args: String): LlmWireOutputBlock {
+            LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(id, name, LlmWireToolArguments.Complete(testJson(args))))
+        }
+        func readTool(schema: String): LlmWireTool { LlmWireTool("read_file", "", testJson(schema)) }
+        let objectSchema = "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}"
+        let tools = [readTool(objectSchema)]
+
+        let names = ArrayList<String>()
+        names.add("zz"); names.add("aa"); names.add("mm")
+        sortToolSchemaNames(names)
+        @Expect(names[0], "aa"); @Expect(names[1], "mm"); @Expect(names[2], "zz")
+
+        let multiType = [readTool("{\"type\":\"object\",\"properties\":{\"v\":{\"type\":[\"string\",\"null\"]}}}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c1", "read_file", "{\"v\":\"x\"}")]), multiType).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c1", "read_file", "{\"v\":1}")]), multiType)) {
+            case LlmWireResult.Err(error) =>
+                let diagnostic = error.diagnosticJson.getOrThrow()
+                @Expect(diagnostic.contains("\"expected\":\"string|null\""), true)
+                @Expect(diagnostic.contains("\"actual\":\"number\""), true)
+            case _ => @Fail("multi-type mismatch must violate")
+        }
+        let booleanAndNull = [readTool("{\"type\":\"object\",\"properties\":{\"flag\":{\"type\":\"boolean\"},\"note\":{\"type\":[\"string\",\"null\"]}}}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c2", "read_file", "{\"flag\":true,\"note\":null}")]), booleanAndNull).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c3", "read_file", "{\"path\":null}")]), tools)) {
+            case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"actual\":\"null\""), true)
+            case _ => @Fail("null mismatch must violate")
+        }
+        let numberTool = [readTool("{\"type\":\"object\",\"properties\":{\"ratio\":{\"type\":\"number\"}}}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c4", "read_file", "{\"ratio\":0.5}")]), numberTool).isOk(), true)
+
+        let malformedType = [readTool("{\"type\":123}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c5", "read_file", "{\"x\":1}")]), malformedType).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c5", "read_file", "{\"x\":1}")]), malformedType, mode: LlmWireToolInputValidationMode.Strict)) {
+            case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"type\""), true)
+            case _ => @Fail("malformed type must fail strict")
+        }
+        let unknownType = [readTool("{\"type\":\"str\"}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c6", "read_file", "{\"x\":1}")]), unknownType).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c6", "read_file", "{\"x\":1}")]), unknownType, mode: LlmWireToolInputValidationMode.Strict)) {
+            case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"type\""), true)
+            case _ => @Fail("unknown type must fail strict")
+        }
+        let mixedTypeForm = [readTool("{\"type\":[\"string\",1]}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c7", "read_file", "{\"x\":1}")]), mixedTypeForm).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c7", "read_file", "{\"x\":1}")]), mixedTypeForm, mode: LlmWireToolInputValidationMode.Strict)) {
+            case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"type\""), true)
+            case _ => @Fail("mixed type form must fail strict")
+        }
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c2", "read_file", "{\"note\":true}")]), booleanAndNull)) {
+            case LlmWireResult.Err(error) =>
+                let diagnosticText = error.diagnosticJson.getOrThrow()
+                if (!diagnosticText.contains("\"actual\":\"boolean\"")) { @Fail("missing actual boolean: " + diagnosticText) }
+            case _ => @Fail("boolean mismatch must violate")
+        }
+        let malformedRequired = [readTool("{\"required\":[1]}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c8", "read_file", "{\"x\":1}")]), malformedRequired).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c8", "read_file", "{\"x\":1}")]), malformedRequired, mode: LlmWireToolInputValidationMode.Strict)) {
+            case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"required\""), true)
+            case _ => @Fail("malformed required must fail strict")
+        }
+        let requiredOnScalar = [readTool("{\"required\":[\"a\"]}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c9", "read_file", "\"scalar\"")]), requiredOnScalar).isOk(), true)
+
+        let malformedProps = [readTool("{\"properties\":[\"a\"],\"additionalProperties\":\"no\"}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c10", "read_file", "{\"x\":1}")]), malformedProps).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c10", "read_file", "{\"x\":1}")]), malformedProps, mode: LlmWireToolInputValidationMode.Strict)) {
+            case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"properties\""), true)
+            case _ => @Fail("malformed properties must fail strict")
+        }
+        let closedTool = [readTool("{\"additionalProperties\":false}")]
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c11", "read_file", "{\"x\":1}")]), closedTool)) {
+            case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"violation\":\"additional_property\""), true)
+            case _ => @Fail("closed schema must violate")
+        }
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c11", "read_file", "{}")]), closedTool).isOk(), true)
+
+        let malformedItems = [readTool("{\"items\":[1]}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c12", "read_file", "{\"x\":1}")]), malformedItems).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c12", "read_file", "{\"x\":1}")]), malformedItems, mode: LlmWireToolInputValidationMode.Strict)) {
+            case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"items\""), true)
+            case _ => @Fail("malformed items must fail strict")
+        }
+        let nestedRef = [readTool("{\"type\":\"object\",\"properties\":{\"rows\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/d\"}}}}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c13", "read_file", "{\"rows\":[1]}")]), nestedRef).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c13", "read_file", "{\"rows\":[1]}")]), nestedRef, mode: LlmWireToolInputValidationMode.Strict)) {
+            case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"$ref\""), true)
+            case _ => @Fail("nested unsupported feature must fail strict")
+        }
+
+        let malformedEnum = [readTool("{\"enum\":\"a\"}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c14", "read_file", "{\"x\":1}")]), malformedEnum).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c14", "read_file", "{\"x\":1}")]), malformedEnum, mode: LlmWireToolInputValidationMode.Strict)) {
+            case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"enum\""), true)
+            case _ => @Fail("malformed enum must fail strict")
+        }
+        let builder = StringBuilder()
+        for (_ in 0..300) { builder.append("a") }
+        let huge = builder.toString()
+        let hugeEnum = [readTool("{\"type\":\"object\",\"properties\":{\"v\":{\"enum\":[\"" + huge + "\"]}}}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c15", "read_file", "{\"v\":\"" + huge + "\"}")]), hugeEnum).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c15", "read_file", "{\"v\":\"b\"}")]), hugeEnum)) {
+            case LlmWireResult.Err(error) =>
+                let diagnostic = error.diagnosticJson.getOrThrow()
+                @Expect(diagnostic.contains("\"violation\":\"enum_mismatch\""), true)
+                @Expect(diagnostic.contains("\"expected\":\"<304 bytes>\""), true)
+            case _ => @Fail("enum mismatch with bounded evidence must violate")
+        }
+
+        let scalarSchema = [readTool("7")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c16", "read_file", "7")]), scalarSchema).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c16", "read_file", "7")]), scalarSchema, mode: LlmWireToolInputValidationMode.Strict)) {
+            case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"schema_not_object\""), true)
+            case _ => @Fail("non-object schema must fail strict")
+        }
+        let typoTool = [readTool("{\"description\":\"doc\",\"type\":\"object\",\"properties\":{\"p\":{\"type\":\"string\"}},\"requird\":[\"p\"]}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c17", "read_file", "{\"p\":\"x\"}")]), typoTool).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c17", "read_file", "{\"p\":\"x\"}")]), typoTool, mode: LlmWireToolInputValidationMode.Strict)) {
+            case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"requird\""), true)
+            case _ => @Fail("unknown keyword must fail strict")
+        }
+
+        let wide = [readTool("{\"type\":\"object\",\"properties\":{\"zz\":{\"type\":\"string\"},\"aa\":{\"type\":\"string\"},\"mm\":{\"type\":\"string\"}}}")]
+        match (validateReplyToolInputs(replyWithCalls([toolCall("c18", "read_file", "{\"zz\":1,\"aa\":2,\"mm\":3}")]), wide)) {
+            case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"instance_path\":\"/aa\""), true)
+            case _ => @Fail("sorted first violation must win")
+        }
+
+        let textReply = LlmWireReply(responseId: "r", model: "m", blocks: [LlmWireOutputBlock.Text(LlmWireTextBlock("hi"))])
+        @Expect(validateReplyToolInputs(textReply, tools).isOk(), true)
+        let partialReply = LlmWireReply(responseId: "r", model: "m", blocks: [LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock("c", "read_file", LlmWireToolArguments.Partial("{\"x")))])
+        @Expect(validateReplyToolInputs(partialReply, tools).isOk(), true)
+        let unknownToolReply = LlmWireReply(responseId: "r", model: "m", blocks: [toolCall("c", "other_tool", "{\"path\":\"a\"}")])
+        @Expect(validateReplyToolInputs(unknownToolReply, tools).isOk(), true)
+
+        @Expect(LlmWireToolErrorStyle.ContentMarker == LlmWireToolErrorStyle.ContentMarker, true)
+        @Expect(LlmWireToolErrorStyle.ContentMarker != LlmWireToolErrorStyle.NativeField, true)
     }
 
 }
