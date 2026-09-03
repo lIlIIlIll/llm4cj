@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - id: nightly
         run: echo "version=$(python3 scripts/latest_cangjie_nightly.py)" >> "$GITHUB_OUTPUT"
-      - uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
+      - uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571
         with:
           channel: nightly
           version: ${{ steps.nightly.outputs.version }}

@@ -33,7 +33,7 @@ jobs:
           echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Setup latest stable Cangjie
-        uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
+        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571
         with:
           channel: sts
           version: latest
