@@ -2865,4 +2865,50 @@ class Llm4CjV02Tests {
         match (sse.finish()) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.sse_closed"); case _ => @Fail("closed SSE decoder must reject finish") }
         match (sse.push("data: x\n\n")) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.sse_closed"); case _ => @Fail("closed SSE decoder must reject input") }
     }
+    @TestCase
+    func t074TerminalEvidenceDistinguishesTruncatedStreams() {
+        let truncated = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect()).newStreamDecoder()
+        let _ = truncated.push(event("{\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"model\":\"x\"}}"))
+        let _ = truncated.push(event("{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call-7\",\"name\":\"lookup\",\"input\":{}}}"))
+        let _ = truncated.push(event("{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"q\\\":\"}}"))
+        try {
+            let _ = truncated.finishTransport()
+            @Fail("truncated Messages stream must fail")
+        } catch (error: LlmWireError) {
+            @Expect(error.code, "llm.stream_terminal_missing")
+            let diagnostic = error.diagnosticJson.getOrThrow()
+            @Expect(diagnostic.contains("transport_ended_before_terminal"), true)
+            @Expect(diagnostic.contains("\"message_start_seen\":true"), true)
+            @Expect(diagnostic.contains("\"native_type\":\"tool_use\""), true)
+            @Expect(diagnostic.contains("\"tool_call_id\":\"call-7\""), true)
+            @Expect(diagnostic.contains("\"name\":\"lookup\""), true)
+            @Expect(diagnostic.contains("\"tool_input_fragment_bytes\":"), true)
+        }
+
+        let bare = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect()).newStreamDecoder()
+        try {
+            let _ = bare.finishTransport()
+            @Fail("bare transport EOF must fail")
+        } catch (error: LlmWireError) {
+            @Expect(error.code, "llm.stream_terminal_missing")
+            let diagnostic = error.diagnosticJson.getOrThrow()
+            @Expect(diagnostic.contains("\"message_start_seen\":false"), true)
+            @Expect(diagnostic.contains("\"open_content_block_count\":0"), true)
+        }
+
+        let malformed = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect()).newStreamDecoder()
+        beginMessages(malformed)
+        let _ = malformed.push(event("{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call-9\",\"name\":\"run\",\"input\":{}}}"))
+        let _ = malformed.push(event("{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"q\\\":1\"}}"))
+        let _ = malformed.push(event("{\"type\":\"content_block_stop\",\"index\":0}"))
+        let _ = malformed.push(event("{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}"))
+        try {
+            let _ = malformed.push(event("{\"type\":\"message_stop\"}"))
+            @Fail("malformed tool input must fail")
+        } catch (error: LlmWireError) {
+            @Expect(error.code, "llm.tool_arguments_not_executable")
+            @Expect(error.toolCallId, "call-9")
+        }
+    }
+
 }
