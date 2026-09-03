@@ -8,6 +8,8 @@
 
 流式 transport EOF 未产生协议终态时，`llm.stream_terminal_missing` 附带 `diagnosticJson` 证据：顶层 `reason=transport_ended_before_terminal`，Messages 协议另附 `stream` 摘要（`message_start_seen`、`stop_reason_seen`、`open_content_blocks`；tool_use block 含 `tool_call_id`、`name` 与未解析参数字节数）。工具参数不可执行的 wire 错误附带 `toolCallId`。两者共同区分「模型输出坏 JSON」与「流被提前截断」。
 
+`llm.tool_arguments_schema_violation` 表示 wire 合法的 tool arguments 违反声明 schema（`type`/`properties`/`required`/`additionalProperties`/`items`/`enum` 子集），诊断携带 `tool_name`、`schema_path`、`instance_path`、`violation` 与有界 `expected`/`actual`；`llm.tool_schema_unsupported` 表示 schema 使用了验证子集之外的 feature（Strict 模式），不支持的 feature 名随诊断返回。两者与 `llm.tool_arguments_not_executable` 永久分离。
+
 默认 JSON 与字符串上限是 8 MiB，深度上限是 256。默认 SSE 单事件上限是 8 MiB，buffer 与单次 push 输出上限是 16 MiB；CRLF 的两个原始字节都计入事件上限。协议流另由 `LlmWireStreamLimits` 限制累计语义字节、文本、reasoning、tool arguments、block、tool call 和输入 provider event 数量。HTTP body 必须由调用方传入正数上限。达到 deadline 或取消后，应用应停止网络读取；本库不拥有 socket 生命周期。
 
 协议流还通过 `maxRetainedStateBytes` 限制 decoder 实际保留的 metadata、native payload 与累计内容。终态完整 body 或 done-only arguments 不得绕过更小的 text/tool/total semantic limit。

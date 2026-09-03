@@ -7,6 +7,7 @@ All notable changes are recorded here.
 - Replace protocol-only entry points with `LlmWireCodec`, explicit provider dialects, model capabilities, and strict-only validation.
 - Make thinking provider-default by default and reject unsupported or unrepresentable controls.
 - Declare per-dialect tool-result error strategies: Anthropic Messages keeps native `is_error`, DeepSeek Messages encodes failures as a `[tool_error]` content marker instead of the ignored `is_error` field, and Messages dialects without a declared strategy stay fail-closed.
+- Add protocol-independent tool input contract validation with three opt-in modes, a bounded first-violation diagnostic, and a permanent split between malformed JSON and schema violations.
 - Preserve supported provider-native thinking as dialect-bound `NativeReplay`; reject unknown semantic blocks as `Unsupported` with bounded diagnostics.
 - Distinguish pending, succeeded, incomplete, and failed response states, including structured provider failures.
 - Add stateful incremental decoders with stable block, item, call, choice, and tool-call identities.

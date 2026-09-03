@@ -2911,4 +2911,85 @@ class Llm4CjV02Tests {
         }
     }
 
+    @TestCase
+    func t075ToolInputContractValidationIsProtocolIndependent() {
+        func replyWithCalls(calls: Array<LlmWireOutputBlock>): LlmWireReply { LlmWireReply(responseId: "r", model: "m", blocks: calls) }
+        func toolCall(id: String, name: String, args: String): LlmWireOutputBlock {
+            LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(id, name, LlmWireToolArguments.Complete(testJson(args))))
+        }
+        func readTool(schema: String): LlmWireTool { LlmWireTool("read_file", "", testJson(schema)) }
+        let objectSchema = "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"additionalProperties\":false}"
+        let tools = [readTool(objectSchema)]
+
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("call-1", "read_file", "{\"path\":\"a\"}")]), tools).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("call-1", "read_file", "{\"path\":123}")]), tools)) {
+            case LlmWireResult.Err(error) =>
+                @Expect(error.code, "llm.tool_arguments_schema_violation")
+                @Expect(error.kind, LlmWireErrorKind.InvalidWire)
+                @Expect(error.toolCallId, "call-1")
+                let diagnostic = error.diagnosticJson.getOrThrow()
+                @Expect(diagnostic.contains("\"tool_name\":\"read_file\""), true)
+                @Expect(diagnostic.contains("\"violation\":\"type_mismatch\""), true)
+                @Expect(diagnostic.contains("\"schema_path\":\"/properties/path/type\""), true)
+                @Expect(diagnostic.contains("\"instance_path\":\"/path\""), true)
+                @Expect(diagnostic.contains("\"expected\":\"string\""), true)
+                @Expect(diagnostic.contains("\"actual\":\"number\""), true)
+            case _ => @Fail("type mismatch must violate")
+        }
+        match (validateReplyToolInputs(replyWithCalls([toolCall("call-1", "read_file", "{}")]), tools)) {
+            case LlmWireResult.Err(error) =>
+                let diagnostic = error.diagnosticJson.getOrThrow()
+                @Expect(diagnostic.contains("\"violation\":\"missing_required\""), true)
+                @Expect(diagnostic.contains("\"expected\":\"path\""), true)
+            case _ => @Fail("missing required must violate")
+        }
+        match (validateReplyToolInputs(replyWithCalls([toolCall("call-1", "read_file", "{\"path\":\"a\",\"extra\":1}")]), tools)) {
+            case LlmWireResult.Err(error) =>
+                let diagnostic = error.diagnosticJson.getOrThrow()
+                @Expect(diagnostic.contains("\"violation\":\"additional_property\""), true)
+                @Expect(diagnostic.contains("\"actual\":\"extra\""), true)
+            case _ => @Fail("undeclared property must violate")
+        }
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("call-1", "read_file", "{\"path\":\"a\"}")]), tools, mode: LlmWireToolInputValidationMode.Disabled).isOk(), true)
+
+        let enumTool = [readTool("{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\",\"enum\":[\"a\",\"b\"]}},\"required\":[\"mode\"]}")]
+        match (validateReplyToolInputs(replyWithCalls([toolCall("call-2", "read_file", "{\"mode\":\"c\"}")]), enumTool)) {
+            case LlmWireResult.Err(error) =>
+                let diagnostic = error.diagnosticJson.getOrThrow()
+                @Expect(diagnostic.contains("\"violation\":\"enum_mismatch\""), true)
+                @Expect(diagnostic.contains("\"actual\":\"\\\"c\\\"\""), true)
+            case _ => @Fail("enum mismatch must violate")
+        }
+
+        let itemsTool = [readTool("{\"type\":\"object\",\"properties\":{\"paths\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}")]
+        match (validateReplyToolInputs(replyWithCalls([toolCall("call-3", "read_file", "{\"paths\":[\"ok\",5]}")]), itemsTool)) {
+            case LlmWireResult.Err(error) =>
+                let diagnostic = error.diagnosticJson.getOrThrow()
+                @Expect(diagnostic.contains("\"instance_path\":\"/paths/1\""), true)
+            case _ => @Fail("item type mismatch must violate")
+        }
+
+        let integerTool = [readTool("{\"type\":\"object\",\"properties\":{\"n\":{\"type\":\"integer\"}}}")]
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("call-4", "read_file", "{\"n\":1}")]), integerTool).isOk(), true)
+        match (validateReplyToolInputs(replyWithCalls([toolCall("call-4", "read_file", "{\"n\":1.5}")]), integerTool)) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.tool_arguments_schema_violation")
+            case _ => @Fail("fractional integer must violate")
+        }
+
+        let refTool = [readTool("{\"$ref\":\"#/definitions/x\"}")]
+        match (validateReplyToolInputs(replyWithCalls([toolCall("call-5", "read_file", "{\"path\":\"a\"}")]), refTool, mode: LlmWireToolInputValidationMode.Strict)) {
+            case LlmWireResult.Err(error) =>
+                @Expect(error.code, "llm.tool_schema_unsupported")
+                @Expect(error.kind, LlmWireErrorKind.Unsupported)
+                @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"$ref\""), true)
+            case _ => @Fail("unsupported schema feature must fail strict mode")
+        }
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("call-5", "read_file", "{\"path\":\"a\"}")]), refTool).isOk(), true)
+
+        let first = validateReplyToolInputs(replyWithCalls([
+            toolCall("call-6", "read_file", "{\"path\":1}"), toolCall("call-7", "read_file", "{\"path\":2}")
+        ]), tools)
+        match (first) { case LlmWireResult.Err(error) => @Expect(error.toolCallId, "call-6"); case _ => @Fail("first violation must win") }
+    }
+
 }

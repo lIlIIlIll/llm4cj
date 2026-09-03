@@ -86,6 +86,7 @@ enum LlmWireThinkingMode
 enum LlmWireToolArguments
 enum LlmWireToolChoice
 enum LlmWireToolErrorStyle
+enum LlmWireToolInputValidationMode
 enum LlmWireToolResultContent
 enum LlmWireUsageMergeStyle
 func anthropicMessagesCodec
@@ -111,5 +112,6 @@ func parseRetryAfterMillis
 func parseSseRetryMillis
 func readLlmHttpBody
 func sseDataLine
+func validateReplyToolInputs
 interface LlmWireDialect
 interface LlmWireRequirementResolver

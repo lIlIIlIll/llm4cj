@@ -18,6 +18,8 @@
 
 `LlmWireDialectContract.toolErrorStyle` 声明工具失败语义的编码策略：`NativeField`（Anthropic Messages，发送原生 `is_error` 字段）、`ContentMarker`（DeepSeek Messages，失败结果在 `content` 前插入固定 text block `[tool_error]`，并不再发送被 provider 忽略的 `is_error`，属于有损兼容）或 `Unsupported`（Messages dialect 默认，`isError=true` 会以 `llm.tool_result_error_semantics_unsupported` 拒绝）。
 
+`validateReplyToolInputs(reply, tools, mode:)` 在 wire-valid reply 与工具执行之间提供协议无关的输入契约屏障，模式由 `LlmWireToolInputValidationMode` 声明：`Disabled` 不做任何检查，`ValidateSupportedSubset` 跳过不支持的 schema feature，`Strict` 以 `llm.tool_schema_unsupported` 拒绝。支持 `type`、`properties`、`required`、`additionalProperties`（仅 boolean 形式）、`items` 与 `enum`；其余关键字（含未知关键字）一律视为 unsupported。违例以 `llm.tool_arguments_schema_violation` 返回，携带 `toolCallId` 与有界 diagnostic（`tool_name`、`schema_path`、`instance_path`、`violation`、`expected`、`actual`），按 block 顺序与固定关键字优先级报告第一个违例。未声明工具的调用与参数不是完整 JSON object 的调用会被跳过。
+
 `LlmWireCapabilities` 由 `input`、`thinking`、`tools`、`output` 和 `cache` 五个不可变能力对象组成。`input.modalities` 默认为仅 `Text`。图片 source 支持 `Url`、`Base64` 与 `File`；是否可用由具体 model profile 决定。
 
 对应类型是 `LlmWireInputCapabilities`、`LlmWireThinkingCapabilities`、`LlmWireToolCapabilities`、`LlmWireOutputCapabilities` 和 `LlmWireCacheCapabilities`。
