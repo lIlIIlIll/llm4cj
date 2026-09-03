@@ -192,6 +192,7 @@ llm.thinking_unsupported
 llm.tool_arguments_json_invalid
 llm.tool_arguments_not_executable
 llm.tool_arguments_partial
+llm.tool_arguments_schema_violation
 llm.tool_arguments_shape_invalid
 llm.tool_call_duplicate
 llm.tool_call_id_duplicate
@@ -210,6 +211,7 @@ llm.tool_result_role_invalid
 llm.tool_result_unmatched
 llm.tool_results_incomplete
 llm.tool_schema_invalid
+llm.tool_schema_unsupported
 llm.tool_stop_without_call
 llm.tools_unsupported
 llm.usage_decreased

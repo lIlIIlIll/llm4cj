@@ -1,6 +1,6 @@
 # 安装与首个程序
 
-当前 `main` 是 `v0.2.0` 候选源码，尚无对应 release tag。开发验证使用相邻 checkout 的固定路径：
+当前 `main` 是 `v0.1.1` 候选源码，尚无对应 release tag。开发验证使用相邻 checkout 的固定路径：
 
 ```toml
 [dependencies]
