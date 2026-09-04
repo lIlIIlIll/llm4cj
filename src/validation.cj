@@ -4,8 +4,8 @@ import std.collection.*
 import std.convert.*
 import yjson.*
 
-func invalidWire(code: String, message: String, provider!: String = ""): Nothing {
-    throw LlmWireError(LlmWireErrorKind.InvalidWire, code, message, provider: provider, phase: Some(LlmTransportPhase.WireDecode))
+func invalidWire(code: String, message: String, provider!: String = "", usage!: ?LlmWireUsage = None): Nothing {
+    throw LlmWireError(LlmWireErrorKind.InvalidWire, code, message, provider: provider, phase: Some(LlmTransportPhase.WireDecode), usage: usage)
 }
 
 func wireObject(value: JsonNode, name: String, provider!: String = ""): JsonNode {

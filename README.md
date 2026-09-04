@@ -14,7 +14,7 @@
 
 ## 快速开始
 
-当前 `main` 是 `v0.1.1` 候选源码，尚未发布对应 tag；manifest 要求 Cangjie `>= 1.1.0`。在 tag 发布前，从相邻 checkout 以固定本地路径验证：
+当前 `main` 是 `v0.2.0` 候选源码，尚未发布对应 tag；manifest 要求 Cangjie `>= 1.1.0`。在 tag 发布前，从相邻 checkout 以固定本地路径验证：
 
 ```toml
 [dependencies]
@@ -83,7 +83,7 @@ main(): Int64 {
 - canonical message 不允许为空；工具结果 turn 只能包含完整闭合当前 pending calls 的 ToolResult，不能与普通文本交错。ToolResult content 是有序的 text 或 image 列表。ToolCall name 与工具定义使用同一语法。
 - Responses 流维护 `item_id` 到 `call_id`/name 的状态映射；DeepSeek Chat 将 provider-native `reasoning_content` 与同一 assistant message 的 text/tool calls 一起回放。
 
-内置 dialect：`openai.responses.v1`、`openai.chat.v1`、`anthropic.messages.v1`、`deepseek.responses.v1`、`deepseek.chat.v1`、`deepseek.messages.v1`。稳定包只通过六个 model-profile/codec 工厂创建 codec。自定义声明式 dialect、cache pre-warm、custom tool 和 grammar 位于 `llm4cj.experimental`，不享有 v0.1.1 稳定兼容承诺。model 是否真正支持 thinking、tools 或 structured output，仍应由调用方提供 capability。
+内置 dialect：`openai.responses.v1`、`openai.chat.v1`、`anthropic.messages.v1`、`deepseek.responses.v1`、`deepseek.chat.v1`、`deepseek.messages.v1`。稳定包只通过六个 model-profile/codec 工厂创建 codec。自定义声明式 dialect、cache pre-warm、custom tool 和 grammar 位于 `llm4cj.experimental`，不享有 v0.2.0 稳定兼容承诺。model 是否真正支持 thinking、tools 或 structured output，仍应由调用方提供 capability。
 
 ## 文档
 

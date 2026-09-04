@@ -20,20 +20,20 @@ class CanonicalReplyAssembler {
         match (block) {
             case LlmWireOutputBlock.ToolCall(call) =>
                 if (requireExecutableToolCalls) {
-                    if (call.callId == "") { invalidWire("llm.tool_call_id_missing", "a successful reply contains an empty tool call ID") }
-                    if (toolCallIds.contains(call.callId)) { invalidToolAssembly("llm.tool_call_id_duplicate", "a successful reply contains duplicate tool call IDs", call.callId) }
-                    if (!validToolName(call.name)) { invalidToolAssembly("llm.tool_call_name_invalid", "a successful reply contains an invalid tool name", call.callId) }
+                    if (call.callId == "") { invalidWire("llm.tool_call_id_missing", "a successful reply contains an empty tool call ID", usage: observedWireUsage(usage)) }
+                    if (toolCallIds.contains(call.callId)) { invalidToolAssembly("llm.tool_call_id_duplicate", "a successful reply contains duplicate tool call IDs", call.callId, usage: observedWireUsage(usage)) }
+                    if (!validToolName(call.name)) { invalidToolAssembly("llm.tool_call_name_invalid", "a successful reply contains an invalid tool name", call.callId, usage: observedWireUsage(usage)) }
                     match (call.arguments) {
                         case LlmWireToolArguments.Complete(value) =>
-                            if (value.jsonNode().wireKind != WireJsonKind.Object) { invalidToolAssembly("llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object", call.callId) }
-                        case _ => invalidToolAssembly("llm.tool_arguments_not_executable", "a successful reply contains tool arguments that are not a complete JSON object", call.callId)
+                            if (value.jsonNode().wireKind != WireJsonKind.Object) { invalidToolAssembly("llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object", call.callId, usage: observedWireUsage(usage)) }
+                        case _ => invalidToolAssembly("llm.tool_arguments_not_executable", "a successful reply contains tool arguments that are not a complete JSON object", call.callId, usage: observedWireUsage(usage))
                     }
                     toolCallIds.add(call.callId)
                 }
                 blocks.add(block)
             case LlmWireOutputBlock.NativeReplay(value) =>
                 if (requireExecutableToolCalls && value.completion != LlmWireOpaqueCompletion.Complete) {
-                    invalidWire("llm.native_replay_incomplete", "a successful reply contains incomplete native replay state")
+                    invalidWire("llm.native_replay_incomplete", "a successful reply contains incomplete native replay state", usage: observedWireUsage(usage))
                 }
                 blocks.add(block)
             case _ => blocks.add(block)
@@ -43,8 +43,8 @@ class CanonicalReplyAssembler {
     func finish(): LlmWireReply { LlmWireReply(responseId: responseId, model: model, blocks: blocks.toArray(), usage: usage, rawStopReason: rawStopReason) }
 }
 
-func invalidToolAssembly(code: String, message: String, callId: String): Nothing {
-    throw LlmWireError(LlmWireErrorKind.InvalidWire, code, message, phase: Some(LlmTransportPhase.WireDecode), toolCallId: callId)
+func invalidToolAssembly(code: String, message: String, callId: String, usage!: ?LlmWireUsage = None): Nothing {
+    throw LlmWireError(LlmWireErrorKind.InvalidWire, code, message, phase: Some(LlmTransportPhase.WireDecode), toolCallId: callId, usage: usage)
 }
 
 func assembleCanonicalReply(
@@ -59,8 +59,8 @@ func assembleCanonicalReply(
 func validateReplyToolStop(reply: LlmWireReply, stop: String, toolStop: String, ordinaryStops: Array<String>): Unit {
     var hasToolCall = false
     for (block in reply.blocks) { match (block) { case LlmWireOutputBlock.ToolCall(_) => hasToolCall = true; case _ => () } }
-    if (stop == toolStop && !hasToolCall) { invalidWire("llm.tool_stop_without_call", "provider reported a tool-call stop without a tool call") }
-    for (ordinary in ordinaryStops where stop == ordinary && hasToolCall) { invalidWire("llm.tool_call_stop_mismatch", "provider returned a tool call under a non-tool stop reason") }
+    if (stop == toolStop && !hasToolCall) { invalidWire("llm.tool_stop_without_call", "provider reported a tool-call stop without a tool call", usage: observedWireUsage(reply.usage)) }
+    for (ordinary in ordinaryStops where stop == ordinary && hasToolCall) { invalidWire("llm.tool_call_stop_mismatch", "provider returned a tool call under a non-tool stop reason", usage: observedWireUsage(reply.usage)) }
 }
 
 func mergeWireUsage(current: LlmWireUsage, next: LlmWireUsage, style: LlmWireUsageMergeStyle): LlmWireUsage {
