@@ -61,6 +61,37 @@ public class LlmWireError <: Exception {
     }
 }
 
+// Returns a copy of the error with observedUsage attached, preserving any
+// usage already carried by the error itself.
+func withObservedUsage(error: LlmWireError, observedUsage: ?LlmWireUsage): LlmWireError {
+    match (observedUsage) {
+        case Some(value) =>
+            match (error.usage) {
+                case Some(_) => error
+                case None => LlmWireError(
+                    error.kind, error.code, error.message, retryable: error.retryable,
+                    httpStatus: error.httpStatus, retryAfterMillis: error.retryAfterMillis,
+                    provider: error.provider, providerErrorCode: error.providerErrorCode,
+                    providerErrorType: error.providerErrorType, diagnosticJson: error.diagnosticJson,
+                    phase: error.phase, protocol: error.protocol, dialectId: error.dialectId,
+                    eventType: error.eventType, blockIndex: error.blockIndex, toolCallId: error.toolCallId,
+                    providerRequestId: error.providerRequestId, usage: Some(value)
+                )
+            }
+        case None => error
+    }
+}
+
+// Normalizes a decoded usage object: an all-empty usage means nothing was
+// observed on the wire and must surface as None, never as an observed zero.
+func observedWireUsage(usage: LlmWireUsage): ?LlmWireUsage {
+    if (usage.inputTokens.isNone() && usage.outputTokens.isNone() && usage.reasoningTokens.isNone() &&
+        usage.cacheReadTokens.isNone() && usage.cacheWriteTokens.isNone() && usage.totalTokens.isNone() &&
+        usage.webSearchRequests.isNone() && usage.webFetchRequests.isNone() && usage.serviceTier.isNone()) {
+        None
+    } else { Some(usage) }
+}
+
 public enum LlmWireResult<T> {
     Ok(T) | Err(LlmWireError)
     public func isOk(): Bool { match (this) { case Ok(_) => true; case Err(_) => false } }

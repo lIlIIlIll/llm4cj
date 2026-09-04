@@ -501,7 +501,8 @@ func withHttpContext(error: LlmWireError, status: Int64, retryAfter: ?Int64, req
         providerErrorCode: error.providerErrorCode, providerErrorType: error.providerErrorType,
         diagnosticJson: error.diagnosticJson, phase: error.phase, protocol: error.protocol,
         dialectId: error.dialectId, eventType: error.eventType, blockIndex: error.blockIndex,
-        toolCallId: error.toolCallId, providerRequestId: if (error.providerRequestId == "") { requestId } else { error.providerRequestId }
+        toolCallId: error.toolCallId, providerRequestId: if (error.providerRequestId == "") { requestId } else { error.providerRequestId },
+        usage: error.usage
     )
 }
 
@@ -522,7 +523,7 @@ func decodeResponsesResponse(codec: LlmWireCodec, root: JsonNode): LlmWireRespon
         )))
         case "failed" => LlmWireResponseState.Terminal(LlmWireTerminal.ProviderFailed(match (wireOptionalObject(root, "error", provider: codec.provider)) { case Some(error) => providerFailure(codec, error); case None => LlmWireFailure(LlmWireFailureKind.ProviderError, "provider response failed", provider: codec.provider) }))
         case "cancelled" => LlmWireResponseState.Terminal(LlmWireTerminal.Cancelled(LlmWireFailure(LlmWireFailureKind.Cancelled, "provider response was cancelled", provider: codec.provider)))
-        case _ => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.responses_status_unsupported", "unknown Responses status: " + status, provider: codec.provider)
+        case _ => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.responses_status_unsupported", "unknown Responses status: " + status, provider: codec.provider, usage: observedWireUsage(reply.usage))
     }
 }
 

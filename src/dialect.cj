@@ -483,7 +483,7 @@ func withPhaseIfMissing(error: LlmWireError, phase: LlmTransportPhase): LlmWireE
         phase: match (error.phase) { case Some(value) => Some(value); case None => Some(phase) },
         protocol: error.protocol, dialectId: error.dialectId, eventType: error.eventType,
         blockIndex: error.blockIndex, toolCallId: error.toolCallId,
-        providerRequestId: error.providerRequestId
+        providerRequestId: error.providerRequestId, usage: error.usage
     )
 }
 

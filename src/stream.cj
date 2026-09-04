@@ -65,6 +65,7 @@ interface WireProtocolStreamDecoder {
     func push(event: SseEvent): LlmWireStreamUpdate
     func finishTransport(): LlmWireTerminal
     func cancel(): LlmWireTerminal
+    func observedUsage(): ?LlmWireUsage
 }
 
 public class LlmWireStreamLimits {
@@ -187,7 +188,7 @@ public class LlmWireStreamDecoder {
         match (framing.push(chunk)) {
             case LlmWireResult.Ok(events) => feed(events)
             case LlmWireResult.Err(error) =>
-                let contextual = withCodecContext(error, codec, LlmTransportPhase.StreamFraming)
+                let contextual = withObservedUsage(withCodecContext(error, codec, LlmTransportPhase.StreamFraming), protocol.observedUsage())
                 failed = Some(contextual); LlmWireResult.Err(contextual)
         }
     }
@@ -207,7 +208,7 @@ public class LlmWireStreamDecoder {
         }
         match (framing.finish()) {
             case LlmWireResult.Err(error) =>
-                let contextual = withCodecContext(error, codec, LlmTransportPhase.StreamFraming)
+                let contextual = withObservedUsage(withCodecContext(error, codec, LlmTransportPhase.StreamFraming), protocol.observedUsage())
                 failed = Some(contextual); LlmWireResult.Err(contextual)
             case LlmWireResult.Ok(events) =>
                 match (feed(events)) {
@@ -215,7 +216,7 @@ public class LlmWireStreamDecoder {
                     case LlmWireResult.Ok(update) => try {
                         let value = protocol.finishTransport()
                         LlmWireResult.Ok(LlmWireStreamUpdate(events: update.events, terminal: Some(value)))
-                    } catch (error: LlmWireError) { failed = Some(error); LlmWireResult.Err(error) }
+                    } catch (error: LlmWireError) { let contextual = withObservedUsage(error, protocol.observedUsage()); failed = Some(contextual); LlmWireResult.Err(contextual) }
                 }
         }
     }
@@ -240,7 +241,7 @@ public class LlmWireStreamDecoder {
                 match (update.terminal) { case Some(found) => terminal = Some(found); case None => () }
             }
             LlmWireResult.Ok(LlmWireStreamUpdate(events: events.toArray(), terminal: terminal))
-        } catch (error: LlmWireError) { let contextual = withCodecContext(error, codec, LlmTransportPhase.SemanticAssembly); failed = Some(contextual); LlmWireResult.Err(contextual) }
+        } catch (error: LlmWireError) { let contextual = withObservedUsage(withCodecContext(error, codec, LlmTransportPhase.SemanticAssembly), protocol.observedUsage()); failed = Some(contextual); LlmWireResult.Err(contextual) }
     }
 
     private func streamFailedError(): LlmWireError {
@@ -270,9 +271,12 @@ open class StreamLifecycle {
     private var failed: ?LlmWireError = None
 
     protected func guardedPush(codec: LlmWireCodec, operation: () -> LlmWireStreamUpdate): LlmWireStreamUpdate {
-        match (failed) { case Some(_) => throw withCodecContext(LlmWireError(LlmWireErrorKind.InvalidState, "llm.stream_failed", "stream decoder is poisoned by an earlier error"), codec, LlmTransportPhase.SemanticAssembly); case None => () }
+        match (failed) { case Some(_) => throw withObservedUsage(withCodecContext(LlmWireError(LlmWireErrorKind.InvalidState, "llm.stream_failed", "stream decoder is poisoned by an earlier error"), codec, LlmTransportPhase.SemanticAssembly), observedUsage()); case None => () }
         try { operation() }
-        catch (error: LlmWireError) { let contextual = withCodecContext(error, codec, LlmTransportPhase.SemanticAssembly); failed = Some(contextual); throw contextual }
+        catch (error: LlmWireError) {
+            let contextual = withObservedUsage(withCodecContext(error, codec, LlmTransportPhase.SemanticAssembly), observedUsage())
+            failed = Some(contextual); throw contextual
+        }
     }
 
     protected func beforePush(event: SseEvent): Bool {
@@ -307,7 +311,7 @@ open class StreamLifecycle {
     // Usage observed on the wire before the stream ended without a terminal.
     // Protocol decoders override this so abandoned attempts can still be
     // billed for what already streamed; the base saw nothing.
-    protected open func observedUsage(): ?LlmWireUsage { None }
+    public open func observedUsage(): ?LlmWireUsage { None }
 
     protected func cancelStream(codec: LlmWireCodec): LlmWireTerminal {
         match (failed) {
@@ -838,7 +842,7 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
         match (reason) {
             case "stop" | "tool_calls" | "length" | "content_filter" | "insufficient_system_resource" => ()
             case "function_call" => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.chat_legacy_function_call_unsupported", "legacy Chat function_call streams are not supported", provider: codec.provider)
-            case _ => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.chat_finish_reason_unsupported", "unknown Chat finish reason: " + reason, provider: codec.provider)
+            case _ => throw withObservedUsage(LlmWireError(LlmWireErrorKind.Unsupported, "llm.chat_finish_reason_unsupported", "unknown Chat finish reason: " + reason, provider: codec.provider), observedUsage())
         }
     }
 
@@ -846,9 +850,7 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
         finish(codec)
     }
 
-    protected override func observedUsage(): ?LlmWireUsage {
-        if (usage.inputTokens.isNone() && usage.outputTokens.isNone()) { None } else { Some(usage) }
-    }
+    public override func observedUsage(): ?LlmWireUsage { observedWireUsage(usage) }
     public func cancel(): LlmWireTerminal { cancelStream(codec) }
 }
 
@@ -1096,7 +1098,7 @@ class MessagesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
         match (stopReason) {
             case "end_turn" | "stop_sequence" | "tool_use" | "refusal" => LlmWireTerminal.Completed(reply)
             case "max_tokens" | "model_context_window_exceeded" | "pause_turn" => LlmWireTerminal.Completed(reply)
-            case _ => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.messages_stop_reason_unsupported", "unknown Messages stop reason: " + stopReason, provider: codec.provider)
+            case _ => throw withObservedUsage(LlmWireError(LlmWireErrorKind.Unsupported, "llm.messages_stop_reason_unsupported", "unknown Messages stop reason: " + stopReason, provider: codec.provider), observedUsage())
         }
     }
 
@@ -1123,9 +1125,7 @@ class MessagesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
         ]))
     }
 
-    protected override func observedUsage(): ?LlmWireUsage {
-        if (usage.inputTokens.isNone() && usage.outputTokens.isNone()) { None } else { Some(usage) }
-    }
+    public override func observedUsage(): ?LlmWireUsage { observedWireUsage(usage) }
     public func cancel(): LlmWireTerminal { cancelStream(codec) }
 
     private func requireMessagesPhase(expected: MessagesStreamPhase, code: String, message: String): Unit {

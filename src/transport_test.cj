@@ -299,6 +299,118 @@ class Llm4CjV02Tests {
     }
 
     @TestCase
+    func t006cObservedUsageAttachesToEveryAbandonedAttemptPath() {
+        // guardedPush mid-stream failure after usage was reported
+        let messages = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect())
+        let decoder = messages.newStreamDecoder()
+        let _ = decoder.push(event("{\"type\":\"message_start\",\"message\":{\"id\":\"m1\",\"usage\":{\"input_tokens\":9}}}"))
+        try {
+            let _ = decoder.push(event("not-json"))
+            @Fail("malformed event must fail")
+        } catch (error: LlmWireError) {
+            match (error.usage) {
+                case Some(usage) => @Expect(usage.inputTokens, Some(9))
+                case None => @Fail("guardedPush failure must carry observed usage")
+            }
+        }
+
+        // all-empty usage normalizes to None
+        let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
+        try {
+            let _ = codec.decodeResponse("{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"f\",\"arguments\":\"[\"}}]},\"finish_reason\":\"tool_calls\"}]}")
+            @Fail("expected llm.tool_arguments_not_executable")
+        } catch (error: LlmWireError) {
+            @Expect(error.code, "llm.tool_arguments_not_executable")
+            @Expect(error.usage.isNone(), true)
+        }
+
+        // HTTP overload preserves usage across withHttpContext
+        match (codec.decodeResponse(LlmWireHttpResponse(200, [], "{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"f\",\"arguments\":\"[\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":31,\"completion_tokens\":4}}".toArray()))) {
+            case LlmWireResult.Err(error) =>
+                match (error.usage) {
+                    case Some(usage) => @Expect(usage.inputTokens, Some(31))
+                    case None => @Fail("HTTP overload must preserve observed usage")
+                }
+            case LlmWireResult.Ok(_) => @Fail("expected tool argument rejection")
+        }
+
+        // stop-reason validation carries the decoded usage
+        expectLlmError("llm.tool_stop_without_call", { => let _ = codec.decodeResponse("{\"choices\":[{\"index\":0,\"finish_reason\":\"tool_calls\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}],\"usage\":{\"prompt_tokens\":6,\"completion_tokens\":2}}") })
+        try {
+            let _ = codec.decodeResponse("{\"choices\":[{\"index\":0,\"finish_reason\":\"tool_calls\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}],\"usage\":{\"prompt_tokens\":6,\"completion_tokens\":2}}")
+            @Fail("expected llm.tool_stop_without_call")
+        } catch (error: LlmWireError) {
+            match (error.usage) {
+                case Some(usage) => @Expect(usage.inputTokens, Some(6))
+                case None => @Fail("stop-reason failure must carry observed usage")
+            }
+        }
+
+        // SSE framing failure after usage keeps the observed totals
+        let framing = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect())
+        let framingDecoder = framing.newStreamDecoder()
+        let _ = framingDecoder.push(event("{\"type\":\"message_start\",\"message\":{\"id\":\"m3\",\"usage\":{\"input_tokens\":4}}}"))
+        match (framingDecoder.push([255u8, 10u8, 10u8])) {
+            case LlmWireResult.Err(error) =>
+                match (error.usage) {
+                    case Some(usage) => @Expect(usage.inputTokens, Some(4))
+                    case None => @Fail("framing failure must carry observed usage")
+                }
+            case LlmWireResult.Ok(_) => @Fail("invalid UTF-8 must fail")
+        }
+
+        // unsupported terminal reasons keep the decoded usage
+        let responses = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
+        try {
+            let _ = responses.decodeResponse("{\"status\":\"future\",\"output\":[],\"usage\":{\"input_tokens\":8,\"output_tokens\":3}}")
+            @Fail("expected llm.responses_status_unsupported")
+        } catch (error: LlmWireError) {
+            match (error.usage) {
+                case Some(usage) => @Expect(usage.inputTokens, Some(8))
+                case None => @Fail("unsupported status must carry observed usage")
+            }
+        }
+        let chatStream = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect()).newStreamDecoder()
+        try {
+            let _ = chatStream.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"future\"}],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":1}}"))
+            let _ = chatStream.push(event("[DONE]"))
+            @Fail("expected llm.chat_finish_reason_unsupported")
+        } catch (error: LlmWireError) {
+            match (error.usage) {
+                case Some(usage) => @Expect(usage.inputTokens, Some(5))
+                case None => @Fail("unsupported finish reason must carry observed usage")
+            }
+        }
+        let messagesStream = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect()).newStreamDecoder()
+        let _ = messagesStream.push(event("{\"type\":\"message_start\",\"message\":{\"id\":\"m4\",\"usage\":{\"input_tokens\":2}}}"))
+        let _ = messagesStream.push(event("{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"future\"},\"usage\":{\"output_tokens\":6}}"))
+        try {
+            let _ = messagesStream.finishTransport()
+            @Fail("expected llm.messages_stop_reason_unsupported")
+        } catch (error: LlmWireError) {
+            match (error.usage) {
+                case Some(usage) => @Expect(usage.outputTokens, Some(6))
+                case None => @Fail("unsupported stop reason must carry observed usage")
+            }
+        }
+
+        // only-side-field usage still counts as observed (streamed chat totals)
+        let totalOnly = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect()).newStreamDecoder()
+        let _ = totalOnly.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"total_tokens\":99}}"))
+        let _ = totalOnly.push(event("[DONE]"))
+        let truncatedTotal = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect()).newStreamDecoder()
+        let _ = truncatedTotal.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"total_tokens\":99}}"))
+        match (truncatedTotal.finish()) {
+            case LlmWireResult.Err(error) =>
+                match (error.usage) {
+                    case Some(usage) => @Expect(usage.totalTokens, Some(99))
+                    case None => @Fail("side-field-only usage must count as observed")
+                }
+            case LlmWireResult.Ok(_) => @Fail("expected stream_terminal_missing")
+        }
+    }
+
+    @TestCase
     func t007StrictRejectsInvalidToolHistory() {
         let blocks = [LlmWireBlock.ToolResult(toolResultText("future", "result")), LlmWireBlock.Text(LlmWireTextBlock("after"))]
         let strict = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect(), capabilities: allCapabilities())
@@ -3070,7 +3182,6 @@ class Llm4CjV02Tests {
 
     @TestCase
     func t076ToolContractEdgePathsStayDeterministic() {
-        println("T076V2-MARKER")
         func replyWithCalls(calls: Array<LlmWireOutputBlock>): LlmWireReply { LlmWireReply(responseId: "r", model: "m", blocks: calls) }
         func toolCall(id: String, name: String, args: String): LlmWireOutputBlock {
             LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(id, name, LlmWireToolArguments.Complete(testJson(args))))
