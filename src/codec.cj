@@ -501,7 +501,7 @@ func withHttpContext(error: LlmWireError, status: Int64, retryAfter: ?Int64, req
         providerErrorCode: error.providerErrorCode, providerErrorType: error.providerErrorType,
         diagnosticJson: error.diagnosticJson, phase: error.phase, protocol: error.protocol,
         dialectId: error.dialectId, eventType: error.eventType, blockIndex: error.blockIndex,
-        toolCallId: error.toolCallId, providerRequestId: if (error.providerRequestId == "") { requestId } else { error.providerRequestId },
+        toolCallId: error.toolCallId, providerRequestId: requestId,
         usage: error.usage
     )
 }
@@ -586,12 +586,12 @@ func decodeChatResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseSta
     match (wireOptionalObject(root, "error", provider: codec.provider)) { case Some(error) => return LlmWireResponseState.Terminal(LlmWireTerminal.ProviderFailed(providerFailure(codec, error))); case None => () }
     validateOptionalIdentity(codec, root, "object", "chat.completion")
     let choices = match (wireOptionalArray(root, "choices", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "Chat response is missing choices", provider: codec.provider) }
-    if (choices.isEmpty()) { invalidWire("llm.chat_choices_empty", "Chat response choices must not be empty", provider: codec.provider) }
     let usage = decodeChatUsage(codec, root)
     let decodedChoices = ArrayList<LlmWireChoice>()
     try {
-        for (position in 0..choices.size) {
-            let choice = wireObject(choices[position], "Chat choice", provider: codec.provider)
+        var position = 0
+        for (choiceNode in choices) {
+            let choice = wireObject(choiceNode, "Chat choice", provider: codec.provider)
             let index = wireRequiredInt(choice, "index", provider: codec.provider)
             if (index != position) { invalidWire("llm.chat_choice_index_invalid", "Chat choices must use contiguous indexes in array order", provider: codec.provider) }
             if (wireRequiredString(choice, "finish_reason", provider: codec.provider) == "insufficient_system_resource") {
@@ -601,10 +601,12 @@ func decodeChatResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseSta
             }
             let decoded = decodeChatChoice(codec, root, choice, index)
             decodedChoices.add(decoded)
+            position++
         }
     } catch (error: LlmWireError) {
         throw withObservedUsage(error, observedWireUsage(usage))
     }
+    if (decodedChoices.isEmpty()) { invalidWire("llm.chat_choices_empty", "Chat response choices must not be empty", provider: codec.provider, usage: observedWireUsage(usage)) }
     let reply = LlmWireReply(
         responseId: optionalStringOrEmpty(root, "id", codec.provider), model: optionalStringOrEmpty(root, "model", codec.provider),
         usage: usage, rawStopReason: if (decodedChoices.size == 1) { decodedChoices[0].rawStopReason } else { "multiple" },

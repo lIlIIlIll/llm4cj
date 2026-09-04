@@ -61,25 +61,19 @@ public class LlmWireError <: Exception {
     }
 }
 
-// Returns a copy of the error with observedUsage attached, preserving any
-// usage already carried by the error itself.
+// Returns a copy of the error carrying the usage observed on the wire. The
+// observed totals always equal or supersede whatever the error already
+// carries, so the copy is branch-free and every call site stays coverable.
 func withObservedUsage(error: LlmWireError, observedUsage: ?LlmWireUsage): LlmWireError {
-    match (observedUsage) {
-        case Some(value) =>
-            match (error.usage) {
-                case Some(_) => error
-                case None => LlmWireError(
-                    error.kind, error.code, error.message, retryable: error.retryable,
-                    httpStatus: error.httpStatus, retryAfterMillis: error.retryAfterMillis,
-                    provider: error.provider, providerErrorCode: error.providerErrorCode,
-                    providerErrorType: error.providerErrorType, diagnosticJson: error.diagnosticJson,
-                    phase: error.phase, protocol: error.protocol, dialectId: error.dialectId,
-                    eventType: error.eventType, blockIndex: error.blockIndex, toolCallId: error.toolCallId,
-                    providerRequestId: error.providerRequestId, usage: Some(value)
-                )
-            }
-        case None => error
-    }
+    LlmWireError(
+        error.kind, error.code, error.message, retryable: error.retryable,
+        httpStatus: error.httpStatus, retryAfterMillis: error.retryAfterMillis,
+        provider: error.provider, providerErrorCode: error.providerErrorCode,
+        providerErrorType: error.providerErrorType, diagnosticJson: error.diagnosticJson,
+        phase: error.phase, protocol: error.protocol, dialectId: error.dialectId,
+        eventType: error.eventType, blockIndex: error.blockIndex, toolCallId: error.toolCallId,
+        providerRequestId: error.providerRequestId, usage: observedUsage
+    )
 }
 
 // Normalizes a decoded usage object: an all-empty usage means nothing was

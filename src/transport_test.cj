@@ -113,6 +113,9 @@ func expectTextReplyEquivalent(left: LlmWireReply, right: LlmWireReply): Unit {
     }
 }
 
+class BaseObservedUsageProbe <: StreamLifecycle {
+}
+
 class SatisfiedRequirementResolver <: LlmWireRequirementResolver {
     public func resolve(requirement: LlmWireFeatureRequirement): LlmWireRequirementState { let _ = requirement; LlmWireRequirementState.Satisfied }
 }
@@ -385,7 +388,7 @@ class Llm4CjV02Tests {
         let _ = messagesStream.push(event("{\"type\":\"message_start\",\"message\":{\"id\":\"m4\",\"usage\":{\"input_tokens\":2}}}"))
         let _ = messagesStream.push(event("{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"future\"},\"usage\":{\"output_tokens\":6}}"))
         try {
-            let _ = messagesStream.finishTransport()
+            let _ = messagesStream.push(event("{\"type\":\"message_stop\"}"))
             @Fail("expected llm.messages_stop_reason_unsupported")
         } catch (error: LlmWireError) {
             match (error.usage) {
@@ -420,6 +423,17 @@ class Llm4CjV02Tests {
             }
         }
 
+        // non-object choice element keeps usage on its error
+        match (codec.decodeResponse(LlmWireHttpResponse(200, [], "{\"choices\":[\"x\"],\"usage\":{\"prompt_tokens\":22,\"completion_tokens\":3}}".toArray()))) {
+            case LlmWireResult.Err(error) =>
+                @Expect(error.code, "llm.object_expected")
+                match (error.usage) {
+                    case Some(usage) => @Expect(usage.inputTokens, Some(22))
+                    case None => @Fail("non-object choice must carry observed usage")
+                }
+            case _ => @Fail("non-object choice must fail")
+        }
+
         // Responses stream terminal usage survives reconciliation failures
         let responsesStream = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect()).newStreamDecoder()
         let _ = responsesStream.push(event("{\"type\":\"response.created\",\"response\":{\"id\":\"r9\",\"model\":\"m\"}}"))
@@ -431,6 +445,71 @@ class Llm4CjV02Tests {
                 case Some(usage) => @Expect(usage.inputTokens, Some(11))
                 case None => @Fail("Responses terminal usage must survive reconciliation")
             }
+        }
+    }
+
+    @TestCase
+    func t006dWireErrorEdgesStayBounded() {
+        // insufficient_system_resource short-circuit keeps its bounded failure
+        let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
+        match (codec.decodeResponse(LlmWireHttpResponse(200, [], "{\"choices\":[{\"index\":0,\"finish_reason\":\"insufficient_system_resource\",\"message\":{\"role\":\"assistant\",\"content\":\"x\"}}],\"usage\":{\"prompt_tokens\":21,\"completion_tokens\":5}}".toArray()))) {
+            case LlmWireResult.Ok(LlmWireResponseState.Terminal(LlmWireTerminal.ProviderFailed(failure))) => @Expect(failure.retryable, true)
+            case _ => @Fail("expected insufficient system resource failure")
+        }
+
+        // index mismatch and empty choices keep usage on their errors
+        match (codec.decodeResponse(LlmWireHttpResponse(200, [], "{\"choices\":[{\"index\":1,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"x\"}}],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":2}}".toArray()))) {
+            case LlmWireResult.Err(error) =>
+                @Expect(error.code, "llm.chat_choice_index_invalid")
+                match (error.usage) {
+                    case Some(usage) => @Expect(usage.inputTokens, Some(17))
+                    case None => @Fail("index mismatch must carry observed usage")
+                }
+            case _ => @Fail("index mismatch must fail")
+        }
+        match (codec.decodeResponse(LlmWireHttpResponse(200, [], "{\"choices\":[],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":1}}".toArray()))) {
+            case LlmWireResult.Err(error) =>
+                @Expect(error.code, "llm.chat_choices_empty")
+                match (error.usage) {
+                    case Some(usage) => @Expect(usage.inputTokens, Some(8))
+                    case None => @Fail("empty choices must carry observed usage")
+                }
+            case _ => @Fail("empty choices must fail")
+        }
+
+        // base observedUsage (no protocol override) observes nothing
+        @Expect(BaseObservedUsageProbe().observedUsage().isNone(), true)
+
+        // poisoned stream: repeated push and cancel stay bounded
+        let poisoned = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect()).newStreamDecoder()
+        let _ = poisoned.push(event("{\"type\":\"message_start\",\"message\":{\"id\":\"m5\",\"usage\":{\"input_tokens\":3}}}"))
+        try {
+            let _ = poisoned.push(event("{\"type\":\"message_start\",\"message\":{\"id\":\"m5\"}}"))
+            @Fail("duplicate message_start must fail")
+        } catch (error: LlmWireError) {
+            match (error.usage) {
+                case Some(usage) => @Expect(usage.inputTokens, Some(3))
+                case None => @Fail("guardedPush failure must carry observed usage")
+            }
+        }
+        expectLlmError("llm.stream_failed", { => let _ = poisoned.push(event("{\"type\":\"ping\"}")) })
+        match (poisoned.cancel()) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.stream_failed")
+            case LlmWireResult.Ok(_) => @Fail("cancel after failure must fail")
+        }
+
+        // finish-time feed errors carry observed usage
+        let finishError = LlmWireCodec(LlmWireProtocol.Messages, anthropicMessagesDialect()).newStreamDecoder()
+        let _ = finishError.push(event("{\"type\":\"message_start\",\"message\":{\"id\":\"m6\",\"usage\":{\"input_tokens\":2}}}"))
+        expectLlmError("llm.messages_start_duplicate", { => let _ = finishError.push(event("{\"type\":\"message_start\",\"message\":{\"id\":\"m6\"}}")) })   // poisoned before finish
+        match (finishError.finish()) {
+            case LlmWireResult.Err(error) =>
+                @Expect(error.code, "llm.stream_failed")
+                match (error.usage) {
+                    case Some(usage) => @Expect(usage.inputTokens, Some(2))
+                    case None => @Fail("finish after failure must carry observed usage")
+                }
+            case LlmWireResult.Ok(_) => @Fail("poisoned finish must fail")
         }
     }
 
