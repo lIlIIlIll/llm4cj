@@ -408,6 +408,30 @@ class Llm4CjV02Tests {
                 }
             case LlmWireResult.Ok(_) => @Fail("expected stream_terminal_missing")
         }
+
+        // fixed Chat choice errors keep the root usage decoded before choices
+        try {
+            let _ = codec.decodeResponse("{\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":5}}],\"usage\":{\"prompt_tokens\":14,\"completion_tokens\":3}}")
+            @Fail("malformed choice must fail")
+        } catch (error: LlmWireError) {
+            match (error.usage) {
+                case Some(usage) => @Expect(usage.inputTokens, Some(14))
+                case None => @Fail("choice error must keep root usage")
+            }
+        }
+
+        // Responses stream terminal usage survives reconciliation failures
+        let responsesStream = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect()).newStreamDecoder()
+        let _ = responsesStream.push(event("{\"type\":\"response.created\",\"response\":{\"id\":\"r9\",\"model\":\"m\"}}"))
+        try {
+            let _ = responsesStream.push(event("{\"type\":\"response.completed\",\"response\":{\"id\":\"r9\",\"model\":\"m\",\"status\":\"incomplete\",\"output\":[],\"usage\":{\"input_tokens\":11,\"output_tokens\":2}}}"))
+            @Fail("expected llm.responses_terminal_mismatch")
+        } catch (error: LlmWireError) {
+            match (error.usage) {
+                case Some(usage) => @Expect(usage.inputTokens, Some(11))
+                case None => @Fail("Responses terminal usage must survive reconciliation")
+            }
+        }
     }
 
     @TestCase

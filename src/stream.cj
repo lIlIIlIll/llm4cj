@@ -366,6 +366,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
     private var inProgressObserved = false
     private var responseId = ""
     private var model = ""
+    private var usage = LlmWireUsage()
     init(codec: LlmWireCodec, limits: LlmWireStreamLimits) { this.codec = codec; this.budget = StreamBudget(limits) }
 
     public func push(event: SseEvent): LlmWireStreamUpdate { guardedPush(codec, { => budget.inputEvent(); pushActive(event) }) }
@@ -444,6 +445,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
                 let terminalResponse = wireObject(wireRequiredField(root, "response", provider: codec.provider), "Responses terminal response", provider: codec.provider)
                 reconcileResponsesMetadata(terminalResponse)
                 let state = decodeResponsesResponse(codec, terminalResponse)
+                match (state) { case LlmWireResponseState.Terminal(LlmWireTerminal.Completed(reply)) => usage = reply.usage; case _ => () }
                 match (state) {
                     case LlmWireResponseState.Terminal(value) =>
                         if (!responsesEventMatchesTerminal(kind, value)) {
@@ -593,6 +595,8 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
     }
 
     public func finishTransport(): LlmWireTerminal { finish(codec) }
+
+    public override func observedUsage(): ?LlmWireUsage { observedWireUsage(usage) }
     public func cancel(): LlmWireTerminal { cancelStream(codec) }
 }
 
