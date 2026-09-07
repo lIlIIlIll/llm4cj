@@ -64,7 +64,7 @@ func wireOptionalInt(value: JsonNode, name: String, provider!: String = ""): ?In
             if (found.wireKind == WireJsonKind.Null) { None }
             else if (found.wireKind != WireJsonKind.Number) { invalidWire("llm.field_type_invalid", name + " must be an integer or null", provider: provider) }
             else {
-                try { Some(Int64.parse(found.number)) }
+                try { Some(Int64.parse(found.numberText)) }
                 catch (_: Exception) { invalidWire("llm.integer_invalid", name + " is outside the Int64 range or is not an integer", provider: provider) }
             }
     }

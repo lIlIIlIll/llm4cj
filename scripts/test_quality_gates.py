@@ -27,12 +27,20 @@ class PatchCoverageTests(unittest.TestCase):
             "let value = parse()\n"
             "if (value > 0 && ready) { use(value) }\n"
             "case Some(found) => found\n"
-            "catch (error: Exception) { throw error }\n",
+            "catch (error: Exception) { throw error }\n"
+            "for (item in items) { use(item) }\n"
+            "try { go() } catch (_: Exception) { handled() }\n"
+            "for (item in items) { if (item.ok) { use(item) } }\n"
+            "try { if (ready) { go() } } catch (_: Exception) { handled() }\n",
             encoding="utf-8",
         )
+        # the pure for-in header (5) and the sole discard broad-catch (6) are
+        # structurally unselectable and excluded; the narrow catch (4), the
+        # co-located decisions in the compound for-in header (7) and the
+        # discard-catch line (8), and the rest stay counted.
         self.assertEqual(
-            check_patch_coverage.source_decision_lines(source, {1, 2, 3, 4}),
-            {2, 3, 4},
+            check_patch_coverage.source_decision_lines(source, {1, 2, 3, 4, 5, 6, 7, 8}),
+            {2, 3, 4, 7, 8},
         )
 
     def fixture(self, include_second_da: bool) -> tuple[Path, list[str]]:

@@ -120,7 +120,7 @@ public class LlmWireJson {
 
     public func numberLiteral(): ?String {
         let value = jsonNode()
-        if (value.wireKind == WireJsonKind.Number) { Some(value.number) } else { None }
+        if (value.wireKind == WireJsonKind.Number) { Some(value.numberText) } else { None }
     }
 
     public func values(): Array<LlmWireJson> {
