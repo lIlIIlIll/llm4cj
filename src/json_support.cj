@@ -25,14 +25,15 @@ class WireJsonField {
 
 func parseWireJson(source: String): JsonNode {
     try {
-        YJson.parse(
+        JsonNode.parse(
             source,
-            config: JsonReadConfig(
+            config: JsonReadOptions(
+                unknownFieldPolicy: JsonUnknownFieldPolicy.Ignore,
                 duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject,
-                numberPolicy: JsonNumberPolicy.PreserveLiteral,
                 maxDepth: LLM_JSON_MAX_DEPTH,
                 maxStringBytes: LLM_JSON_MAX_STRING_BYTES,
-                maxBytes: LLM_JSON_MAX_BYTES
+                maxInputBytes: LLM_JSON_MAX_BYTES,
+                maxBufferedValueBytes: LLM_JSON_MAX_BYTES
             )
         )
     } catch (error: JsonException) {
@@ -44,13 +45,13 @@ func parseWireJson(source: String): JsonNode {
     }
 }
 
-func wireJsonBool(value: Bool): JsonNode { YJson.value(value) }
-func wireJsonNumber(value: String): JsonNode { JsonNumberLiteralValue(value) }
-func wireJsonString(value: String): JsonNode { YJson.value(value) }
-func wireJsonArray(items: Array<JsonNode>): JsonNode { JsonArrayValue(items) }
+func wireJsonBool(value: Bool): JsonNode { JsonNode.boolean(value) }
+func wireJsonNumber(value: String): JsonNode { JsonNode.number(value) }
+func wireJsonString(value: String): JsonNode { JsonNode.string(value) }
+func wireJsonArray(items: Array<JsonNode>): JsonNode { JsonNode.array(items) }
 
 func wireJsonObject(fields: Array<WireJsonField>): JsonNode {
-    let value = JsonObjectValue()
+    let value = JsonObject()
     for (field in fields) {
         if (value.contains(field.name)) {
             throw LlmWireError(
@@ -68,25 +69,34 @@ extend JsonNode {
     prop wireKind: WireJsonKind {
         get() {
             match (kind()) {
-                case JsonKind.JsNull => WireJsonKind.Null
-                case JsonKind.JsBool => WireJsonKind.Boolean
-                case JsonKind.JsInt | JsonKind.JsFloat | JsonKind.JsNumberLiteral => WireJsonKind.Number
-                case JsonKind.JsString => WireJsonKind.Text
-                case JsonKind.JsArray => WireJsonKind.List
-                case JsonKind.JsObject => WireJsonKind.Object
+                case JsonKind.Null => WireJsonKind.Null
+                case JsonKind.Boolean => WireJsonKind.Boolean
+                case JsonKind.Number => WireJsonKind.Number
+                case JsonKind.String => WireJsonKind.Text
+                case JsonKind.Array => WireJsonKind.List
+                case JsonKind.Object => WireJsonKind.Object
             }
         }
     }
 
-    prop text: String { get() { string } }
-    prop number: String { get() { numberText } }
-    prop items: Array<JsonNode> { get() { asArray().values().toArray() } }
+    prop text: String { get() { asString() } }
+    prop numberText: String { get() { asNumberText() } }
+    prop bool: Bool { get() { asBool() } }
+    prop items: Array<JsonNode> { get() {
+        let array = asArray()
+        let result = ArrayList<JsonNode>()
+        for (index in 0..array.size()) {
+            result.add(array.get(index).getOrThrow())
+        }
+        result.toArray()
+    } }
 
     prop fields: Array<WireJsonField> {
         get() {
+            let object = asObject()
             let result = ArrayList<WireJsonField>()
-            for ((name, value) in asObject().entries()) {
-                result.add(WireJsonField(name, value))
+            for (index in 0..object.size()) {
+                result.add(WireJsonField(object.nameAt(index), object.valueAt(index)))
             }
             result.toArray()
         }
@@ -99,9 +109,10 @@ extend JsonNode {
     }
 
     func add(value: JsonNode): JsonNode {
-        asArray().values().add(value)
+        let array = asArray()
+        array.insert(array.size(), value)
         this
     }
 
-    func stringify(): String { YJson.stringify(this) }
+    func stringify(): String { toJson() }
 }

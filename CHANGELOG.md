@@ -15,6 +15,7 @@ All notable changes are recorded here.
 - Enforce aggregate stream limits, message phases, immutable tool identities, executable tool arguments, and request schema invariants.
 - Verify public request, fixed-response, and stream fixtures with deterministic byte fragmentation, and refuse release-asset replacement.
 - Rebuild SSE parsing around bytes with CR/LF/CRLF, BOM, empty data, persistent fields, complete-event limits, and RFC-compatible `Retry-After` dates.
+- Track `yjson` dependency on its `main` branch instead of pinning a commit; the release gate verifies the lock resolves to the yjson main head.
 - Pin `yjson` to commit `92858f75aedc3dd6f7322789117854514549e62c` and add API, error-code, fixture, coverage, consumer, and provider-smoke release evidence.
 - Freeze dialect contracts inside codecs, add model-level image modalities (including DeepSeek Vision file/header encoding), and restrict native reasoning replay to built-in dialect identities.
 - Count every provider stream event, preserve failed/incomplete Responses classification, and count both CRLF bytes against SSE event limits.
