@@ -109,13 +109,16 @@ def has_candidate_code(path: Path, numbers: set[int]) -> bool:
     return False
 
 
-# `for` is excluded: Cangjie for-in over a collection emits a structurally
-# untakeable arc (the collection-modified invariant edge) that no source test
-# can select; loop-body decisions remain counted on their own lines.
-# `catch` is excluded: the exception type-match arc's false direction is
-# untestable when the caught type is the broadest type the guarded call can
-# throw; catch bodies keep line coverage.
-DECISION_TOKEN = re.compile(r"\b(?:if|else|while|match|case|where)\b")
+DECISION_TOKEN = re.compile(r"\b(?:if|else|for|while|match|case|catch|where)\b")
+# Compiler-generated arcs that no source test can select are excluded below:
+# - pure for-in headers: Cangjie for-in over a collection emits a
+#   collection-invariant arc that is structurally untakeable (the collection
+#   cannot be modified while it is being iterated);
+# - discard broad-catches (`catch (_: Exception)`): the type-match false
+#   direction cannot fire because every exception subclasses Exception.
+# Narrow catches and loop-body decisions remain counted.
+PURE_FOR_IN = re.compile(r"^\s*for\s*\(")
+DISCARD_CATCH = re.compile(r"catch\s*\(\s*_\s*:")
 
 
 def source_decision_lines(path: Path, numbers: set[int]) -> set[int]:
@@ -135,6 +138,8 @@ def source_decision_lines(path: Path, numbers: set[int]) -> set[int]:
         if number < 1 or number > len(lines):
             continue
         text = lines[number - 1].split("//", 1)[0]
+        if PURE_FOR_IN.match(text) or DISCARD_CATCH.search(text):
+            continue
         if DECISION_TOKEN.search(text) or "&&" in text or "||" in text:
             decisions.add(number)
     return decisions
