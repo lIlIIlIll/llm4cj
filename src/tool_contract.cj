@@ -101,7 +101,7 @@ internal func toolInputTypeFormValid(value: JsonNode): Bool {
 }
 
 internal func toolInputNumberIsFractional(value: JsonNode): Bool {
-    let literal = value.number
+    let literal = value.numberText
     literal.contains(".") || literal.contains("e") || literal.contains("E")
 }
 
@@ -130,7 +130,8 @@ internal func sortToolSchemaNames(values: ArrayList<String>): Unit {
 
 internal func toolSchemaObjectNames(schema: JsonNode): ArrayList<String> {
     let names = ArrayList<String>()
-    for (name in schema.asObject().entries().keys()) { names.add(name) }
+    let object = schema.asObject()
+    for (index in 0..object.size()) { names.add(object.nameAt(index)) }
     sortToolSchemaNames(names)
     names
 }
