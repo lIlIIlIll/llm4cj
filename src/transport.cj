@@ -33,6 +33,10 @@ public class LlmWireError <: Exception {
     public let blockIndex: Int64
     public let toolCallId: String
     public let providerRequestId: String
+    // Usage observed on the wire before the failure was raised (message
+    // start / delta totals). None when nothing was observable. Lets hosts
+    // bill abandoned attempts instead of losing their spend.
+    public let usage: ?LlmWireUsage
     public init(
         kind: LlmWireErrorKind, code: String, message: String,
         retryable!: Bool = false, httpStatus!: ?Int64 = None,
@@ -41,7 +45,8 @@ public class LlmWireError <: Exception {
         diagnosticJson!: ?String = None, phase!: ?LlmTransportPhase = None,
         protocol!: ?LlmWireProtocol = None, dialectId!: String = "",
         eventType!: String = "", blockIndex!: Int64 = -1,
-        toolCallId!: String = "", providerRequestId!: String = ""
+        toolCallId!: String = "", providerRequestId!: String = "",
+        usage!: ?LlmWireUsage = None
     ) {
         super(message)
         this.kind = kind; this.code = code; this.retryable = retryable
@@ -52,7 +57,33 @@ public class LlmWireError <: Exception {
         this.phase = phase; this.protocol = protocol; this.dialectId = dialectId
         this.eventType = eventType; this.blockIndex = blockIndex; this.toolCallId = toolCallId
         this.providerRequestId = providerRequestId
+        this.usage = usage
     }
+}
+
+// Returns a copy of the error carrying the usage observed on the wire. The
+// observed totals always equal or supersede whatever the error already
+// carries, so the copy is branch-free and every call site stays coverable.
+func withObservedUsage(error: LlmWireError, observedUsage: ?LlmWireUsage): LlmWireError {
+    LlmWireError(
+        error.kind, error.code, error.message, retryable: error.retryable,
+        httpStatus: error.httpStatus, retryAfterMillis: error.retryAfterMillis,
+        provider: error.provider, providerErrorCode: error.providerErrorCode,
+        providerErrorType: error.providerErrorType, diagnosticJson: error.diagnosticJson,
+        phase: error.phase, protocol: error.protocol, dialectId: error.dialectId,
+        eventType: error.eventType, blockIndex: error.blockIndex, toolCallId: error.toolCallId,
+        providerRequestId: error.providerRequestId, usage: observedUsage
+    )
+}
+
+// Normalizes a decoded usage object: an all-empty usage means nothing was
+// observed on the wire and must surface as None, never as an observed zero.
+func observedWireUsage(usage: LlmWireUsage): ?LlmWireUsage {
+    if (usage.inputTokens.isNone() && usage.outputTokens.isNone() && usage.reasoningTokens.isNone() &&
+        usage.cacheReadTokens.isNone() && usage.cacheWriteTokens.isNone() && usage.totalTokens.isNone() &&
+        usage.webSearchRequests.isNone() && usage.webFetchRequests.isNone() && usage.serviceTier.isNone()) {
+        None
+    } else { Some(usage) }
 }
 
 public enum LlmWireResult<T> {
