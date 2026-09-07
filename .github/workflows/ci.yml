@@ -21,7 +21,7 @@ jobs:
           clean: true
           fetch-depth: 0
       - name: Setup Cangjie 1.1.0
-        uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
+        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571
         with:
           channel: sts
           version: 1.1.0
@@ -37,7 +37,7 @@ jobs:
           clean: true
           fetch-depth: 0
       - name: Setup latest stable Cangjie
-        uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
+        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571
         with:
           channel: sts
           version: latest
@@ -56,7 +56,7 @@ jobs:
           clean: true
           fetch-depth: 0
       - name: Setup latest stable Cangjie
-        uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
+        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571
         with:
           channel: sts
           version: latest
@@ -69,7 +69,7 @@ jobs:
         run: |
           python3 scripts/check_patch_coverage.py --base-ref "$BASE_SHA" --lcov coverage/lcov.info --gcov-root cov_output --baseline coverage-baseline.toml
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
         with:
           use_oidc: true
           files: coverage/lcov.info
