@@ -819,7 +819,8 @@ func decodeLogprobBytes(value: JsonNode, provider: String): Array<Int64> {
             if (raw.wireKind != WireJsonKind.Number) { invalidWire("llm.field_type_invalid", "logprob bytes must contain integers", provider: provider) }
             var byte: Int64 = 0
             try { byte = Int64.parse(raw.numberText) } catch (_: Exception) { invalidWire("llm.integer_invalid", "logprob byte is not an integer", provider: provider) }
-            if (byte < 0 || byte > 255) { invalidWire("llm.logprob_byte_invalid", "logprob byte must be between 0 and 255", provider: provider) }
+            if (byte < 0) { invalidWire("llm.logprob_byte_invalid", "logprob byte must be between 0 and 255", provider: provider) }
+            if (byte > 255) { invalidWire("llm.logprob_byte_invalid", "logprob byte must be between 0 and 255", provider: provider) }
             output.add(byte)
         }
         case None => ()
