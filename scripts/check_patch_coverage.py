@@ -118,7 +118,8 @@ DECISION_TOKEN = re.compile(r"\b(?:if|else|for|while|match|case|catch|where)\b")
 #   direction cannot fire because every exception subclasses Exception.
 # Narrow catches and loop-body decisions remain counted.
 PURE_FOR_IN = re.compile(r"^\s*for\s*\(")
-DISCARD_CATCH = re.compile(r"catch\s*\(\s*_\s*:")
+OTHER_DECISION = re.compile(r"\b(?:if|else|while|match|case|catch|where)\b|&&|\|\|")
+DISCARD_CATCH = re.compile(r"catch\s*\(\s*_\s*:\s*Exception\s*\)")
 
 
 def source_decision_lines(path: Path, numbers: set[int]) -> set[int]:
@@ -138,7 +139,9 @@ def source_decision_lines(path: Path, numbers: set[int]) -> set[int]:
         if number < 1 or number > len(lines):
             continue
         text = lines[number - 1].split("//", 1)[0]
-        if PURE_FOR_IN.match(text) or DISCARD_CATCH.search(text):
+        if PURE_FOR_IN.match(text) and not OTHER_DECISION.search(text):
+            continue
+        if DISCARD_CATCH.search(text):
             continue
         if DECISION_TOKEN.search(text) or "&&" in text or "||" in text:
             decisions.add(number)

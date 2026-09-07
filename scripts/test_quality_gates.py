@@ -29,15 +29,17 @@ class PatchCoverageTests(unittest.TestCase):
             "case Some(found) => found\n"
             "catch (error: Exception) { throw error }\n"
             "for (item in items) { use(item) }\n"
-            "try { go() } catch (_: Exception) { handled() }\n",
+            "try { go() } catch (_: Exception) { handled() }\n"
+            "for (item in items) { if (item.ok) { use(item) } }\n",
             encoding="utf-8",
         )
-        # the narrow catch (4) stays counted; the pure for-in header (5) and
-        # the discard broad-catch (6) are structurally unselectable, so their
-        # compiler-emitted arcs are excluded from the decision set.
+        # the pure for-in header (5) and the discard broad-catch (6) are
+        # structurally unselectable and excluded; the narrow catch (4), the
+        # co-located decision in the compound for-in header (7), and the rest
+        # stay counted.
         self.assertEqual(
-            check_patch_coverage.source_decision_lines(source, {1, 2, 3, 4, 5, 6}),
-            {2, 3, 4},
+            check_patch_coverage.source_decision_lines(source, {1, 2, 3, 4, 5, 6, 7}),
+            {2, 3, 4, 7},
         )
 
     def fixture(self, include_second_da: bool) -> tuple[Path, list[str]]:
