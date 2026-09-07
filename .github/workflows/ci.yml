@@ -21,7 +21,7 @@ jobs:
           clean: true
           fetch-depth: 0
       - name: Setup Cangjie 1.1.0
-        uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
+        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571
         with:
           channel: sts
           version: 1.1.0
@@ -37,7 +37,7 @@ jobs:
           clean: true
           fetch-depth: 0
       - name: Setup latest stable Cangjie
-        uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
+        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571
         with:
           channel: sts
           version: latest
@@ -56,7 +56,7 @@ jobs:
           clean: true
           fetch-depth: 0
       - name: Setup latest stable Cangjie
-        uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
+        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571
         with:
           channel: sts
           version: latest
