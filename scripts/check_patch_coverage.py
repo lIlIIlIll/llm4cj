@@ -141,8 +141,13 @@ def source_decision_lines(path: Path, numbers: set[int]) -> set[int]:
         text = lines[number - 1].split("//", 1)[0]
         if PURE_FOR_IN.match(text) and not OTHER_DECISION.search(text):
             continue
-        if DISCARD_CATCH.search(text) and not OTHER_DECISION.search(text):
-            continue
+        if DISCARD_CATCH.search(text):
+            # Judge co-located decisions on the line with the discarded
+            # broad-catch removed, so its own token cannot masquerade as
+            # another decision.
+            remainder = DISCARD_CATCH.sub("", text)
+            if not OTHER_DECISION.search(remainder) and "&&" not in remainder and "||" not in remainder:
+                continue
         if DECISION_TOKEN.search(text) or "&&" in text or "||" in text:
             decisions.add(number)
     return decisions
