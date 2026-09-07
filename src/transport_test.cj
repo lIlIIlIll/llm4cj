@@ -438,7 +438,6 @@ class Llm4CjV02Tests {
         let emptySchema = [LlmWireTool("read_file", "", testJson("{}"))]
         let emptyReply = LlmWireReply(responseId: "r", model: "m", blocks: [LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock("c19", "read_file", LlmWireToolArguments.Complete(testJson("{}"))))])
         @Expect(validateReplyToolInputs(emptyReply, emptySchema).isOk(), true)
-
         // fixed Chat choice errors keep the root usage decoded before choices
         try {
             let _ = codec.decodeResponse("{\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":5}}],\"usage\":{\"prompt_tokens\":14,\"completion_tokens\":3}}")
