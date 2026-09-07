@@ -412,8 +412,21 @@ class Llm4CjV02Tests {
             case LlmWireResult.Ok(_) => @Fail("expected stream_terminal_missing")
         }
 
-        // non-integer logprob byte fails bounded
+        // logprob byte edges: non-number element, negative, over-255
         let logprobCodec = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
+        let byteCases = ["\"x\"", "-5", "300"]
+        let byteExpected = ["llm.field_type_invalid", "llm.logprob_byte_invalid", "llm.logprob_byte_invalid"]
+        for (index in 0..byteCases.size) {
+            let body = "{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"x\",\"logprobs\":[{\"token\":\"x\",\"logprob\":-1,\"bytes\":[" + byteCases[index] + "]}]}]}]}"
+            try {
+                let _ = logprobCodec.decodeResponse(body)
+                @Fail("expected " + byteExpected[index])
+            } catch (error: LlmWireError) {
+                @Expect(error.code, byteExpected[index])
+            }
+        }
+
+        // non-integer logprob byte fails bounded
         try {
             let _ = logprobCodec.decodeResponse("{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"x\",\"logprobs\":[{\"token\":\"x\",\"logprob\":-1,\"bytes\":[1.5]}]}]}]}")
             @Fail("expected llm.integer_invalid")
