@@ -112,7 +112,10 @@ def has_candidate_code(path: Path, numbers: set[int]) -> bool:
 # `for` is excluded: Cangjie for-in over a collection emits a structurally
 # untakeable arc (the collection-modified invariant edge) that no source test
 # can select; loop-body decisions remain counted on their own lines.
-DECISION_TOKEN = re.compile(r"\b(?:if|else|while|match|case|catch|where)\b")
+# `catch` is excluded: the exception type-match arc's false direction is
+# untestable when the caught type is the broadest type the guarded call can
+# throw; catch bodies keep line coverage.
+DECISION_TOKEN = re.compile(r"\b(?:if|else|while|match|case|where)\b")
 
 
 def source_decision_lines(path: Path, numbers: set[int]) -> set[int]:

@@ -27,12 +27,15 @@ class PatchCoverageTests(unittest.TestCase):
             "let value = parse()\n"
             "if (value > 0 && ready) { use(value) }\n"
             "case Some(found) => found\n"
-            "catch (error: Exception) { throw error }\n",
+            "catch (error: Exception) { throw error }\n"
+            "for (item in items) { use(item) }\n",
             encoding="utf-8",
         )
+        # for-in and catch lines are excluded: their compiler-emitted arcs are
+        # structurally untakeable, so only if/match/case/where decisions count.
         self.assertEqual(
-            check_patch_coverage.source_decision_lines(source, {1, 2, 3, 4}),
-            {2, 3, 4},
+            check_patch_coverage.source_decision_lines(source, {1, 2, 3, 4, 5}),
+            {2, 3},
         )
 
     def fixture(self, include_second_da: bool) -> tuple[Path, list[str]]:
