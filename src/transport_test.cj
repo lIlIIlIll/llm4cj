@@ -206,8 +206,8 @@ class Llm4CjV02Tests {
         let reply = match (state) { case LlmWireResponseState.Terminal(LlmWireTerminal.Completed(value)) => value; case _ => @Fail("expected success") }
         let blocks = reply.blocks
         @Expect(blocks.size, 2)
-        match (blocks[0]) { case LlmWireOutputBlock.NativeReplay(value) => @Expect(value.payload()["signature"].string, "sig"); @Expect(value.displayReasoning, Some("why")); case _ => @Fail("thinking must be native replay") }
-        match (blocks[1]) { case LlmWireOutputBlock.NativeReplay(value) => @Expect(value.payload()["data"].string, "opaque"); case _ => @Fail("redacted thinking must be native replay") }
+        match (blocks[0]) { case LlmWireOutputBlock.NativeReplay(value) => @Expect(value.payload()["signature"].text, "sig"); @Expect(value.displayReasoning, Some("why")); case _ => @Fail("thinking must be native replay") }
+        match (blocks[1]) { case LlmWireOutputBlock.NativeReplay(value) => @Expect(value.payload()["data"].text, "opaque"); case _ => @Fail("redacted thinking must be native replay") }
         let continuation = reply.toContinuationInput()
         let replay = codec.encodeRequest(LlmWireRequest("claude", continuation, maxOutputTokens: Some(1024)))
         @Expect(replay.contains("\"signature\":\"sig\""), true)
@@ -411,6 +411,33 @@ class Llm4CjV02Tests {
                 }
             case LlmWireResult.Ok(_) => @Fail("expected stream_terminal_missing")
         }
+
+        // logprob byte edges: non-number element, negative, over-255
+        let logprobCodec = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
+        let byteCases = ["\"x\"", "-5", "300"]
+        let byteExpected = ["llm.field_type_invalid", "llm.logprob_byte_invalid", "llm.logprob_byte_invalid"]
+        for (index in 0..byteCases.size) {
+            let body = "{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"x\",\"logprobs\":[{\"token\":\"x\",\"logprob\":-1,\"bytes\":[" + byteCases[index] + "]}]}]}]}"
+            try {
+                let _ = logprobCodec.decodeResponse(body)
+                @Fail("expected " + byteExpected[index])
+            } catch (error: LlmWireError) {
+                @Expect(error.code, byteExpected[index])
+            }
+        }
+
+        // non-integer logprob byte fails bounded
+        try {
+            let _ = logprobCodec.decodeResponse("{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"x\",\"logprobs\":[{\"token\":\"x\",\"logprob\":-1,\"bytes\":[1.5]}]}]}]}")
+            @Fail("expected llm.integer_invalid")
+        } catch (error: LlmWireError) {
+            @Expect(error.code, "llm.integer_invalid")
+        }
+
+        // empty-object schema: zero-iteration scan stays valid
+        let emptySchema = [LlmWireTool("read_file", "", testJson("{}"))]
+        let emptyReply = LlmWireReply(responseId: "r", model: "m", blocks: [LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock("c19", "read_file", LlmWireToolArguments.Complete(testJson("{}"))))])
+        @Expect(validateReplyToolInputs(emptyReply, emptySchema).isOk(), true)
 
         // fixed Chat choice errors keep the root usage decoded before choices
         try {
@@ -1185,7 +1212,7 @@ class Llm4CjV02Tests {
         let native = nativeReplayFromPayload(LlmWireProtocol.Messages, "anthropic.messages.v1", "thinking", parseWireJson("{\"type\":\"thinking\",\"thinking\":\"why\",\"signature\":\"sig\"}"), modelConstraint: Some("claude"))
         let restored = LlmWireNativeReplayBlock.restore(native.snapshot())
         @Expect(restored.dialectId, "anthropic.messages.v1")
-        @Expect(restored.payload()["signature"].string, "sig")
+        @Expect(restored.payload()["signature"].text, "sig")
         expectLlmError("llm.native_replay_incomplete", { => let _ = LlmWireNativeReplayBlock.restore(native.snapshot().replace("\"complete\":true", "\"complete\":false")) })
         expectLlmError("llm.native_replay_incomplete", { => let _ = LlmWireNativeReplayBlock.restore(native.snapshot().replace("\"complete\":true", "\"complete\":\"yes\"")) })
         expectLlmError("llm.native_replay_model_mismatch", { => let _ = anthropic.encodeRequest(LlmWireRequest("other", [LlmWireMessage(LlmWireRole.Assistant, [LlmWireBlock.NativeReplay(restored)])], maxOutputTokens: Some(2048))) })
