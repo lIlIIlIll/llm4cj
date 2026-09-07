@@ -412,6 +412,20 @@ class Llm4CjV02Tests {
             case LlmWireResult.Ok(_) => @Fail("expected stream_terminal_missing")
         }
 
+        // non-integer logprob byte fails bounded
+        let logprobCodec = LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect())
+        try {
+            let _ = logprobCodec.decodeResponse("{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"x\",\"logprobs\":[{\"token\":\"x\",\"logprob\":-1,\"bytes\":[1.5]}]}]}]}")
+            @Fail("expected llm.integer_invalid")
+        } catch (error: LlmWireError) {
+            @Expect(error.code, "llm.integer_invalid")
+        }
+
+        // empty-object schema: zero-iteration scan stays valid
+        let emptySchema = [LlmWireTool("read_file", "", testJson("{}"))]
+        let emptyReply = LlmWireReply(responseId: "r", model: "m", blocks: [LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock("c19", "read_file", LlmWireToolArguments.Complete(testJson("{}"))))])
+        @Expect(validateReplyToolInputs(emptyReply, emptySchema).isOk(), true)
+
         // fixed Chat choice errors keep the root usage decoded before choices
         try {
             let _ = codec.decodeResponse("{\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":5}}],\"usage\":{\"prompt_tokens\":14,\"completion_tokens\":3}}")

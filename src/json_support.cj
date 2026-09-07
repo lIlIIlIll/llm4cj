@@ -86,7 +86,8 @@ extend JsonNode {
         let array = asArray()
         let result = ArrayList<JsonNode>()
         for (index in 0..array.size()) {
-            result.add(array.get(index).getOrThrow())
+            let node = array.get(index).getOrThrow()
+            result.add(node)
         }
         result.toArray()
     } }
