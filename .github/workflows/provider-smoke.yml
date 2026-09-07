@@ -33,7 +33,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "${TRUSTED_SHA}"
           test "${REQUESTED_SHA}" = "${TRUSTED_SHA}"
       - name: Setup latest stable Cangjie
-        uses: Zxilly/setup-cangjie@f959b3d1078c92173ea67d398f293727639000f7
+        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571
         with:
           channel: sts
           version: latest
@@ -46,7 +46,7 @@ jobs:
           PROVIDER_SMOKE_CONFIG: ${{ secrets.PROVIDER_SMOKE_CONFIG }}
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
         run: scripts/provider_smoke.sh
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: provider-smoke-${{ matrix.dialect }}
           path: provider-smoke-${{ matrix.dialect }}.json
