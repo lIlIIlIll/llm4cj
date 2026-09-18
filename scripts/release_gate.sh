@@ -103,6 +103,17 @@ PY
   target/release/bin/main
 )
 
+python3 - <<'PY2'
+import pathlib
+import tomllib
+
+manifest = tomllib.loads(pathlib.Path("cjpm.toml").read_text())
+for section in ("dependencies", "test-dependencies"):
+    dependency = manifest.get(section, {}).get("yjson")
+    if not isinstance(dependency, dict) or dependency.get("tag") != "0.1.0" or "branch" in dependency:
+        raise SystemExit(f"cjpm.toml [{section}] yjson must select tag 0.1.0")
+PY2
+
 yjson_commit=$(grep -E '^ *yjson = ' cjpm.lock | grep -Eo 'commitId = "[0-9a-f]{40}"' | grep -Eo '[0-9a-f]{40}')
 yjson_tag_commit=$(git ls-remote https://github.com/lIlIIlIll/yjson.git 'refs/tags/0.1.0' | grep -Eo '^[0-9a-f]{40}')
 if [[ -z "$yjson_commit" ]]; then
