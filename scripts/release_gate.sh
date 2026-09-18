@@ -104,13 +104,13 @@ PY
 )
 
 yjson_commit=$(grep -E '^ *yjson = ' cjpm.lock | grep -Eo 'commitId = "[0-9a-f]{40}"' | grep -Eo '[0-9a-f]{40}')
-yjson_main_head=$(git ls-remote https://github.com/lIlIIlIll/yjson.git main | grep -Eo '^[0-9a-f]{40}')
+yjson_tag_commit=$(git ls-remote https://github.com/lIlIIlIll/yjson.git 'refs/tags/0.1.0' | grep -Eo '^[0-9a-f]{40}')
 if [[ -z "$yjson_commit" ]]; then
   printf 'cjpm.lock does not record a resolved yjson commit\n' >&2
   exit 1
 fi
-if [[ "$yjson_commit" != "$yjson_main_head" ]]; then
-  printf 'yjson dependency is not at the head of yjson main: lock=%s main=%s\n' "$yjson_commit" "$yjson_main_head" >&2
+if [[ "$yjson_commit" != "$yjson_tag_commit" ]]; then
+  printf 'yjson dependency is not pinned to tag 0.1.0: lock=%s tag=%s\n' "$yjson_commit" "$yjson_tag_commit" >&2
   exit 1
 fi
 
