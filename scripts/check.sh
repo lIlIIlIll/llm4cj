@@ -11,6 +11,7 @@ python3 scripts/check_api_compat.py
 python3 scripts/test_quality_gates.py
 python3 scripts/check_provider_smoke_security.py
 python3 scripts/check_fixtures.py
+python3 scripts/check_transcript_fixtures.py
 cjpm clean
 cjpm check
 cjpm build

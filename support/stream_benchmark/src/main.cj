@@ -10,7 +10,7 @@ func repeatedAscii(size: Int64): String {
 }
 
 func benchmark(name: String, fragmentBytes: Int64, totalBytes: Int64): Unit {
-    let decoder = anthropicMessagesCodec(anthropicMessagesModelProfile("claude")).newStreamDecoder()
+    let decoder = anthropicMessagesCodec(anthropicMessagesModelProfile("claude", transcriptCapabilities: LlmWireTranscriptCapabilities("anthropic.messages.v1", "1"))).newStreamDecoder()
     let fragment = repeatedAscii(fragmentBytes)
     let argumentEnvelopeBytes: Int64 = 12
     let payloadBytes = if (totalBytes > argumentEnvelopeBytes) { totalBytes - argumentEnvelopeBytes } else { 0 }

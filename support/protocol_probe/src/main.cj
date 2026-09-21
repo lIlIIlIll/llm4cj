@@ -7,12 +7,13 @@ import std.io.*
 
 func codecFor(name: String): LlmWireCodec {
     match (name) {
-        case "openai-responses" => openAiResponsesCodec(openAiResponsesModelProfile("probe-model"), provider: name)
-        case "openai-chat" => openAiChatCodec(openAiChatModelProfile("probe-model"), provider: name)
-        case "anthropic-messages" => anthropicMessagesCodec(anthropicMessagesModelProfile("probe-model"), provider: name)
-        case "deepseek-responses" => deepSeekResponsesCodec(deepSeekResponsesModelProfile("probe-model"), provider: name)
-        case "deepseek-chat" => deepSeekChatCodec(deepSeekChatModelProfile("probe-model"), provider: name)
-        case "deepseek-messages" => deepSeekMessagesCodec(deepSeekMessagesModelProfile("probe-model"), provider: name)
+        case "openai-responses" => openAiResponsesCodec(openAiResponsesModelProfile("probe-model", transcriptCapabilities: LlmWireTranscriptCapabilities("openai.responses.v1", "1")), provider: name)
+        case "openai-chat" => openAiChatCodec(openAiChatModelProfile("probe-model", transcriptCapabilities: LlmWireTranscriptCapabilities("openai.chat.v1", "1")), provider: name)
+        case "anthropic-messages" => anthropicMessagesCodec(anthropicMessagesModelProfile("probe-model", transcriptCapabilities: LlmWireTranscriptCapabilities("anthropic.messages.v1", "1")), provider: name)
+        case "deepseek-responses" => deepSeekResponsesCodec(deepSeekResponsesModelProfile("probe-model", transcriptCapabilities: LlmWireTranscriptCapabilities("deepseek.responses.v1", "1")), provider: name)
+        case "deepseek-chat" => deepSeekChatCodec(deepSeekChatModelProfile("probe-model", transcriptCapabilities: LlmWireTranscriptCapabilities("deepseek.chat.v1", "1")), provider: name)
+        case "deepseek-messages" => deepSeekMessagesCodec(deepSeekMessagesModelProfile("probe-model", transcriptCapabilities: LlmWireTranscriptCapabilities("deepseek.messages.v1", "1")), provider: name)
+        case "kimi-chat" => kimiChatCodec(kimiChatModelProfile("probe-model", transcriptCapabilities: LlmWireTranscriptCapabilities("kimi.chat.v1", "1")), provider: name)
         case _ => throw IllegalArgumentException("unknown dialect: " + name)
     }
 }

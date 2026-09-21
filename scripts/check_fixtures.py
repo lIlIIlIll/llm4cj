@@ -17,6 +17,7 @@ ALLOWED_SOURCE_HOSTS = {
     "platform.openai.com",
     "docs.anthropic.com",
     "api-docs.deepseek.com",
+    "platform.kimi.ai",
 }
 
 
@@ -26,8 +27,8 @@ def main() -> None:
     executable = PROBE / "target/release/bin/main"
     stream_executable = STREAM_PROBE / "target/release/bin/main"
     records = sorted(FIXTURES.glob("*.json"))
-    if len(records) != 6:
-        raise SystemExit(f"expected six provider fixtures, found {len(records)}")
+    if len(records) != 7:
+        raise SystemExit(f"expected seven provider fixtures, found {len(records)}")
 
     with tempfile.TemporaryDirectory(prefix="llm4cj-fixtures-") as raw:
         temporary = Path(raw)
@@ -47,8 +48,8 @@ def main() -> None:
 
         request_records = sorted((FIXTURES / "requests").glob("*.json"))
         stream_records = sorted((FIXTURES / "streams").glob("*.json"))
-        if len(request_records) != 6 or len(stream_records) != 6:
-            raise SystemExit("expected six request and six stream fixtures")
+        if len(request_records) != 7 or len(stream_records) != 7:
+            raise SystemExit("expected seven request and seven stream fixtures")
         for fixture in request_records:
             dialect = fixture.stem
             encoded = subprocess.run(

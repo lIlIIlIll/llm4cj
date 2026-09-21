@@ -184,9 +184,10 @@ def main() -> int:
         sorted((ROOT / "fixtures").glob("*.json"))
         + sorted((ROOT / "fixtures/requests").glob("*.json"))
         + sorted((ROOT / "fixtures/streams").glob("*.json"))
+        + sorted((ROOT / "fixtures/transcripts").glob("*.json"))
     )
-    if len(fixtures) != 18:
-        raise SystemExit(f"expected six response, six request, and six stream dialect fixtures, found {len(fixtures)}")
+    if len(fixtures) != 24:
+        raise SystemExit(f"expected seven response, seven request, seven stream, and three transcript fixtures, found {len(fixtures)}")
     for path in fixtures:
         digest.update(path.relative_to(ROOT / "fixtures").as_posix().encode("utf-8") + b"\0" + path.read_bytes() + b"\0")
     actual_digest = digest.hexdigest()
