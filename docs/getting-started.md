@@ -1,6 +1,6 @@
 # 安装与首个程序
 
-当前 `main` 是 `v0.1.1` 候选源码，尚无对应 release tag。开发验证使用相邻 checkout 的固定路径：
+当前源码版本是 **v0.2.0**，要求 Cangjie `>= 1.1.0`。开发验证可使用相邻 checkout 的固定路径：
 
 ```toml
 [dependencies]
@@ -16,13 +16,13 @@ import llm4cj.*
 import std.convert.*
 
 main(): Int64 {
-    let codec = openAiResponsesCodec(openAiResponsesModelProfile("demo-model"))
+    let codec = openAiResponsesCodec(openAiResponsesModelProfile("demo-model", transcriptCapabilities: LlmWireTranscriptCapabilities("openai.responses.v1", "1")))
     let request = LlmWireRequest(
         "demo-model",
-        [LlmWireMessage(
+        LlmWireTranscript(LlmWireInitialContext(), items: [LlmWireInputItem.Message(LlmWireMessage(
             LlmWireRole.User,
             [LlmWireBlock.Text(LlmWireTextBlock("你好"))]
-        )]
+        ))])
     )
     let payload = match (codec.encodeRequest(request).materialize()) {
         case LlmWireResult.Ok(value) => value
@@ -51,4 +51,10 @@ main(): Int64 {
 }
 ```
 
-预期输出是 `你好，仓颉！`。程序不创建 HTTP client。`payload.body` 是 UTF-8 bytes，`payload.headers` 包含 codec 要求的全部 header。把这两个值交给应用自己的传输层，再把响应交回 codec。
+预期输出是 `你好，仓颉！`。程序不创建 HTTP client：`payload.body` 是 UTF-8 bytes，`payload.headers` 包含 codec 要求的全部 header。应用把这两个值交给自己的传输层，再把响应交回 codec。
+
+profile 工厂必须显式绑定 transcript capability identity：
+
+- 静态请求使用 `LlmWireTranscriptCapabilities("openai.responses.v1", "1")`。
+- Responses、Anthropic 和 Kimi 的动态更新必须在 profile entries 中声明对应 operation/encoding。
+- 不要用 provider 名称、URL 子串或 `tools: true` 推导动态能力。

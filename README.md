@@ -1,27 +1,27 @@
 # llm4cj
 
 [![Tests passing](https://github.com/lIlIIlIll/llm4cj/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lIlIIlIll/llm4cj/actions/workflows/ci.yml)
-[![Coverage](https://codecov.io/gh/lIlIIlIll/llm4cj/branch/main/graph/badge.svg)](https://codecov.io/gh/lIlIIlIll/llm4cj)
+[![Coverage](https://codecov.io/gh/lIlIIlIll/llm4cj/branch/main/graph/badge.svg)](https://codecov.io/gh/lIlIIlIll/gh/lIlIIlIll/llm4cj)
 [![Release](https://img.shields.io/github/v/release/lIlIIlIll/llm4cj)](https://github.com/lIlIIlIll/llm4cj/releases)
 [![Cangjie](https://img.shields.io/badge/Cangjie-%3E%3D%201.1.0-f25c2a)](https://cangjie-lang.cn/)
 [![License](https://img.shields.io/github/license/lIlIIlIll/llm4cj)](LICENSE)
 
-`llm4cj` 是仓颉的 LLM wire codec 与有界流式传输基础库。它把统一请求映射到明确的协议和 provider dialect，并把固定响应或增量 SSE 事件还原为统一、可验证的状态。
+`llm4cj` 是仓颉的 provider-neutral LLM wire codec 与有界流式传输基础库。它把不可变的初始上下文和有序 transcript 映射到明确的 protocol、dialect、model profile，并把固定响应或增量 SSE 事件还原为统一、可验证的状态。
 
-当前成熟度是 **Beta**：适合已经固定 endpoint、dialect、model capability 并拥有回归样本的集成。它不承诺任意 “OpenAI-compatible” 或 “Anthropic-compatible” endpoint 都可直接替换。
+当前源码版本是 **v0.2.0**，包含一次有意的 breaking cutover。稳定 API 不再暴露 instructions/messages/tools 三个平行请求字段，也不保留 v0.1 的 builder 或兼容转发入口。
 
-本库不管理 API key、endpoint、HTTP client、retry policy、model catalog 或 agent loop。应用负责网络与策略；`llm4cj` 只负责协议边界。
+本库不管理 API key、endpoint、HTTP client、retry policy、model catalog 或 agent loop。应用负责网络与策略；`llm4cj` 负责 canonical wire semantics、严格编码/解码、时序工具状态、bounded framing 和确定性错误。
 
 ## 快速开始
 
-当前 `main` 是 `v0.2.0` 候选源码，尚未发布对应 tag；manifest 要求 Cangjie `>= 1.1.0`。在 tag 发布前，从相邻 checkout 以固定本地路径验证：
+下面的完整程序完全离线。它使用 transcript/profile API 编码请求、解码成功终态并打印文本；HTTP 请求由应用自己的传输层发送。
+
+`cjpm.toml` 依赖示例：
 
 ```toml
 [dependencies]
 llm4cj = { path = "../llm4cj" }
 ```
-
-下面的完整程序完全离线。它从推荐的 Responses dialect 开始，编码请求、解码成功终态并打印文本。
 
 ```cj
 package llm4cj_external_consumer
@@ -30,13 +30,13 @@ import llm4cj.*
 import std.convert.*
 
 main(): Int64 {
-    let codec = openAiResponsesCodec(openAiResponsesModelProfile("demo-model"))
+    let codec = openAiResponsesCodec(openAiResponsesModelProfile("demo-model", transcriptCapabilities: LlmWireTranscriptCapabilities("openai.responses.v1", "1")))
     let request = LlmWireRequest(
         "demo-model",
-        [LlmWireMessage(
+        LlmWireTranscript(LlmWireInitialContext(), items: [LlmWireInputItem.Message(LlmWireMessage(
             LlmWireRole.User,
             [LlmWireBlock.Text(LlmWireTextBlock("你好"))]
-        )]
+        ))])
     )
     let payload = match (codec.encodeRequest(request).materialize()) {
         case LlmWireResult.Ok(value) => value
@@ -71,24 +71,21 @@ main(): Int64 {
 你好，仓颉！
 ```
 
-## 设计要点
+## 核心契约
 
-- `LlmWireCodec` 同时绑定 protocol、dialect、model capabilities 和 provider 名称；请求始终严格校验，避免只看 envelope 就猜 provider 语义。
-- `newRequestBuilder` 复用 codec 与 model profile，字段 setter 立即拒绝局部非法值，`build` 再验证完整请求。system 与 developer instructions 按添加顺序编码；是否启用 streaming 由 `encodeRequest(..., streaming: true)` 决定，不保存在可复用请求中。
-- thinking 默认是 `ProviderDefault`，不会主动发送字段；显式能力若未声明或 dialect 无法表达，会直接报错。
-- global terminal 区分 `Completed`、`ProviderFailed` 与 `Cancelled`；每个 choice 再区分 completed、incomplete 和 refused，避免把生成截断或拒绝误当成传输失败。
-- Messages 的已知 `thinking` 与 `redacted_thinking` 以 dialect-bound native state 完整保存，只能在同一 dialect 中回放；未知语义 block 返回 `Unsupported`，不会伪装成成功结果。
-- public stream decoder 直接接收网络字节，统一拥有 UTF-8、SSE framing、协议状态机和 canonical assembler；底层 SSE 支持 CR、LF、CRLF、BOM、空 `data`、持久 `id`/`retry`、完整事件限额和 EOF 丢弃未结束事件。
-- tool arguments 区分完整对象、非法 JSON、非法 shape 与流式 partial；只有完整 JSON object 能进入成功终态或 continuation。严格校验还拒绝孤立、重复、未来匹配、不完整批次，以及 pending call 后的普通对话。
-- canonical message 不允许为空；工具结果 turn 只能包含完整闭合当前 pending calls 的 ToolResult，不能与普通文本交错。ToolResult content 是有序的 text 或 image 列表。ToolCall name 与工具定义使用同一语法。
-- Responses 流维护 `item_id` 到 `call_id`/name 的状态映射；DeepSeek Chat 将 provider-native `reasoning_content` 与同一 assistant message 的 text/tool calls 一起回放。
+- `LlmWireRequest(model, transcript, ...)` 只接受 `LlmWireTranscript`；`LlmWireTranscript` 保存初始 instructions/tools 和按发生顺序排列的 `LlmWireInputItem`。
+- `LlmWireTool` 的本地 `name/version/description/inputSchema` 共同形成定义身份；wire 不发送本地 version。`ToolActivation`、`ToolDeactivation` 和 `ToolReplacement` 都要求精确 ref 或显式 provider capability。
+- transcript、模型数组、快照和公开 JSON 值都以 defensive copy/canonical representation 暴露。`snapshot()` 与 `restore()` 使用严格的 `llm4cj.transcript` version 1 格式。
+- 固定响应和流式终态共享 usage 语义。缺失计数是 `None`，provider 明确返回零才是 `Some(0)`；cache read/write 还保留协议、dialect 和 field-path 来源。
+- 无法表达的 provider 语义 fail closed：不会 collapse transcript、静默删除字段、换协议、伪造 tool-search 回合或把截断当成功。
 
-内置 dialect：`openai.responses.v1`、`openai.chat.v1`、`anthropic.messages.v1`、`deepseek.responses.v1`、`deepseek.chat.v1`、`deepseek.messages.v1`。稳定包只通过六个 model-profile/codec 工厂创建 codec。自定义声明式 dialect、cache pre-warm、custom tool 和 grammar 位于 `llm4cj.experimental`，不享有 v0.2.0 稳定兼容承诺。model 是否真正支持 thinking、tools 或 structured output，仍应由调用方提供 capability。
+内置 profile/dialect：`openai.responses.v1`、`openai.chat.v1`、`anthropic.messages.v1`、`deepseek.responses.v1`、`deepseek.chat.v1`、`deepseek.messages.v1`、`kimi.chat.v1`。每个 profile 都必须传入 `LlmWireTranscriptCapabilities(endpointProfileId, contractVersion, entries:)`；空 entries 只表示静态 transcript，不表示动态操作已获准。
+
+Responses 的 `additional_tools`、Anthropic 的 system/tool reference 更新和 Kimi 的 tools-only system message 只在绑定的 endpoint/model profile 中开启。Anthropic required headers 由 dialect contract 产生；Kimi 使用独立 Chat contract 和 K3 schema/name grammar。真实 provider/cache 证据不由离线 fixture 冒充。
 
 ## 文档
 
 - [安装与首个程序](docs/getting-started.md)
-- [实验 API](docs/experimental.md)
 - [协议与 dialect](docs/choosing-a-protocol.md)
 - [请求与响应](docs/requests-and-replies.md)
 - [流式与传输](docs/streaming-and-transport.md)

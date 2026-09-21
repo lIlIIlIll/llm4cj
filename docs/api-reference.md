@@ -1,47 +1,156 @@
 # API reference
 
-本页列出 v0.1.1 的 public declaration。字段和构造参数以源码为准；语义见主题文档。
+本页描述 v0.2.0 public declaration。参数和字段以源码与 `contract/public-api.txt` 为准；语义见主题文档。
 
-## Codec 与 dialect
+## 请求与 transcript
 
-`LlmWireCodec`、`LlmWireCapabilities`、`LlmWireDialect`、`LlmWireDialectContract`、`LlmWireBuiltinDialect`、`LlmWireRequestStyle`、`LlmWireOutputTokenField`、`LlmWireStructuredOutputMode`、`LlmWireParallelToolStyle`、`LlmWireToolErrorStyle`、`LlmWirePromptCacheStyle`、`LlmWireUsageMergeStyle`、`openAiResponsesDialect`、`openAiChatDialect`、`anthropicMessagesDialect`、`deepSeekResponsesDialect`、`deepSeekChatDialect`、`deepSeekMessagesDialect`。
+`LlmWireRequest` 的固定构造入口是 `LlmWireRequest(model, transcript, ...)`。`LlmWireTranscript` 包含 `LlmWireInitialContext` 和有序 `LlmWireInputItem`；工具相关 item 使用精确的 `LlmWireToolRef`。`LlmWireTranscriptBuilder` 只追加不可变 item，`build()` 返回完整语义校验结果。`snapshot()`/`restore()` 使用严格 version 1 canonical JSON。
 
-`LlmWireCodec.encodeRequest` 返回 opaque `LlmWirePreparedRequest`。调用 `materialize` 后才得到 `LlmWireMaterializedRequest`。后者公开 UTF-8 `body` bytes 和合并后的 headers。未解析的 feature requirement、冲突 header 或不安全 header 会返回 `LlmWireResult.Err`。
+`LlmWireTool` 的 version 只用于本地身份；`LlmWireToolDeclaration` 还保存 `Active` 或 `Deferred` visibility。`effectiveTools()` 是 transcript 末端 active view，不能由调用者独立赋值。
 
-`LlmWireHttpResponse` 保存 status、headers 和有界读取后的 body bytes。`decodeResponse(LlmWireHttpResponse)` 返回 `LlmWireResult<LlmWireResponseState>`。2xx body 进入协议 decoder；非 2xx provider 错误保持为 `Terminal(ProviderFailed)`，并保留 status、`Retry-After` 和 provider request ID。
+## Profile、dialect 与 prepared request
 
-## 请求、block 与响应
+codec 工厂包括 Responses、Chat Completions、Anthropic Messages、DeepSeek 三个 dialect，以及独立的 Kimi Chat。每个 model profile 都要求 `LlmWireTranscriptCapabilities`，其中 endpoint profile ID、contract version 和 operation encoding 必须一致。`LlmWireDialectContract` 还冻结 required headers 和 `LlmWireToolNameGrammar`。
 
-`LlmWireProtocol`、`LlmWireRole`、`LlmWireInstructionRole`、`LlmWireInstruction`、`LlmWireInputModality`、`LlmWireImageSourceKind`、`LlmWireImageDetail`、`LlmWireReasoningEffort`、`LlmWireThinkingMode`、`LlmWireServiceTier`、`LlmWireGenerationSpeed`、`LlmWirePromptCacheLifetime`、`LlmWirePromptCache`、`LlmWireToolChoice`、`LlmWireOpaqueCompletion`、`LlmWireNativeReplayScope`、`LlmWireImageBlock`、`LlmWireTextBlock`、`LlmWireReasoningBlock`、`LlmWireToolArguments`、`LlmWireToolCallBlock`、`LlmWireToolResultContent`、`LlmWireToolResultBlock`、`LlmWireRefusalBlock`、`LlmWireNativeReplayBlock`、`LlmWireOpaqueBlock`、`LlmWireBlock`、`LlmWireOutputBlock`、`LlmWireOutputPhase`、`LlmWireCitation`、`LlmWireCitationKind`、`LlmWireAnnotation`、`LlmWireTokenLogprob`、`LlmWireTokenLogprobCandidate`、`LlmWireMessage`、`LlmWireTool`、`LlmWireJson`、`LlmWireJsonSchema`、`LlmWireStructuredOutput`、`LlmWireRequest`、`LlmWireRequestBuilder`、`LlmWireUsage`、`LlmWireChoice`、`LlmWireChoiceOutcome`、`LlmWireReply`、`LlmWirePendingReply`、`LlmWireIncompleteReason`、`LlmWireFailureKind`、`LlmWireFailure`、`LlmWireTerminal`、`LlmWireResponseState`。
+`encodeRequest()` 先验证完整 transcript，再返回 `LlmWirePreparedRequest`。`materialize()` 才产生 `LlmWireMaterializedRequest.body` 与 headers；未解决 requirement、header 冲突、未知 model capability 或不可表达的时序操作均不产生 sendable bytes。
 
-`LlmWireRequest.instructions` 保留 system 与 developer instruction 的顺序。Messages dialect 不表示 developer role，因此在构建请求时返回 `Unsupported`。`LlmWireToolResultBlock.content` 是 `LlmWireToolResultContent` 数组，每个元素是 text 或 image。
+## Usage、failure 与流式
 
-`LlmWireDialectContract.toolErrorStyle` 声明工具失败语义的编码策略：`NativeField`（Anthropic Messages，发送原生 `is_error` 字段）、`ContentMarker`（DeepSeek Messages，失败结果在 `content` 前插入固定 text block `[tool_error]`，并不再发送被 provider 忽略的 `is_error`，属于有损兼容）或 `Unsupported`（Messages dialect 默认，`isError=true` 会以 `llm.tool_result_error_semantics_unsupported` 拒绝）。
+`LlmWireUsage` 的计数使用 Option 语义；`LlmWireUsageSource` 记录 protocol、dialect ID 和 provider field path。`LlmWireFailure.usage` 在 provider error、insufficient resource、cancel 和后续 validation failure 中保留已观测 usage。
 
-`validateReplyToolInputs(reply, tools, mode:)` 在 wire-valid reply 与工具执行之间提供协议无关的输入契约屏障，模式由 `LlmWireToolInputValidationMode` 声明：`Disabled` 不做任何检查，`ValidateSupportedSubset` 跳过不支持的 schema feature，`Strict` 以 `llm.tool_schema_unsupported` 拒绝。支持 `type`、`properties`、`required`、`additionalProperties`（仅 boolean 形式）、`items` 与 `enum`；其余关键字（含未知关键字）一律视为 unsupported。违例以 `llm.tool_arguments_schema_violation` 返回，携带 `toolCallId` 与有界 diagnostic（`tool_name`、`schema_path`、`instance_path`、`violation`、`expected`、`actual`），按 block 顺序与固定关键字优先级报告第一个违例。未声明工具的调用与参数不是完整 JSON object 的调用会被跳过。
+固定 response、HTTP failure 和 `LlmWireStreamDecoder` 共享 `LlmWireResponseState`/`LlmWireTerminal`。SSE framing、event、body、retained state、semantic block、tool-call 和 diagnostic 都有独立上限。
 
-`LlmWireCapabilities` 由 `input`、`thinking`、`tools`、`output` 和 `cache` 五个不可变能力对象组成。`input.modalities` 默认为仅 `Text`。图片 source 支持 `Url`、`Base64` 与 `File`；是否可用由具体 model profile 决定。
+## Public declarations
 
-对应类型是 `LlmWireInputCapabilities`、`LlmWireThinkingCapabilities`、`LlmWireToolCapabilities`、`LlmWireOutputCapabilities` 和 `LlmWireCacheCapabilities`。
-
-`LlmWireModelProfile` 把模型名、dialect compatibility ID 和模型能力绑定在一起。工厂为 `openAiResponsesModelProfile`、`openAiChatModelProfile`、`anthropicMessagesModelProfile`、`deepSeekResponsesModelProfile`、`deepSeekChatModelProfile` 和 `deepSeekMessagesModelProfile`。对应的推荐 codec 入口为 `openAiResponsesCodec`、`openAiChatCodec`、`anthropicMessagesCodec`、`deepSeekResponsesCodec`、`deepSeekChatCodec` 和 `deepSeekMessagesCodec`。codec 会拒绝与 profile 不一致的模型名或 dialect。
-
-`LlmWireCodec` 的构造器不是稳定 public API；稳定调用方必须使用上述六个工厂。自定义 dialect、cache pre-warm、custom tool 与 grammar 见[实验 API](experimental.md)。
-
-调用 `codec.newRequestBuilder()` 可复用 profile 中的模型和 codec 校验。builder 的 setter 检查局部输入，`build()` 返回 `LlmWireResult<LlmWireRequest>` 并执行完整请求校验。调用 `codec.encodeRequest(request, streaming: true)` 才会发送 streaming 字段；同一个 request 可用于固定响应和流式响应。
-
-公开 JSON 值使用不可变的 `LlmWireJson`，其类型由 `LlmWireJsonKind` 表示，对象工厂接收 `LlmWireJsonField`。它保留 canonical JSON 文本，并提供 object、array、number、string、boolean 和 null 工厂；`yjson.JsonNode` 不再出现在 public API 中。
-
-请求计划与 header 协调 API 为 `LlmWireHeader`、`LlmWireFeatureRequirement`、`LlmWireRequirementState`、`LlmWireRequirementResolver`、`LlmWirePreparedRequest` 和 `LlmWireMaterializedRequest`。
-
-## 流式
-
-`LlmWireStreamBlockKind`、`LlmWireEventIdentity`、`LlmWireToolIdentity`、`LlmWireEvent`、`LlmWireStreamLimits`、`LlmWireSseLimits`、`LlmWireStreamUpdate`、`LlmWireStreamDecoder`。
-
-`LlmWireStreamDecoder.push` 接收 `String` 或 `Array<Byte>`，返回 `LlmWireResult<LlmWireStreamUpdate>`；`finish` 处理 EOF 并要求协议终态，`cancel` 幂等返回 `Cancelled`。`LlmWireEvent` 是 payload enum，包含 text/reasoning/refusal delta、tool identity、citation、usage、choice completion 与 terminal。
-
-`LlmWireStreamLimits` 分别限制 total semantic、text、reasoning、tool arguments、retained state、block、tool call 与输入 provider event 数量；`LlmWireSseLimits` 限制 framing 与非 2xx error body。所有值在 decoder 构造后不可变。`maxEvents` 在每次 provider event 消费时计数，即使该事件不产生 public semantic event。
-
-## 传输
-
-`LlmWireErrorKind`、`LlmTransportPhase`、`LlmWireError`、`LlmWireResult`、`SseEvent`、`SseDecoder`、`parseSseRetryMillis`、`parseRetryAfterMillis`、`extractRetryAfterMillis`、`sseDataLine`、`readLlmHttpBody`。
+- `LlmWireCacheCapabilities`
+- `LlmWireCapabilities`
+- `LlmWireChoice`
+- `LlmWireCitation`
+- `LlmWireCodec`
+- `LlmWireDialectContract`
+- `LlmWireError`
+- `LlmWireEventIdentity`
+- `LlmWireFailure`
+- `LlmWireFeatureRequirement`
+- `LlmWireHeader`
+- `LlmWireHttpResponse`
+- `LlmWireImageBlock`
+- `LlmWireInitialContext`
+- `LlmWireInputCapabilities`
+- `LlmWireInstruction`
+- `LlmWireJson`
+- `LlmWireJsonField`
+- `LlmWireJsonSchema`
+- `LlmWireMaterializedRequest`
+- `LlmWireMessage`
+- `LlmWireModelProfile`
+- `LlmWireNativeReplayBlock`
+- `LlmWireOpaqueBlock`
+- `LlmWireOutputCapabilities`
+- `LlmWirePreparedRequest`
+- `LlmWireReasoningBlock`
+- `LlmWireRefusalBlock`
+- `LlmWireReply`
+- `LlmWireRequest`
+- `LlmWireSseLimits`
+- `LlmWireStreamDecoder`
+- `LlmWireStreamLimits`
+- `LlmWireStreamUpdate`
+- `LlmWireTextBlock`
+- `LlmWireThinkingCapabilities`
+- `LlmWireTokenLogprob`
+- `LlmWireTokenLogprobCandidate`
+- `LlmWireTool`
+- `LlmWireToolCallBlock`
+- `LlmWireToolCapabilities`
+- `LlmWireToolDeclaration`
+- `LlmWireToolIdentity`
+- `LlmWireToolRef`
+- `LlmWireToolResultBlock`
+- `LlmWireTranscript`
+- `LlmWireTranscriptBuilder`
+- `LlmWireTranscriptCapabilities`
+- `LlmWireTranscriptCapability`
+- `LlmWireUsage`
+- `LlmWireUsageSource`
+- `SseDecoder`
+- `SseEvent`
+- `LlmTransportPhase`
+- `LlmWireAnnotation`
+- `LlmWireBlock`
+- `LlmWireBuiltinDialect`
+- `LlmWireChoiceOutcome`
+- `LlmWireCitationKind`
+- `LlmWireErrorKind`
+- `LlmWireEvent`
+- `LlmWireFailureKind`
+- `LlmWireGenerationSpeed`
+- `LlmWireImageDetail`
+- `LlmWireImageSourceKind`
+- `LlmWireIncompleteReason`
+- `LlmWireInputItem`
+- `LlmWireInputModality`
+- `LlmWireInstructionRole`
+- `LlmWireJsonKind`
+- `LlmWireNativeReplayScope`
+- `LlmWireOpaqueCompletion`
+- `LlmWireOutputBlock`
+- `LlmWireOutputPhase`
+- `LlmWireOutputTokenField`
+- `LlmWireParallelToolStyle`
+- `LlmWirePendingReply`
+- `LlmWirePromptCache`
+- `LlmWirePromptCacheLifetime`
+- `LlmWirePromptCacheStyle`
+- `LlmWireProtocol`
+- `LlmWireReasoningEffort`
+- `LlmWireRequestStyle`
+- `LlmWireRequirementState`
+- `LlmWireResponseState`
+- `LlmWireResult`
+- `LlmWireRole`
+- `LlmWireServiceTier`
+- `LlmWireStreamBlockKind`
+- `LlmWireStructuredOutput`
+- `LlmWireStructuredOutputMode`
+- `LlmWireTerminal`
+- `LlmWireThinkingMode`
+- `LlmWireToolArguments`
+- `LlmWireToolChoice`
+- `LlmWireToolErrorStyle`
+- `LlmWireToolInputValidationMode`
+- `LlmWireToolNameGrammar`
+- `LlmWireToolResultContent`
+- `LlmWireToolVisibility`
+- `LlmWireTranscriptEncoding`
+- `LlmWireTranscriptOperation`
+- `LlmWireUsageMergeStyle`
+- `anthropicMessagesCodec`
+- `anthropicMessagesDialect`
+- `anthropicMessagesModelProfile`
+- `deepSeekChatCodec`
+- `deepSeekChatDialect`
+- `deepSeekChatModelProfile`
+- `deepSeekMessagesCodec`
+- `deepSeekMessagesDialect`
+- `deepSeekMessagesModelProfile`
+- `deepSeekResponsesCodec`
+- `deepSeekResponsesDialect`
+- `deepSeekResponsesModelProfile`
+- `extractRetryAfterMillis`
+- `kimiChatCodec`
+- `kimiChatDialect`
+- `kimiChatModelProfile`
+- `openAiChatCodec`
+- `openAiChatDialect`
+- `openAiChatModelProfile`
+- `openAiResponsesCodec`
+- `openAiResponsesDialect`
+- `openAiResponsesModelProfile`
+- `parseRetryAfterMillis`
+- `parseSseRetryMillis`
+- `readLlmHttpBody`
+- `sseDataLine`
+- `validateReplyToolInputs`
+- `LlmWireDialect`
+- `LlmWireRequirementResolver`

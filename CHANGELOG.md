@@ -2,6 +2,15 @@
 
 All notable changes are recorded here.
 
+## [0.2.0]
+
+- Replace parallel request fields and the v0.1 builder with an immutable ordered transcript and strict version-1 snapshots.
+- Bind transcript operations to endpoint/model profile capabilities and fail closed when a provider cannot represent an update.
+- Add native ordered mappings for OpenAI Responses additional tools, Anthropic Messages tool changes, and Kimi Chat dynamic tools.
+- Preserve usage unknown/zero semantics and cache read/write field provenance across fixed responses, streams, failures, and cancellation.
+- Add Kimi Chat fixtures, transcript fixtures, deterministic offline probes, and protected advisory cache evidence workflow.
+- This release intentionally breaks the v0.1 API; see [the migration guide](docs/migrating-from-v0.1.md).
+
 ## [0.1.1]
 
 - Replace protocol-only entry points with `LlmWireCodec`, explicit provider dialects, model capabilities, and strict-only validation.

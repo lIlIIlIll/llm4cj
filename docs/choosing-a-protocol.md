@@ -1,27 +1,21 @@
 # 协议与 dialect
 
-protocol 定义 envelope；dialect 定义 provider 对同一 envelope 的字段语义。两者必须匹配，否则 `LlmWireCodec` 构造失败。
+protocol 定义 envelope；dialect 定义 provider 对同一 envelope 的字段语义。codec 构造时冻结 protocol、compatibility ID、contract、profile 和 transcript capability identity。
 
-稳定包只通过六个命名 model-profile/codec 工厂创建 codec。自定义 contract 位于 `llm4cj.experimental`；它只能扩展已有三种协议族，不能使用六个内置 compatibility ID，也不能替换 JSON/SSE parser、terminal 规则或 canonical assembler。
-
-codec 构造时会冻结 dialect contract、protocol 与 compatibility identity。provider-native reasoning replay 仅对六个内置 dialect 开放；实验 custom dialect 只能声明 `ProviderDefault` thinking，避免出现请求可编码、响应却无法安全续轮的半闭合扩展。
-
-请求还会执行 dialect 组合校验。Anthropic 的手动 budget thinking 不允许 `Required` tool choice；adaptive thinking 不受该限制。DeepSeek Chat 显式启用 thinking 或 effort 时不得同时发送显式 `tool_choice`。DeepSeek Responses 的 tool choice 能力独立处理，不套用 Chat 限制。
-
-| protocol | 首选内置 dialect | 其他内置 dialect |
+| protocol | 内置 dialect | profile/codec 工厂 |
 | --- | --- | --- |
-| Responses | `openai.responses.v1` | `deepseek.responses.v1` |
-| Chat Completions | `openai.chat.v1` | `deepseek.chat.v1` |
-| Messages | `anthropic.messages.v1` | `deepseek.messages.v1` |
+| Responses | `openai.responses.v1` | `openAiResponsesModelProfile` / `openAiResponsesCodec` |
+| Responses | `deepseek.responses.v1` | `deepSeekResponsesModelProfile` / `deepSeekResponsesCodec` |
+| Chat Completions | `openai.chat.v1` | `openAiChatModelProfile` / `openAiChatCodec` |
+| Chat Completions | `deepseek.chat.v1` | `deepSeekChatModelProfile` / `deepSeekChatCodec` |
+| Chat Completions | `kimi.chat.v1` | `kimiChatModelProfile` / `kimiChatCodec` |
+| Messages | `anthropic.messages.v1` | `anthropicMessagesModelProfile` / `anthropicMessagesCodec` |
+| Messages | `deepseek.messages.v1` | `deepSeekMessagesModelProfile` / `deepSeekMessagesCodec` |
 
-新集成优先 Responses。只有 endpoint 明确要求 Chat Completions 或 Messages 时才切换。兼容名称不是行为承诺；调用方还必须根据具体模型提供 `LlmWireCapabilities`。
+不要因为两个 provider 共享 envelope 就复用错误的 encoder。Kimi Chat 不是 Kimi Messages/Responses；Kimi 的 max_completion_tokens、thinking、tool grammar、MFJS schema 和 reasoning replay 都由独立 contract 管理。
 
-未提供 capability 时，仅保证基础文本和 `ProviderDefault` thinking。任何图片、显式 thinking、tools、structured output、parallel tool calls、service tier 或 cache 选项都必须先声明支持。
+## Capability selection
 
-图片能力按模型声明，不按 provider 一刀切。`deepseek-v4-flash-vision-exp` 可在 Chat、Responses 与 Messages 中使用 URL、JPEG/PNG/GIF/WebP base64 或 Files API `file_id`；调用方必须在 `LlmWireCapabilities.input.modalities` 中声明 `Image`。未声明时统一返回 `llm.image_input_unsupported`。Messages 的 file source 会自动加入 `anthropic-beta: files-api-2025-04-14`。普通 DeepSeek Flash/Pro 不应声明该能力。
+未提供 model capability 时，只能使用 contract 允许的基础文本和 ProviderDefault controls。动态 transcript operation 必须同时满足 profile endpoint ID、contract version、model gate 和 operation encoding。缓存 capability 只表示 wire 可表达；它不证明 provider 的实时命中率。
 
-Chat Files API 的 wire shape 属于 dialect：OpenAI Chat 使用嵌套的 `{"type":"file","file":{"file_id":"..."}}`，DeepSeek Chat 使用 `{"type":"file","file_id":"..."}`。codec 不会因为两者共享 Chat envelope 而混用内容块结构。
-
-Anthropic Messages 的 automatic prompt cache 编码为顶层 `cache_control`。`ProviderDefault` 与 `FiveMinutes` 使用默认 5 分钟 TTL，`OneHour` 显式写入 `ttl: "1h"`；其他 lifetime 在发送前拒绝。稳定生成请求的 `maxOutputTokens` 必须为正数。cache pre-warm 位于实验包，并通过 request-aware exchange 将 `max_tokens: 0` 与预期的空内容、`stop_reason: "max_tokens"` 和 usage 绑定；普通生成请求不能模拟预热。
-
-DeepSeek Messages compatibility 仍不支持 `redacted_thinking`；合法但无法安全回放的响应返回 `Unsupported`。
+应用负责 endpoint、凭据、retry 和 model catalog。库不根据 URL 或 provider 名称猜测能力，也不在不同 protocol 之间 fallback。

@@ -20,7 +20,7 @@ Responses 只发出一次 `StreamStarted`，重复 `response.created`/`response.
 
 Responses 只有 completed choice 强制所有 item、part 与 function arguments 在 terminal 前闭合；`LlmWireChoiceOutcome.Incomplete` 可以保留 partial tool arguments，global `ProviderFailed` 不套用成功不变量。非成功 terminal 仍会校验 event/status、response identity，以及 terminal body 中实际提供的 streamed output，避免把 provider 明确失败误报成坏 wire。global terminal 只有 `Completed`、`ProviderFailed` 和 `Cancelled`；生成截断与拒绝属于 choice outcome。
 
-usage 的流式值不能被统一求和。`LlmWireDialectContract.usageMergeStyle` 明确选择 present-field replacement、monotonic absolute counters 或 delta accumulation；monotonic 回退、负数和溢出都会失败。固定与流式终态最终都通过同一 canonical assembler，内置六种 dialect 有逐字段等价回归。
+usage 的流式值不能被统一求和。`LlmWireDialectContract.usageMergeStyle` 明确选择 present-field replacement、monotonic absolute counters 或 delta accumulation；monotonic 回退、负数和溢出都会失败。固定与流式终态最终都通过同一 canonical assembler，内置七种 dialect（含 Kimi Chat）有逐字段等价回归，并保留 usage source 的 protocol/dialect/field path。
 
 `parseRetryAfterMillis` 支持 delta-seconds、IMF-fixdate、RFC 850 和 asctime；多个 `Retry-After` 由 `extractRetryAfterMillis` 选择较大的有效值。RFC850 当前年份使用常数时间 civil-date 换算，任意 `Int64` 时间输入不会触发逐年循环。
 

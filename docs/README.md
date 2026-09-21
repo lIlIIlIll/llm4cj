@@ -1,6 +1,6 @@
 # llm4cj 文档
 
-从[安装与首个程序](getting-started.md)开始。新集成优先使用 Responses，并显式选择 dialect 与 model capability。
+从[安装与首个程序](getting-started.md)开始。新集成使用 transcript-first request，并显式绑定 dialect、model profile 与 transcript capability。当前稳定版本是 v0.2.0。
 
 - [协议与 dialect](choosing-a-protocol.md)
 - [请求与响应](requests-and-replies.md)
@@ -12,4 +12,4 @@
 - [API reference](api-reference.md)
 - [架构](architecture.md)
 - [测试与发布](testing-and-releasing.md)
-- [v0.1.1 测试矩阵](v0.1.1-test-plan.md)
+- [历史 v0.1.1 测试矩阵](v0.1.1-test-plan.md)

@@ -1,15 +1,19 @@
 # Tools、thinking 与 structured output
 
-thinking mode 与 reasoning effort 是两个独立维度。mode 包含 `ProviderDefault`、`Disabled`、`Enabled`、`Budget` 和 `Adaptive`；effort 包含 `ProviderDefault`、`Minimal`、`Low`、`Medium`、`High`、`XHigh` 和 `Max`。显式值必须同时得到 model profile 和 dialect 支持，非法组合会在编码前失败。Anthropic 只有 adaptive mode 可携带 effort；DeepSeek Chat/Messages 只有 enabled mode 可携带 effort。DeepSeek Responses 把关闭和开启分别编码为 `reasoning.effort=none` 与默认 `high`。
+工具定义必须是 `LlmWireTool(name, version, description, inputSchema)`。name grammar 绑定 dialect：标准 dialect 是有界 ASCII 名称，Kimi Chat 是独立的 1–128 ASCII grammar；version 是 1–64 ASCII identity。`LlmWireToolRef` 必须精确命中 name/version，禁止 name-only 或 wildcard 引用。
 
-校验始终严格：tool call 必须属于 assistant，tool result 必须属于 user；call ID 必须非空且唯一，result 只能匹配此前尚未消费的 call，并且发送前不能留下未解决 call。非法、孤立或未来匹配的数据会失败，不提供会删改历史的 lenient 模式。
+## Ordered tool updates
 
-工具失败语义由 dialect contract 的 `LlmWireToolErrorStyle` 显式声明。`NativeField`（Anthropic Messages）发送原生 `is_error`，成功与失败都保留该字段。`ContentMarker`（DeepSeek Messages）面向忽略 `is_error` 的 DeepSeek Anthropic 兼容端点：`isError=true` 的 tool result 会在 content 前插入固定 text block `{"type":"text","text":"[tool_error]"}`，并不再发送 `is_error` 字段；这是有损兼容，provider 无法区分该标记与巧合相同的内容，canonical `LlmWireToolResultBlock.isError` 仍是唯一权威。`Unsupported`（默认）保持 fail-closed，`isError=true` 以 `llm.tool_result_error_semantics_unsupported` 拒绝。Chat 与 Responses wire 本身没有 tool-result 错误位，canonical `isError` 在这些协议上不产生额外字段。
+- OpenAI Responses 的 `ToolDeclaration` 使用 profile capability 编成一个有序 `additional_tools` developer item；`ToolActivation` 只对已声明的 initial deferred tool 开放。不会生成伪造的 tool-search call/output，deactivation/replacement 默认 Unsupported。
+- Anthropic Messages 的 `InstructionUpdate(System)` 是同位置 system message；activation/deactivation 是 `tool_addition`/`tool_removal` reference。动态 profile 产生 required beta header；普通声明不能扩大 initial tool pool，replacement 不会伪装成 reference。
+- Kimi Chat 的动态工具更新是 tools-only system message，不能同时拥有 content；每次请求重放仍 active 的完整 definitions。activation 只加载未修改的 initial deferred tool；deactivation/replacement 没有 wire primitive。
 
-Tool Input Contract Validation 是 wire 校验之上的独立屏障：wire 层只保证 tool arguments 是可执行的 JSON object；`validateReplyToolInputs` 再按发起请求中的 `inputSchema` 校验参数是否满足声明契约。三态模式避免把「无法证明合法」误报为违例——`ValidateSupportedSubset`（默认）跳过不支持的 feature，`Strict` 直接以 `llm.tool_schema_unsupported` 失败，`Disabled` 关闭。schema 违例与坏 JSON 语义永久分离：`llm.tool_arguments_not_executable` 表示模型没有形成合法参数，`llm.tool_arguments_schema_violation` 表示 wire 合法但不符合契约，后者最适合构造模型 self-correction 提示。诊断保持有界：超长 expected/actual 以字节数标记替代，不输出完整 schema 或参数。
+更新按 transcript 顺序编码，不合并、不排序、不把历史工具改写成末端列表。provider 不支持的操作在 sendable bytes 产生前返回 Unsupported。
 
-Messages 的 provider-native `thinking` 与 `redacted_thinking` 使用 `LlmWireNativeReplayBlock`，snapshot 包含 protocol、dialect ID、native type、schema version、model constraint、scope、turn/order 与 completeness。DeepSeek Chat 工具续接中的 `reasoning_content` 也使用 dialect-bound native replay，并保持在原 assistant turn。只有完成且 replay metadata 匹配的 state 才能回放。未知 native semantic block 返回带有界诊断的 `Unsupported`，不会进入 canonical reply；`LlmWireOpaqueBlock` 仅供显式诊断对象使用，永远不能进入请求。用于显示的 `LlmWireReasoningBlock` 同样不能编码为请求文本。
+## Thinking、replay 与 schema
 
-restore 只接受 schema version 1、assistant-turn scope 和当前实现明确允许的组合：Anthropic/DeepSeek Messages 的 `thinking`、`redacted_thinking`，OpenAI/DeepSeek Responses 的 `reasoning`，以及 DeepSeek Chat 的 `reasoning_content`。`tool_use`、`function_call` 和 `function_call_output` 必须走 canonical ToolCall/ToolResult，不得伪装成 NativeReplay 绕过会话校验。每个允许类型还会校验其必需字符串字段。
+thinking mode 与 reasoning effort 是独立维度；显式值必须同时通过 dialect contract 和 model capabilities。provider-native replay 必须匹配 protocol、dialect ID、schema version、model constraint、assistant turn、block order 和完整 payload。Kimi `reasoning_content` 只在明确的 Kimi Chat replay allowlist 中可回放。
 
-tools、parallel tool calls、prompt cache 和 structured output 都需要对应 capability。OpenAI 风格的 `JsonSchema` 携带 name、description 与 strict；Anthropic 使用不携带这些元数据的 `JsonSchemaDocument`。无法由目标 dialect 精确表达的 schema 形式会被拒绝，而不是静默丢字段。OpenAI 当前 automatic cache lifetime 使用 `prompt_cache_options.ttl`，内置 contract 只声明当前可表达的 `30m`；不再生成 deprecated `prompt_cache_retention`。Anthropic automatic cache 使用顶层 `cache_control`，支持默认 5 分钟和显式 1 小时 TTL；内容块级显式 breakpoint 仍属于尚未公开建模的 provider-native 能力。模型目录属于上层应用，本库不会根据 model 字符串猜能力。
+Tool arguments 的 `Complete` 必须是 JSON object。`validateReplyToolInputs(reply, request, mode:)` 绑定请求 transcript 的末端 active tools；Disabled 也不跳过 identity/state/conversation checks，只跳过 schema keyword checks。Malformed JSON、非 object、partial 和 schema violation 使用不同错误通道。
+
+structured output、parallel calls、prompt cache 和 image modality 都必须由 profile capability 明确声明。无法无损表示的 JSON Schema 或 provider control 被拒绝，不静默删除关键字。

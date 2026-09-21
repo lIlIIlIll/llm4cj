@@ -4,13 +4,13 @@ import llm4cj.*
 import std.convert.*
 
 main(): Int64 {
-    let codec = openAiResponsesCodec(openAiResponsesModelProfile("demo-model"))
+    let codec = openAiResponsesCodec(openAiResponsesModelProfile("demo-model", transcriptCapabilities: LlmWireTranscriptCapabilities("openai.responses.v1", "1")))
     let request = LlmWireRequest(
         "demo-model",
-        [LlmWireMessage(
+        LlmWireTranscript(LlmWireInitialContext(), items: [LlmWireInputItem.Message(LlmWireMessage(
             LlmWireRole.User,
             [LlmWireBlock.Text(LlmWireTextBlock("你好"))]
-        )]
+        ))])
     )
     let payload = match (codec.encodeRequest(request).materialize()) {
         case LlmWireResult.Ok(value) => value
