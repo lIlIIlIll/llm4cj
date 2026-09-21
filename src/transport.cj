@@ -72,7 +72,10 @@ func withObservedUsage(error: LlmWireError, observedUsage: ?LlmWireUsage): LlmWi
         providerErrorType: error.providerErrorType, diagnosticJson: error.diagnosticJson,
         phase: error.phase, protocol: error.protocol, dialectId: error.dialectId,
         eventType: error.eventType, blockIndex: error.blockIndex, toolCallId: error.toolCallId,
-        providerRequestId: error.providerRequestId, usage: observedUsage
+        providerRequestId: error.providerRequestId, usage: match (observedUsage) {
+            case Some(value) => Some(value)
+            case None => error.usage
+        }
     )
 }
 

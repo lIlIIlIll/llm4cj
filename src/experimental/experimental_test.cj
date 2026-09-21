@@ -3,10 +3,26 @@ package llm4cj.experimental
 import llm4cj.*
 import std.unittest.*
 import std.unittest.testmacro.*
+import std.collection.*
 
+func testRequest(
+    model: String, messages: Array<LlmWireMessage>, instructions!: Array<LlmWireInstruction> = [], tools!: Array<LlmWireTool> = [],
+    thinkingMode!: LlmWireThinkingMode = LlmWireThinkingMode.ProviderDefault, reasoningEffort!: LlmWireReasoningEffort = LlmWireReasoningEffort.ProviderDefault,
+    maxOutputTokens!: ?Int64 = None, parallelToolCalls!: ?Bool = None, serviceTier!: LlmWireServiceTier = LlmWireServiceTier.ProviderDefault,
+    generationSpeed!: LlmWireGenerationSpeed = LlmWireGenerationSpeed.ProviderDefault, promptCache!: LlmWirePromptCache = LlmWirePromptCache.ProviderDefault,
+    promptCacheRoutingKey!: ?String = None, toolChoice!: LlmWireToolChoice = LlmWireToolChoice.ProviderDefault,
+    structuredOutput!: LlmWireStructuredOutput = LlmWireStructuredOutput.ProviderDefault
+): LlmWireRequest {
+    let declarations = ArrayList<LlmWireToolDeclaration>()
+    for (tool in tools) { declarations.add(LlmWireToolDeclaration(tool)) }
+    let items = ArrayList<LlmWireInputItem>()
+    for (message in messages) { items.add(LlmWireInputItem.Message(message)) }
+    LlmWireRequest(model, LlmWireTranscript(LlmWireInitialContext(instructions: instructions, tools: declarations.toArray()), items: items.toArray()), thinkingMode: thinkingMode, reasoningEffort: reasoningEffort, maxOutputTokens: maxOutputTokens, parallelToolCalls: parallelToolCalls, serviceTier: serviceTier, generationSpeed: generationSpeed, promptCache: promptCache, promptCacheRoutingKey: promptCacheRoutingKey, toolChoice: toolChoice, structuredOutput: structuredOutput)
+}
 func prewarmCodec(): LlmWireCodec {
     anthropicMessagesCodec(anthropicMessagesModelProfile(
         "claude-test",
+        transcriptCapabilities: LlmWireTranscriptCapabilities("anthropic.messages.v1", "1"),
         capabilities: LlmWireCapabilities(cache: LlmWireCacheCapabilities(
             lifetimes: [LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.OneHour]
         ))
@@ -18,7 +34,7 @@ func prewarmRequest(
     structuredOutput!: LlmWireStructuredOutput = LlmWireStructuredOutput.ProviderDefault,
     toolChoice!: LlmWireToolChoice = LlmWireToolChoice.ProviderDefault
 ): LlmWireRequest {
-    LlmWireRequest(
+    testRequest(
         "claude-test",
         [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm this prompt"))])],
         thinkingMode: thinkingMode,
@@ -116,7 +132,7 @@ class Llm4CjExperimentalTests {
             case _ => @Fail("required-tool pre-warm must fail")
         }
 
-        let wrongTokens = LlmWireRequest(
+        let wrongTokens = testRequest(
             "claude-test", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm"))])],
             maxOutputTokens: Some(1),
             promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault)
@@ -126,7 +142,7 @@ class Llm4CjExperimentalTests {
             case _ => @Fail("positive-token pre-warm must fail")
         }
 
-        let missingCache = LlmWireRequest(
+        let missingCache = testRequest(
             "claude-test", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm"))])],
             maxOutputTokens: Some(0)
         )
@@ -135,8 +151,8 @@ class Llm4CjExperimentalTests {
             case _ => @Fail("uncached pre-warm must fail")
         }
 
-        let openAi = openAiResponsesCodec(openAiResponsesModelProfile("gpt"))
-        match (prepareAnthropicCachePrewarm(openAi, LlmWireRequest(
+        let openAi = openAiResponsesCodec(openAiResponsesModelProfile("gpt", transcriptCapabilities: LlmWireTranscriptCapabilities("openai.responses.v1", "1")))
+        match (prepareAnthropicCachePrewarm(openAi, testRequest(
             "gpt", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm"))])],
             maxOutputTokens: Some(0),
             promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault)

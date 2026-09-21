@@ -268,7 +268,7 @@ internal func checkToolInputValue(schema: JsonNode, value: JsonNode, schemaPath:
     ToolInputCheck.Valid
 }
 
-internal func toolInputViolationError(call: LlmWireToolCallBlock, violation: ToolInputViolation): LlmWireError {
+internal func toolInputViolationError(call: LlmWireToolCallBlock, violation: ToolInputViolation, usage!: ?LlmWireUsage = None): LlmWireError {
     let diagnostic = wireJsonObject([
         WireJsonField("tool_name", wireJsonString(call.name)),
         WireJsonField("schema_path", wireJsonString(violation.schemaPath)),
@@ -280,11 +280,11 @@ internal func toolInputViolationError(call: LlmWireToolCallBlock, violation: Too
     LlmWireError(
         LlmWireErrorKind.InvalidWire, "llm.tool_arguments_schema_violation",
         "tool arguments do not satisfy the declared input schema at " + violation.instancePath,
-        phase: Some(LlmTransportPhase.SemanticAssembly), toolCallId: call.callId, diagnosticJson: Some(diagnostic.stringify())
+        phase: Some(LlmTransportPhase.SemanticAssembly), toolCallId: call.callId, diagnosticJson: Some(diagnostic.stringify()), usage: usage
     )
 }
 
-internal func toolInputUnsupportedError(call: LlmWireToolCallBlock, feature: String): LlmWireError {
+internal func toolInputUnsupportedError(call: LlmWireToolCallBlock, feature: String, usage!: ?LlmWireUsage = None): LlmWireError {
     let diagnostic = wireJsonObject([
         WireJsonField("tool_name", wireJsonString(call.name)),
         WireJsonField("feature", wireJsonString(feature))
@@ -292,44 +292,52 @@ internal func toolInputUnsupportedError(call: LlmWireToolCallBlock, feature: Str
     LlmWireError(
         LlmWireErrorKind.Unsupported, "llm.tool_schema_unsupported",
         "tool input schema uses features outside the supported validation subset: " + feature,
-        phase: Some(LlmTransportPhase.SemanticAssembly), toolCallId: call.callId, diagnosticJson: Some(diagnostic.stringify())
+        phase: Some(LlmTransportPhase.SemanticAssembly), toolCallId: call.callId, diagnosticJson: Some(diagnostic.stringify()), usage: usage
     )
 }
 
-// Validates tool call arguments in a wire-valid reply against the input schemas
-// of the tools declared on the originating request. Calls for undeclared tools
-// and calls whose arguments are not complete JSON objects are skipped; the
-// latter are already rejected by wire assembly. Reports the first violation in
-// deterministic order: block order, then fixed keyword priority, then sorted
-// property names. Undeclared schema keywords and unsupported forms surface as
-// `llm.tool_schema_unsupported` under Strict and are skipped under
-// ValidateSupportedSubset; Disabled performs no checks at all.
+// Validates tool call arguments against the active tool view at the end of the
+// originating transcript. The request is the only source of declarations;
+// provider replies cannot inject an execution schema.
 public func validateReplyToolInputs(
-    reply: LlmWireReply, tools: Array<LlmWireTool>,
+    reply: LlmWireReply, request: LlmWireRequest,
     mode!: LlmWireToolInputValidationMode = LlmWireToolInputValidationMode.ValidateSupportedSubset
 ): LlmWireResult<Unit> {
-    match (mode) {
-        case LlmWireToolInputValidationMode.Disabled => return LlmWireResult.Ok(())
-        case _ => ()
+    let tools = match (request.transcript.effectiveTools()) {
+        case LlmWireResult.Ok(value) => value
+        case LlmWireResult.Err(error) => return LlmWireResult.Err(error)
     }
+    validateReplyToolInputsAgainstTools(reply, tools, mode)
+}
+
+func validateReplyToolInputsAgainstTools(
+    reply: LlmWireReply, tools: Array<LlmWireTool>,
+    mode: LlmWireToolInputValidationMode
+): LlmWireResult<Unit> {
     let strict = mode == LlmWireToolInputValidationMode.Strict
     for (block in reply.blocks) {
         match (block) {
             case LlmWireOutputBlock.ToolCall(call) =>
-                match (call.arguments) {
-                    case LlmWireToolArguments.Complete(value) =>
-                        var declared: ?JsonNode = None
-                        for (tool in tools where tool.name == call.name) { declared = Some(tool.inputSchema.jsonNode()) }
-                        match (declared) {
-                            case Some(schema) =>
-                                match (checkToolInputValue(schema, value.jsonNode(), "", "", strict)) {
-                                    case ToolInputCheck.Valid => ()
-                                    case ToolInputCheck.Violation(violation) => return LlmWireResult.Err(toolInputViolationError(call, violation))
-                                    case ToolInputCheck.Unsupported(feature) => return LlmWireResult.Err(toolInputUnsupportedError(call, feature))
+                var declared: ?JsonNode = None
+                for (tool in tools where tool.name == call.name) { declared = Some(tool.inputSchema.jsonNode()) }
+                match (declared) {
+                    case None =>
+                        return LlmWireResult.Err(LlmWireError(
+                            LlmWireErrorKind.InvalidRequest, "llm.tool_reference_unknown",
+                            "reply tool call is not declared by the request", toolCallId: call.callId, usage: Some(reply.usage)
+                        ))
+                    case Some(schema) =>
+                        match (call.arguments) {
+                            case LlmWireToolArguments.Complete(value) =>
+                                if (mode != LlmWireToolInputValidationMode.Disabled) {
+                                    match (checkToolInputValue(schema, value.jsonNode(), "", "", strict)) {
+                                        case ToolInputCheck.Valid => ()
+                                        case ToolInputCheck.Violation(violation) => return LlmWireResult.Err(toolInputViolationError(call, violation, usage: Some(reply.usage)))
+                                        case ToolInputCheck.Unsupported(feature) => return LlmWireResult.Err(toolInputUnsupportedError(call, feature, usage: Some(reply.usage)))
+                                    }
                                 }
-                            case None => ()
+                            case _ => ()
                         }
-                    case _ => ()
                 }
             case _ => ()
         }

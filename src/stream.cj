@@ -322,7 +322,7 @@ open class StreamLifecycle {
             case Some(value) => value
             case None =>
                 let value = LlmWireTerminal.Cancelled(LlmWireFailure(
-                    LlmWireFailureKind.Cancelled, "stream decoding was cancelled", provider: codec.provider
+                    LlmWireFailureKind.Cancelled, "stream decoding was cancelled", provider: codec.provider, usage: observedUsage()
                 ))
                 terminal = Some(value)
                 value
@@ -806,7 +806,7 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
         for (choice in choices) {
             let reason = match (choice.finishReason) { case Some(value) => value; case None => invalidWire("llm.chat_choice_terminal_missing", "Chat stream ended before every choice reported finish_reason", provider: codec.provider) }
             if (reason == "insufficient_system_resource") {
-                return LlmWireTerminal.ProviderFailed(LlmWireFailure(LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true))
+                return LlmWireTerminal.ProviderFailed(LlmWireFailure(LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true, usage: observedUsage()))
             }
             outputChoices.add(materializeChatChoice(choice, reason))
         }

@@ -77,6 +77,24 @@ func wireRequiredInt(value: JsonNode, name: String, provider!: String = ""): Int
     }
 }
 
+func validateTranscriptCallNames(codec: LlmWireCodec, transcript: LlmWireTranscript): Unit {
+    for (item in transcript.items) {
+        match (item) {
+            case LlmWireInputItem.Message(message) =>
+                for (block in message.blocks) {
+                    match (block) {
+                        case LlmWireBlock.ToolCall(call) =>
+                            if (!validToolNameForGrammar(call.name, codec.dialect.contract.toolNameGrammar)) {
+                                throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_name_invalid", "tool call name is invalid for this dialect", toolCallId: call.callId)
+                            }
+                        case _ => ()
+                    }
+                }
+            case _ => ()
+        }
+    }
+}
+
 func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCachePrewarm!: Bool = false): Unit {
     if (request.model == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.model_missing", "model must not be empty") }
     match (codec.modelProfile) {
@@ -96,70 +114,205 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCach
     if (codec.dialect.contract.requireMaxOutputTokens && request.maxOutputTokens.isNone()) {
         throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.max_output_tokens_required", "this dialect requires maxOutputTokens")
     }
-    for (instruction in request.instructions) {
+    for (instruction in request.transcript.initialContext.instructions) {
         if (instruction.text.trimAscii() == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.instruction_empty", "instruction text must not be empty") }
-        if (codec.protocol == LlmWireProtocol.Messages && instruction.role == LlmWireInstructionRole.Developer) {
-            unsupportedRequest("llm.developer_instruction_unsupported", "Messages does not represent developer instructions")
+        if ((codec.protocol == LlmWireProtocol.Messages && instruction.role == LlmWireInstructionRole.Developer) || (codec.dialect.contract.requestStyle == LlmWireRequestStyle.KimiChat && instruction.role == LlmWireInstructionRole.Developer)) {
+            unsupportedRequest("llm.developer_instruction_unsupported", "this dialect does not represent developer instructions")
+        }
+    }
+    var hasMessage = false
+    for (item in request.transcript.items) {
+        match (item) {
+            case LlmWireInputItem.Message(_) => hasMessage = true
+            case LlmWireInputItem.InstructionUpdate(instruction) =>
+                if (instruction.text.trimAscii() == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.instruction_empty", "instruction text must not be empty") }
+                if ((codec.protocol == LlmWireProtocol.Messages && instruction.role == LlmWireInstructionRole.Developer) || (codec.dialect.contract.requestStyle == LlmWireRequestStyle.KimiChat && instruction.role == LlmWireInstructionRole.Developer)) {
+                    unsupportedRequest("llm.developer_instruction_unsupported", "this dialect does not represent developer instructions")
+                }
+            case _ => ()
         }
     }
     match (codec.protocol) {
         case LlmWireProtocol.Responses =>
-            if (request.messages.isEmpty() && request.instructions.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.responses_input_required", "Responses requires input messages or instructions") }
+            if (!hasMessage && request.transcript.initialContext.instructions.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.responses_input_required", "Responses requires input messages or instructions") }
         case LlmWireProtocol.ChatCompletions =>
-            if (request.messages.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.chat_messages_required", "Chat Completions requires at least one message") }
+            if (!hasMessage) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.chat_messages_required", "Chat Completions requires at least one message") }
         case LlmWireProtocol.Messages =>
-            if (request.messages.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.messages_required", "Messages requires at least one message") }
+            if (!hasMessage) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.messages_required", "Messages requires at least one message") }
     }
     validateThinking(codec, request)
     validateRequestCombinations(codec, request)
-    validateToolsAndSchemas(request)
-    var usesTools = !request.tools.isEmpty()
-    for (message in request.messages) { for (block in message.blocks) { match (block) { case LlmWireBlock.ToolCall(_) | LlmWireBlock.ToolResult(_) => usesTools = true; case _ => () } } }
+    validateTranscriptCallNames(codec, request.transcript)
+    validateTranscript(request.transcript)
+    validateCodecTranscript(codec, request.transcript)
+    let tools = match (request.transcript.effectiveTools()) {
+        case LlmWireResult.Ok(value) => value
+        case LlmWireResult.Err(error) => throw error
+    }
+    validateToolsAndSchemas(codec, tools, request.structuredOutput)
+    var usesTools = !tools.isEmpty()
+    for (item in request.transcript.items) { match (item) {
+        case LlmWireInputItem.Message(message) => for (block in message.blocks) { match (block) { case LlmWireBlock.ToolCall(_) | LlmWireBlock.ToolResult(_) => usesTools = true; case _ => () } }
+        case _ => ()
+    } }
     match (request.toolChoice) { case LlmWireToolChoice.ProviderDefault => (); case _ => usesTools = true }
     if (usesTools && (!codec.dialect.contract.tools || !codec.capabilities.tools.enabled)) { unsupportedRequest("llm.tools_unsupported", "tools require an explicit dialect and model capability") }
-    if ((request.toolChoice == LlmWireToolChoice.Required || request.toolChoice == LlmWireToolChoice.Auto) && request.tools.isEmpty()) {
+    if ((request.toolChoice == LlmWireToolChoice.Required || request.toolChoice == LlmWireToolChoice.Auto) && tools.isEmpty()) {
         throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_choice_without_tools", "toolChoice requires at least one declared tool")
     }
     validateStructuredOutput(codec, request.structuredOutput)
     match (request.parallelToolCalls) {
         case Some(_) =>
-            if (request.tools.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.parallel_tools_without_tools", "parallel tool calls require declared tools") }
+            if (tools.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.parallel_tools_without_tools", "parallel tool calls require declared tools") }
             if (codec.dialect.contract.parallelToolStyle == LlmWireParallelToolStyle.Unsupported || !codec.capabilities.tools.parallelCalls) { unsupportedRequest("llm.parallel_tools_unsupported", "parallel tool calls are not supported by this dialect and model") }
         case None => ()
     }
     validateServiceTier(codec, request.serviceTier)
     validateGenerationSpeed(codec, request.generationSpeed)
     validatePromptCache(codec, request.promptCache, request.promptCacheRoutingKey)
-    for (messageIndex in 0..request.messages.size) {
-        let message = request.messages[messageIndex]
-        var deepSeekReasoningBlocks: Int64 = 0
-        if (!messageHasContent(message)) {
-            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.message_empty", "canonical messages must contain at least one non-empty block")
-        }
-        for (blockIndex in 0..message.blocks.size) {
-            validateBlockForReplay(codec, request, message, message.blocks[blockIndex], blockIndex)
-            validateBlockShape(message.blocks[blockIndex])
-            match (message.blocks[blockIndex]) {
-                case LlmWireBlock.Image(value) => validateImageCapability(codec, message, value)
-                case LlmWireBlock.NativeReplay(value) =>
-                    if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.DeepSeekChat && value.nativeType == "reasoning_content") {
-                        deepSeekReasoningBlocks++
-                        if (deepSeekReasoningBlocks > 1) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_cardinality_invalid", "DeepSeek Chat assistant turns may contain only one reasoning_content replay block") }
-                    }
-                case LlmWireBlock.ToolResult(value) =>
-                    if (value.content.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty", "tool results require at least one content part") }
-                    for (part in value.content) { match (part) {
-                        case LlmWireToolResultContent.Text(text) => if (text.text == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty", "tool-result text must not be empty") }
-                        case LlmWireToolResultContent.Image(image) => validateBlockShape(LlmWireBlock.Image(image)); validateImageCapability(codec, message, image)
-                    } }
-                    if (codec.protocol == LlmWireProtocol.Messages && codec.dialect.contract.toolErrorStyle == LlmWireToolErrorStyle.Unsupported && value.isError) {
-                        unsupportedRequest("llm.tool_result_error_semantics_unsupported", "this Messages dialect does not declare tool-result error semantics")
-                    }
-                case _ => ()
+    for (item in request.transcript.items) { match (item) {
+        case LlmWireInputItem.Message(message) =>
+            var deepSeekReasoningBlocks: Int64 = 0
+            for (blockIndex in 0..message.blocks.size) {
+                validateBlockForReplay(codec, request, message, message.blocks[blockIndex], blockIndex)
+                match (message.blocks[blockIndex]) {
+                    case LlmWireBlock.Image(value) => validateImageCapability(codec, message, value)
+                    case LlmWireBlock.NativeReplay(value) =>
+                        if ((codec.dialect.contract.requestStyle == LlmWireRequestStyle.DeepSeekChat || codec.dialect.contract.requestStyle == LlmWireRequestStyle.KimiChat) && value.nativeType == "reasoning_content") {
+                            deepSeekReasoningBlocks++
+                            if (deepSeekReasoningBlocks > 1) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_cardinality_invalid", "Chat assistant turns may contain only one reasoning_content replay block") }
+                        }
+                    case LlmWireBlock.ToolResult(value) =>
+                        for (part in value.content) { match (part) {
+                            case LlmWireToolResultContent.Text(text) => if (text.text == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty", "tool-result text must not be empty") }
+                            case LlmWireToolResultContent.Image(image) => validateImageCapability(codec, message, image)
+                        } }
+                        if (codec.protocol == LlmWireProtocol.Messages && codec.dialect.contract.toolErrorStyle == LlmWireToolErrorStyle.Unsupported && value.isError) {
+                            unsupportedRequest("llm.tool_result_error_semantics_unsupported", "this Messages dialect does not declare tool-result error semantics")
+                        }
+                    case _ => ()
+                }
             }
+        case _ => ()
+    } }
+}
+
+func validateCodecTranscript(codec: LlmWireCodec, transcript: LlmWireTranscript): Unit {
+    for (declaration in transcript.initialContext.tools) {
+        validateTranscriptTool(declaration.tool)
+        if (!validToolNameForGrammar(declaration.tool.name, codec.dialect.contract.toolNameGrammar)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_invalid", "tool names do not satisfy the bound dialect grammar") }
+        if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.KimiChat) { validateKimiToolSchema(declaration.tool.inputSchema.jsonNode()) }
+        if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.OpenAiResponses && declaration.visibility == LlmWireToolVisibility.Deferred) {
+            requireResponsesDynamicCapability(codec, LlmWireTranscriptOperation.ToolDeclaration)
         }
     }
-    validateConversation(request.messages)
+    let items = transcript.items
+    for (index in 0..items.size) {
+        match (items[index]) {
+            case LlmWireInputItem.Message(message) =>
+                for (block in message.blocks) { match (block) {
+                    case LlmWireBlock.ToolCall(call) => if (!validToolNameForGrammar(call.name, codec.dialect.contract.toolNameGrammar)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_name_invalid", "tool call names must use the bound dialect grammar", toolCallId: call.callId) }
+                    case _ => ()
+                } }
+            case LlmWireInputItem.InstructionUpdate(instruction) =>
+                if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.KimiChat && instruction.role != LlmWireInstructionRole.System) { unsupportedRequest("llm.developer_instruction_unsupported", "Kimi Chat only represents system instruction updates") }
+                if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.KimiChat) { validateKimiUpdatePosition(items, index) }
+                if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.AnthropicMessages) { validateAnthropicUpdatePosition(items, index) }
+            case LlmWireInputItem.ToolDeclaration(declaration) =>
+                validateTranscriptTool(declaration.tool)
+                if (!validToolNameForGrammar(declaration.tool.name, codec.dialect.contract.toolNameGrammar)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_invalid", "tool names do not satisfy the bound dialect grammar") }
+                if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.KimiChat) {
+                    validateKimiUpdatePosition(items, index)
+                    if (declaration.visibility != LlmWireToolVisibility.Active) { unsupportedRequest("llm.context_update_unsupported", "Kimi Chat cannot represent a deferred runtime declaration") }
+                    validateKimiToolSchema(declaration.tool.inputSchema.jsonNode())
+                }
+                if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.AnthropicMessages) { unsupportedRequest("llm.context_update_unsupported", "Anthropic Messages only represents initial complete tool definitions") }
+                if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.OpenAiResponses) {
+                    if (declaration.visibility != LlmWireToolVisibility.Active) { unsupportedRequest("llm.context_update_unsupported", "Responses additional_tools requires an active complete definition") }
+                    requireTranscriptEncoding(codec, LlmWireTranscriptOperation.ToolDeclaration, LlmWireTranscriptEncoding.OpenAiAdditionalTools)
+                }
+            case LlmWireInputItem.ToolActivation(ref) =>
+                if (!validToolNameForGrammar(ref.name, codec.dialect.contract.toolNameGrammar)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_invalid", "tool references do not satisfy the bound dialect grammar") }
+                if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.KimiChat) { validateKimiUpdatePosition(items, index) }
+                if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.AnthropicMessages) { validateAnthropicUpdatePosition(items, index) }
+                if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.OpenAiResponses) {
+                    requireResponsesDynamicCapability(codec, LlmWireTranscriptOperation.ToolActivation)
+                    let _ = responsesInitialDeferredTool(transcript.initialContext, ref)
+                }
+            case LlmWireInputItem.ToolDeactivation(ref) =>
+                if (!validToolNameForGrammar(ref.name, codec.dialect.contract.toolNameGrammar)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_invalid", "tool references do not satisfy the bound dialect grammar") }
+                if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.AnthropicMessages) { validateAnthropicUpdatePosition(items, index) }
+                if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.KimiChat || codec.dialect.contract.requestStyle == LlmWireRequestStyle.OpenAiResponses) { unsupportedRequest("llm.tool_replacement_unsupported", "this dialect has no native tool removal operation") }
+            case LlmWireInputItem.ToolReplacement(previous, replacement) =>
+                if (!validToolNameForGrammar(previous.name, codec.dialect.contract.toolNameGrammar) || !validToolNameForGrammar(replacement.name, codec.dialect.contract.toolNameGrammar)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_invalid", "tool references do not satisfy the bound dialect grammar") }
+                validateTranscriptTool(replacement)
+                if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.KimiChat) { validateKimiToolSchema(replacement.inputSchema.jsonNode()) }
+                if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.AnthropicMessages || codec.dialect.contract.requestStyle == LlmWireRequestStyle.OpenAiResponses || codec.dialect.contract.requestStyle == LlmWireRequestStyle.KimiChat) { unsupportedRequest("llm.tool_replacement_unsupported", "this dialect has no native tool replacement operation") }
+        }
+    }
+}
+func responsesDynamicModelVerified(model: String): Bool {
+    model == "gpt-5.4" || model == "gpt-5.4-mini" || model == "gpt-5.4-nano" || model == "gpt-5.5"
+}
+
+func requireResponsesDynamicCapability(codec: LlmWireCodec, operation: LlmWireTranscriptOperation): Unit {
+    match (codec.modelProfile) {
+        case Some(profile) =>
+            if (profile.endpointProfileId != "openai.responses.v1" || profile.contractVersion != "1" || !responsesDynamicModelVerified(profile.model)) {
+                unsupportedRequest("llm.context_update_unsupported", "Responses dynamic tool operations require a verified model profile")
+            }
+        case None => unsupportedRequest("llm.context_update_unsupported", "Responses dynamic tool operations require a bound model profile")
+    }
+    requireTranscriptEncoding(codec, operation, LlmWireTranscriptEncoding.OpenAiAdditionalTools)
+}
+
+func responsesInitialDeferredTool(context: LlmWireInitialContext, ref: LlmWireToolRef): LlmWireTool {
+    for (declaration in context.tools) {
+        if (declaration.visibility == LlmWireToolVisibility.Deferred && declaration.tool.name == ref.name && declaration.tool.version == ref.version) { return declaration.tool }
+    }
+    throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_reference_unknown", "Responses activation requires an exact initial deferred tool reference")
+}
+
+func validateAnthropicUpdatePosition(items: Array<LlmWireInputItem>, index: Int64): Unit {
+    if (index == 0) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.context_update_position_invalid", "Anthropic system updates cannot be the first conversation item") }
+    var previousAllowed = false
+    match (items[index - 1]) {
+        case LlmWireInputItem.Message(message) => previousAllowed = message.role == LlmWireRole.User || messageEndsWithToolResult(message)
+        case LlmWireInputItem.InstructionUpdate(_) | LlmWireInputItem.ToolActivation(_) | LlmWireInputItem.ToolDeactivation(_) => previousAllowed = true
+        case _ => ()
+    }
+    if (!previousAllowed) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.context_update_position_invalid", "Anthropic system updates must follow a user turn or another system update") }
+    if (index + 1 < items.size) {
+        match (items[index + 1]) {
+            case LlmWireInputItem.Message(message) => if (message.role != LlmWireRole.Assistant) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.context_update_position_invalid", "Anthropic system updates must precede an assistant turn") }
+            case _ => ()
+        }
+    }
+}
+
+func validateKimiUpdatePosition(items: Array<LlmWireInputItem>, index: Int64): Unit {
+    if (index == 0) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.context_update_position_invalid", "Kimi system updates cannot be the first conversation item") }
+    var previousAllowed = false
+    match (items[index - 1]) {
+        case LlmWireInputItem.Message(message) => previousAllowed = message.role == LlmWireRole.User || messageEndsWithToolResult(message)
+        case LlmWireInputItem.InstructionUpdate(_) | LlmWireInputItem.ToolDeclaration(_) | LlmWireInputItem.ToolActivation(_) => previousAllowed = true
+        case _ => ()
+    }
+    if (!previousAllowed) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.context_update_position_invalid", "Kimi system updates must follow a user turn, tool result, or another system update") }
+    if (index + 1 < items.size) {
+        match (items[index + 1]) {
+            case LlmWireInputItem.Message(message) => if (message.role != LlmWireRole.Assistant) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.context_update_position_invalid", "Kimi system updates must precede an assistant turn") }
+            case _ => ()
+        }
+    }
+}
+
+func messageEndsWithToolResult(message: LlmWireMessage): Bool {
+    if (message.blocks.isEmpty()) { return false }
+    match (message.blocks[message.blocks.size - 1]) {
+        case LlmWireBlock.ToolResult(_) => true
+        case _ => false
+    }
 }
 
 func validateRequestCombinations(codec: LlmWireCodec, request: LlmWireRequest): Unit {
@@ -326,7 +479,7 @@ func validateBlockForReplay(codec: LlmWireCodec, request: LlmWireRequest, messag
         case LlmWireBlock.Reasoning(_) => unsupportedRequest("llm.reasoning_display_only", "display reasoning is not request-encodable")
         case LlmWireBlock.Refusal(_) => unsupportedRequest("llm.refusal_display_only", "refusal output is not request-encodable")
         case LlmWireBlock.ToolCall(value) =>
-            if (!validToolName(value.name)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_name_invalid", "tool call names must use the tool-name grammar") }
+            if (!validToolNameForGrammar(value.name, codec.dialect.contract.toolNameGrammar)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_name_invalid", "tool call names must use the bound tool-name grammar") }
             match (value.arguments) {
             case LlmWireToolArguments.Complete(arguments) =>
                 if (arguments.jsonNode().wireKind != WireJsonKind.Object) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object") }
@@ -345,15 +498,16 @@ func messageHasContent(message: LlmWireMessage): Bool {
     false
 }
 
-func validateToolsAndSchemas(request: LlmWireRequest): Unit {
+func validateToolsAndSchemas(codec: LlmWireCodec, tools: Array<LlmWireTool>, structuredOutput: LlmWireStructuredOutput): Unit {
     let names = HashSet<String>()
-    for (tool in request.tools) {
-        if (!validToolName(tool.name)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_invalid", "tool names must be 1-64 ASCII letters, digits, underscore, or hyphen") }
+    for (tool in tools) {
+        if (!validToolNameForGrammar(tool.name, codec.dialect.contract.toolNameGrammar)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_invalid", "tool names do not satisfy the bound dialect grammar") }
         if (names.contains(tool.name)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_duplicate", "tool names must be unique") }
         names.add(tool.name)
-        if (tool.inputSchema.jsonNode().wireKind != WireJsonKind.Object) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_schema_invalid", "tool input schema must be a JSON object") }
+        validateTranscriptTool(tool)
+        if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.KimiChat) { validateKimiToolSchema(tool.inputSchema.jsonNode()) }
     }
-    match (request.structuredOutput) {
+    match (structuredOutput) {
         case LlmWireStructuredOutput.JsonSchema(value) =>
             if (value.name == "" || value.schema.jsonNode().wireKind != WireJsonKind.Object) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.structured_schema_invalid", "structured output name and object schema are required") }
         case LlmWireStructuredOutput.JsonSchemaDocument(value) =>
@@ -362,14 +516,84 @@ func validateToolsAndSchemas(request: LlmWireRequest): Unit {
     }
 }
 
-func validToolName(value: String): Bool {
-    let bytes = value.toArray()
-    if (bytes.isEmpty() || bytes.size > 64) { return false }
-    for (byte in bytes) {
-        let allowed = (byte >= 65u8 && byte <= 90u8) || (byte >= 97u8 && byte <= 122u8) || (byte >= 48u8 && byte <= 57u8) || byte == 95u8 || byte == 45u8
-        if (!allowed) { return false }
+func validateKimiToolSchema(schema: JsonNode): Unit {
+    match (kimiSchemaUnsupportedFeature(schema, true)) {
+        case Some(feature) => unsupportedRequest("llm.tool_schema_unsupported", "Kimi tool parameters use an unsupported MFJS feature: " + feature)
+        case None => ()
+    }
+}
+
+func kimiSchemaUnsupportedFeature(schema: JsonNode, root: Bool): ?String {
+    if (schema.wireKind != WireJsonKind.Object) { return Some("schema_not_object") }
+    for (name in toolSchemaObjectNames(schema)) {
+        if (!isKimiSchemaKeyword(name)) { return Some(name) }
+        let value = schema.field(name).getOrThrow()
+        match (name) {
+            case "$defs" =>
+                if (!root || value.wireKind != WireJsonKind.Object) { return Some("$defs") }
+                for (definition in value.fields) {
+                    if (definition.value.wireKind != WireJsonKind.Object) { return Some("$defs") }
+                    match (kimiSchemaUnsupportedFeature(definition.value, false)) { case Some(feature) => return Some("$defs." + definition.name + "." + feature); case None => () }
+                }
+            case "$ref" =>
+                if (value.wireKind != WireJsonKind.Text || !(value.text == "#" || value.text.startsWith("#/$defs/"))) { return Some("$ref") }
+            case "$id" | "description" => if (value.wireKind != WireJsonKind.Text) { return Some(name) }
+            case "default" => ()
+            case "anyOf" =>
+                if (value.wireKind != WireJsonKind.List) { return Some("anyOf") }
+                for (entry in value.items) {
+                    if (entry.wireKind != WireJsonKind.Object) { return Some("anyOf") }
+                    match (kimiSchemaUnsupportedFeature(entry, false)) { case Some(feature) => return Some("anyOf." + feature); case None => () }
+                }
+            case "properties" =>
+                if (value.wireKind != WireJsonKind.Object) { return Some("properties") }
+                for (field in value.fields) {
+                    match (kimiSchemaUnsupportedFeature(field.value, false)) { case Some(feature) => return Some("properties." + field.name + "." + feature); case None => () }
+                }
+            case "additionalProperties" =>
+                match (value.wireKind) {
+                    case WireJsonKind.Boolean => ()
+                    case WireJsonKind.Object => match (kimiSchemaUnsupportedFeature(value, false)) { case Some(feature) => return Some("additionalProperties." + feature); case None => () }
+                    case _ => return Some("additionalProperties")
+                }
+            case "items" =>
+                if (value.wireKind != WireJsonKind.Object) { return Some("items") }
+                match (kimiSchemaUnsupportedFeature(value, false)) { case Some(feature) => return Some("items." + feature); case None => () }
+            case "type" => if (!toolInputTypeFormValid(value)) { return Some("type") }
+            case "enum" => if (!kimiEnumValid(value)) { return Some("enum") }
+            case "required" =>
+                if (value.wireKind != WireJsonKind.List) { return Some("required") }
+                for (entry in value.items) { if (entry.wireKind != WireJsonKind.Text) { return Some("required") } }
+            case _ => return Some(name)
+        }
+    }
+    None
+}
+
+func isKimiSchemaKeyword(name: String): Bool {
+    name == "$defs" || name == "$ref" || name == "$id" || name == "description" || name == "default" ||
+    name == "anyOf" || name == "properties" || name == "additionalProperties" || name == "items" ||
+    name == "type" || name == "enum" || name == "required"
+}
+
+func kimiEnumValid(value: JsonNode): Bool {
+    if (value.wireKind != WireJsonKind.List) { return false }
+    var expected: ?WireJsonKind = None
+    for (entry in value.items) {
+        match (entry.wireKind) {
+            case WireJsonKind.Null | WireJsonKind.Boolean | WireJsonKind.Number | WireJsonKind.Text => ()
+            case _ => return false
+        }
+        match (expected) {
+            case None => expected = Some(entry.wireKind)
+            case Some(kind) => if (kind != entry.wireKind) { return false }
+        }
     }
     true
+}
+
+func validToolName(value: String): Bool {
+    validToolNameForGrammar(value, LlmWireToolNameGrammar.StandardAscii64)
 }
 
 func validateBlockShape(block: LlmWireBlock): Unit {
@@ -383,34 +607,3 @@ func validateBlockShape(block: LlmWireBlock): Unit {
     }
 }
 
-func validateConversation(messages: Array<LlmWireMessage>): Unit {
-    let known = HashSet<String>()
-    let pending = HashSet<String>()
-    for (message in messages) {
-        if (!pending.isEmpty()) {
-            if (message.role != LlmWireRole.User) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_conversation_out_of_phase", "only tool results may follow unresolved tool calls", phase: Some(LlmTransportPhase.Encode)) }
-            for (block in message.blocks) { match (block) {
-                case LlmWireBlock.ToolResult(_) => ()
-                case _ => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_conversation_out_of_phase", "ordinary content cannot appear while tool calls are unresolved", phase: Some(LlmTransportPhase.Encode))
-            } }
-        }
-        for (block in message.blocks) {
-        match (block) {
-            case LlmWireBlock.ToolCall(call) =>
-                if (message.role != LlmWireRole.Assistant) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_role_invalid", "tool calls must belong to assistant messages") }
-                if (call.callId == "" || known.contains(call.callId)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_duplicate", "tool call IDs must be non-empty and unique") }
-                known.add(call.callId)
-                pending.add(call.callId)
-            case LlmWireBlock.ToolResult(result) =>
-                if (message.role != LlmWireRole.User) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_role_invalid", "tool results must belong to user messages") }
-                if (!pending.contains(result.callId)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_unmatched", "tool result must match a prior unconsumed tool call") }
-                pending.remove(result.callId)
-            case _ => ()
-        }
-        }
-        if (message.role == LlmWireRole.User && !pending.isEmpty()) {
-            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_results_incomplete", "one tool-result message must close every pending parallel tool call", phase: Some(LlmTransportPhase.Encode))
-        }
-    }
-    if (!pending.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_unresolved", "every tool call must have exactly one later result") }
-}

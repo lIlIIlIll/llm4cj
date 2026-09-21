@@ -11,6 +11,7 @@ class LlmWireFeatureRequirement
 class LlmWireHeader
 class LlmWireHttpResponse
 class LlmWireImageBlock
+class LlmWireInitialContext
 class LlmWireInputCapabilities
 class LlmWireInstruction
 class LlmWireJson
@@ -27,7 +28,6 @@ class LlmWireReasoningBlock
 class LlmWireRefusalBlock
 class LlmWireReply
 class LlmWireRequest
-class LlmWireRequestBuilder
 class LlmWireSseLimits
 class LlmWireStreamDecoder
 class LlmWireStreamLimits
@@ -39,9 +39,16 @@ class LlmWireTokenLogprobCandidate
 class LlmWireTool
 class LlmWireToolCallBlock
 class LlmWireToolCapabilities
+class LlmWireToolDeclaration
 class LlmWireToolIdentity
+class LlmWireToolRef
 class LlmWireToolResultBlock
+class LlmWireTranscript
+class LlmWireTranscriptBuilder
+class LlmWireTranscriptCapabilities
+class LlmWireTranscriptCapability
 class LlmWireUsage
+class LlmWireUsageSource
 class SseDecoder
 class SseEvent
 enum LlmTransportPhase
@@ -57,6 +64,7 @@ enum LlmWireGenerationSpeed
 enum LlmWireImageDetail
 enum LlmWireImageSourceKind
 enum LlmWireIncompleteReason
+enum LlmWireInputItem
 enum LlmWireInputModality
 enum LlmWireInstructionRole
 enum LlmWireJsonKind
@@ -87,7 +95,11 @@ enum LlmWireToolArguments
 enum LlmWireToolChoice
 enum LlmWireToolErrorStyle
 enum LlmWireToolInputValidationMode
+enum LlmWireToolNameGrammar
 enum LlmWireToolResultContent
+enum LlmWireToolVisibility
+enum LlmWireTranscriptEncoding
+enum LlmWireTranscriptOperation
 enum LlmWireUsageMergeStyle
 func anthropicMessagesCodec
 func anthropicMessagesDialect
@@ -102,6 +114,9 @@ func deepSeekResponsesCodec
 func deepSeekResponsesDialect
 func deepSeekResponsesModelProfile
 func extractRetryAfterMillis
+func kimiChatCodec
+func kimiChatDialect
+func kimiChatModelProfile
 func openAiChatCodec
 func openAiChatDialect
 func openAiChatModelProfile

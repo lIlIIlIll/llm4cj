@@ -6,6 +6,17 @@ import std.deriving.Derive
 
 @Derive[Equatable]
 public enum LlmWireProtocol { Responses | ChatCompletions | Messages }
+
+public class LlmWireUsageSource {
+    public let protocol: LlmWireProtocol
+    public let dialectId: String
+    public let fieldPath: String
+    public init(protocol: LlmWireProtocol, dialectId: String, fieldPath: String) {
+        this.protocol = protocol
+        this.dialectId = dialectId
+        this.fieldPath = fieldPath
+    }
+}
 @Derive[Equatable]
 public enum LlmWireRole { User | Assistant }
 @Derive[Equatable]
@@ -167,7 +178,7 @@ public class LlmWireToolResultBlock {
     public let isError: Bool
     public init(callId: String, content: Array<LlmWireToolResultContent>, isError!: Bool = false) {
         this.callId = callId
-        this.content = content
+        this.content = copyValues(content)
         this.isError = isError
     }
 }
@@ -288,7 +299,8 @@ func validateNativeReplayPayload(protocol: LlmWireProtocol, dialectId: String, n
              (LlmWireProtocol.Messages, "deepseek.messages.v1", "thinking") |
              (LlmWireProtocol.Responses, "openai.responses.v1", "reasoning") |
              (LlmWireProtocol.Responses, "deepseek.responses.v1", "reasoning") |
-             (LlmWireProtocol.ChatCompletions, "deepseek.chat.v1", "reasoning_content") => true
+             (LlmWireProtocol.ChatCompletions, "deepseek.chat.v1", "reasoning_content") |
+             (LlmWireProtocol.ChatCompletions, "kimi.chat.v1", "reasoning_content") => true
         case _ => false
     }
     if (!allowed) {
@@ -340,19 +352,25 @@ public class LlmWireMessage {
     public let blocks: Array<LlmWireBlock>
     public init(role: LlmWireRole, blocks: Array<LlmWireBlock>) {
         this.role = role
-        this.blocks = blocks
+        this.blocks = copyValues(blocks)
     }
 }
 
 public class LlmWireTool {
     public let name: String
+    public let version: String
     public let description: String
     public let inputSchema: LlmWireJson
-    public init(name: String, description: String, inputSchema: LlmWireJson) {
+    public init(name: String, version: String, description: String, inputSchema: LlmWireJson) {
         this.name = name
+        if (!validToolVersion(version)) {
+            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_version_invalid", "tool versions must be 1-64 ASCII identity bytes")
+        }
+        this.version = version
         this.description = description
         this.inputSchema = inputSchema
     }
+
 }
 
 public class LlmWireJsonSchema {
@@ -374,9 +392,7 @@ public enum LlmWireStructuredOutput {
 
 public class LlmWireRequest {
     public let model: String
-    public let instructions: Array<LlmWireInstruction>
-    public let messages: Array<LlmWireMessage>
-    public let tools: Array<LlmWireTool>
+    public let transcript: LlmWireTranscript
     public let thinkingMode: LlmWireThinkingMode
     public let reasoningEffort: LlmWireReasoningEffort
     public let maxOutputTokens: ?Int64
@@ -390,9 +406,7 @@ public class LlmWireRequest {
 
     public init(
         model: String,
-        messages: Array<LlmWireMessage>,
-        instructions!: Array<LlmWireInstruction> = [],
-        tools!: Array<LlmWireTool> = [],
+        transcript: LlmWireTranscript,
         thinkingMode!: LlmWireThinkingMode = LlmWireThinkingMode.ProviderDefault,
         reasoningEffort!: LlmWireReasoningEffort = LlmWireReasoningEffort.ProviderDefault,
         maxOutputTokens!: ?Int64 = None,
@@ -405,9 +419,7 @@ public class LlmWireRequest {
         structuredOutput!: LlmWireStructuredOutput = LlmWireStructuredOutput.ProviderDefault
     ) {
         this.model = model
-        this.messages = messages
-        this.instructions = instructions
-        this.tools = tools
+        this.transcript = transcript
         this.thinkingMode = thinkingMode
         this.reasoningEffort = reasoningEffort
         this.maxOutputTokens = maxOutputTokens
@@ -419,6 +431,7 @@ public class LlmWireRequest {
         this.toolChoice = toolChoice
         this.structuredOutput = structuredOutput
     }
+
 }
 
 public class LlmWireUsage {
@@ -431,10 +444,13 @@ public class LlmWireUsage {
     public let webSearchRequests: ?Int64
     public let webFetchRequests: ?Int64
     public let serviceTier: ?String
+    public let cacheReadSource: ?LlmWireUsageSource
+    public let cacheWriteSource: ?LlmWireUsageSource
     public init(
         inputTokens!: ?Int64 = None, outputTokens!: ?Int64 = None, reasoningTokens!: ?Int64 = None,
         cacheReadTokens!: ?Int64 = None, cacheWriteTokens!: ?Int64 = None, totalTokens!: ?Int64 = None,
-        webSearchRequests!: ?Int64 = None, webFetchRequests!: ?Int64 = None, serviceTier!: ?String = None
+        webSearchRequests!: ?Int64 = None, webFetchRequests!: ?Int64 = None, serviceTier!: ?String = None,
+        cacheReadSource!: ?LlmWireUsageSource = None, cacheWriteSource!: ?LlmWireUsageSource = None
     ) {
         this.inputTokens = inputTokens
         this.outputTokens = outputTokens
@@ -445,6 +461,8 @@ public class LlmWireUsage {
         this.webSearchRequests = webSearchRequests
         this.webFetchRequests = webFetchRequests
         this.serviceTier = serviceTier
+        this.cacheReadSource = cacheReadSource
+        this.cacheWriteSource = cacheWriteSource
     }
 }
 
@@ -547,11 +565,12 @@ public class LlmWireFailure {
     public let httpStatus: ?Int64
     public let retryAfterMillis: ?Int64
     public let providerRequestId: String
+    public let usage: ?LlmWireUsage
     public init(
         kind: LlmWireFailureKind, message: String, provider!: String = "",
         providerErrorCode!: String = "", providerErrorType!: String = "",
         retryable!: Bool = false, httpStatus!: ?Int64 = None,
-        retryAfterMillis!: ?Int64 = None, providerRequestId!: String = ""
+        retryAfterMillis!: ?Int64 = None, providerRequestId!: String = "", usage!: ?LlmWireUsage = None
     ) {
         this.kind = kind
         this.message = message
@@ -562,6 +581,7 @@ public class LlmWireFailure {
         this.httpStatus = httpStatus
         this.retryAfterMillis = retryAfterMillis
         this.providerRequestId = providerRequestId
+        this.usage = usage
     }
 }
 public enum LlmWireTerminal {

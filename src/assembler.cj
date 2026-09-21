@@ -73,7 +73,9 @@ func mergeWireUsage(current: LlmWireUsage, next: LlmWireUsage, style: LlmWireUsa
         totalTokens: mergeUsageValue(current.totalTokens, next.totalTokens, style),
         webSearchRequests: mergeUsageValue(current.webSearchRequests, next.webSearchRequests, style),
         webFetchRequests: mergeUsageValue(current.webFetchRequests, next.webFetchRequests, style),
-        serviceTier: match (next.serviceTier) { case Some(_) => next.serviceTier; case None => current.serviceTier }
+        serviceTier: match (next.serviceTier) { case Some(_) => next.serviceTier; case None => current.serviceTier },
+        cacheReadSource: match (next.cacheReadSource) { case Some(_) => next.cacheReadSource; case None => current.cacheReadSource },
+        cacheWriteSource: match (next.cacheWriteSource) { case Some(_) => next.cacheWriteSource; case None => current.cacheWriteSource }
     )
 }
 
