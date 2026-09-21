@@ -20,7 +20,17 @@ if missing:
     raise SystemExit(f"provider smoke trust boundary drifted; missing={missing}")
 if "ref: ${{ inputs.candidate_sha }}" in workflow:
     raise SystemExit("provider smoke must not checkout candidate-controlled code in the secret-bearing job")
-
+cache_required = [
+    "run_cache_experiment:",
+    "default: false",
+    "environment: provider-cache",
+    "if: github.ref == 'refs/heads/main' && inputs.run_cache_experiment == true",
+    "PROVIDER_CACHE_CONFIG: ${{ secrets.PROVIDER_CACHE_CONFIG }}",
+    "Run advisory provider cache experiment",
+]
+cache_missing = [value for value in cache_required if value not in workflow]
+if cache_missing:
+    raise SystemExit(f"provider cache trust boundary drifted; missing={cache_missing}")
 release_required = [
     "Verify provider smoke run provenance",
     "scripts/verify_provider_smoke_run.py",

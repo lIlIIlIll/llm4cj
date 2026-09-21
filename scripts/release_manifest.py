@@ -37,12 +37,41 @@ parser.add_argument("--source-commit", required=True)
 parser.add_argument("--yjson-commit", required=True)
 parser.add_argument("--cjc-version", required=True)
 parser.add_argument("--cjpm-version", required=True)
-parser.add_argument("--smoke-evidence", type=Path, required=True)
-parser.add_argument("--smoke-provenance", type=Path, required=True)
+parser.add_argument("--evidence-mode", choices=("live", "offline"), default="live")
+parser.add_argument("--smoke-evidence", type=Path)
+parser.add_argument("--smoke-provenance", type=Path)
 parser.add_argument("--api-compatibility", type=Path, required=True)
 args = parser.parse_args()
-smoke_provenance = json.loads(args.smoke_provenance.read_text(encoding="utf-8"))
+if args.evidence_mode == "live" and (args.smoke_evidence is None or args.smoke_provenance is None):
+    parser.error("live evidence mode requires --smoke-evidence and --smoke-provenance")
 api_compatibility = json.loads(args.api_compatibility.read_text(encoding="utf-8"))
+
+provider_smoke: dict[str, object]
+if args.evidence_mode == "live":
+    assert args.smoke_evidence is not None and args.smoke_provenance is not None
+    smoke_provenance = json.loads(args.smoke_provenance.read_text(encoding="utf-8"))
+    provider_smoke = {
+        "status": "passed",
+        "candidateCommit": args.source_commit,
+        "artifactCount": len(list(args.smoke_evidence.glob("*.json"))),
+        "runId": smoke_provenance["runId"],
+        "workflowId": smoke_provenance["workflowId"],
+        "workflowPath": smoke_provenance["workflowPath"],
+        "artifactDigests": smoke_provenance["artifactDigests"],
+    }
+else:
+    provider_smoke = {
+        "status": "advisory_not_run",
+        "candidateCommit": args.source_commit,
+        "artifactCount": 0,
+        "reason": "offline evidence mode; provider smoke requires protected credentials",
+    }
+
+provider_cache = {
+    "status": "advisory_not_run",
+    "candidateCommit": args.source_commit,
+    "reason": "cache experiment is optional and was not run for this candidate",
+}
 
 evidence = {
     "package": "llm4cj",
@@ -59,17 +88,13 @@ evidence = {
         "apiCompatibilitySha256": sha256(args.api_compatibility),
         "apiCompatibility": api_compatibility,
     },
-    "providerSmoke": {
-        "candidateCommit": args.source_commit,
-        "artifactCount": len(list(args.smoke_evidence.glob("*.json"))),
-        "runId": smoke_provenance["runId"],
-        "workflowId": smoke_provenance["workflowId"],
-        "workflowPath": smoke_provenance["workflowPath"],
-        "artifactDigests": smoke_provenance["artifactDigests"],
-    },
+    "providerSmoke": provider_smoke,
+    "providerCache": provider_cache,
     "gates": [
         "check", "coverage", "contract", "stable API versus release tag",
-        "exact Git stable consumer", "exact Git experimental consumer", "provider smoke",
+        "exact Git stable consumer", "exact Git experimental consumer",
+        "provider smoke (advisory; not run in offline mode)" if args.evidence_mode == "offline" else "provider smoke",
+        "provider cache experiment (advisory; not run)"
     ],
 }
 args.output.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

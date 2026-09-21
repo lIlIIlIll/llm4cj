@@ -3,8 +3,10 @@ set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 version=${1:-}
-if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  printf 'usage: scripts/release_gate.sh <major.minor.patch>\n' >&2
+evidence_mode=${RELEASE_EVIDENCE_MODE:-live}
+if [[ "${2:-}" == "--offline-evidence" ]]; then evidence_mode=offline; fi
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ( "$evidence_mode" != live && "$evidence_mode" != offline ) ]]; then
+  printf 'usage: scripts/release_gate.sh <major.minor.patch> [--offline-evidence]\n' >&2
   exit 2
 fi
 
@@ -26,17 +28,19 @@ if ! git ls-files --error-unmatch cjpm.lock >/dev/null 2>&1; then
   printf 'release gate requires a tracked cjpm.lock\n' >&2
   exit 2
 fi
+
 smoke_dir=${PROVIDER_SMOKE_EVIDENCE_DIR:-}
 smoke_provenance=${PROVIDER_SMOKE_PROVENANCE:-}
-if [[ -z "$smoke_dir" || ! -d "$smoke_dir" ]]; then
-  printf 'PROVIDER_SMOKE_EVIDENCE_DIR must contain six successful candidate smoke artifacts\n' >&2
-  exit 2
-fi
-if [[ -z "$smoke_provenance" || ! -f "$smoke_provenance" ]]; then
-  printf 'PROVIDER_SMOKE_PROVENANCE must identify the trusted workflow run and artifact digests\n' >&2
-  exit 2
-fi
-python3 - "$smoke_dir" "$smoke_provenance" "$candidate" <<'PY'
+if [[ "$evidence_mode" == live ]]; then
+  if [[ -z "$smoke_dir" || ! -d "$smoke_dir" ]]; then
+    printf 'PROVIDER_SMOKE_EVIDENCE_DIR must contain six successful candidate smoke artifacts\n' >&2
+    exit 2
+  fi
+  if [[ -z "$smoke_provenance" || ! -f "$smoke_provenance" ]]; then
+    printf 'PROVIDER_SMOKE_PROVENANCE must identify the trusted workflow run and artifact digests\n' >&2
+    exit 2
+  fi
+  python3 - "$smoke_dir" "$smoke_provenance" "$candidate" <<'PY'
 import json, pathlib, sys
 root, provenance_path, candidate = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3]
 expected = {"openai-responses", "openai-chat", "anthropic-messages", "deepseek-responses", "deepseek-chat", "deepseek-messages"}
@@ -53,19 +57,31 @@ digests = provenance.get("artifactDigests")
 if not isinstance(digests, dict) or set(digests) != {f"provider-smoke-{value}" for value in expected}:
     raise SystemExit("provider smoke provenance has an incomplete artifact digest set")
 PY
+else
+  printf 'provider smoke/cache evidence is advisory: offline evidence mode; no live provider credentials were supplied\n'
+fi
 
 scripts/check.sh
 scripts/coverage.sh
 
 consumer_root=$(mktemp -d -t llm4cj-consumer.XXXXXX)
 experimental_consumer_root=$(mktemp -d -t llm4cj-experimental-consumer.XXXXXX)
-trap 'rm -rf -- "$consumer_root" "$experimental_consumer_root"' EXIT
+candidate_repo_root=""
+candidate_repo=""
+consumer_git_url="https://github.com/lIlIIlIll/llm4cj.git"
+if [[ "$evidence_mode" == offline ]]; then
+  candidate_repo_root=$(mktemp -d -t llm4cj-release-source.XXXXXX)
+  candidate_repo="$candidate_repo_root/repo.git"
+  git clone --bare . "$candidate_repo" >/dev/null
+  consumer_git_url="file://$candidate_repo"
+fi
+trap 'rm -rf -- "$consumer_root" "$experimental_consumer_root" "$candidate_repo_root"' EXIT
 cp -a support/external_consumer/. "$consumer_root/"
-python3 - "$consumer_root/cjpm.toml" "$candidate" <<'PY'
+python3 - "$consumer_root/cjpm.toml" "$candidate" "$consumer_git_url" <<'PY'
 import pathlib, re, sys
-path, candidate = pathlib.Path(sys.argv[1]), sys.argv[2]
+path, candidate, source = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 text = path.read_text()
-text, count = re.subn(r'llm4cj = \{ git = "([^"]+)", tag = "[^"]+" \}', rf'llm4cj = {{ git = "\1", commitId = "{candidate}" }}', text)
+text, count = re.subn(r'llm4cj = \{ git = "[^"]+", tag = "[^"]+" \}', f'llm4cj = {{ git = "{source}", commitId = "{candidate}" }}', text)
 if count != 1:
     raise SystemExit("external consumer dependency shape drifted")
 path.write_text(text)
@@ -87,11 +103,11 @@ PY
 )
 
 cp -a support/experimental_consumer/. "$experimental_consumer_root/"
-python3 - "$experimental_consumer_root/cjpm.toml" "$candidate" <<'PY'
+python3 - "$experimental_consumer_root/cjpm.toml" "$candidate" "$consumer_git_url" <<'PY'
 import pathlib, re, sys
-path, candidate = pathlib.Path(sys.argv[1]), sys.argv[2]
+path, candidate, source = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 text = path.read_text()
-text, count = re.subn(r'llm4cj = \{ git = "([^"]+)", tag = "[^"]+" \}', rf'llm4cj = {{ git = "\1", commitId = "{candidate}" }}', text)
+text, count = re.subn(r'llm4cj = \{ git = "[^"]+", tag = "[^"]+" \}', f'llm4cj = {{ git = "{source}", commitId = "{candidate}" }}', text)
 if count != 1:
     raise SystemExit("experimental consumer dependency shape drifted")
 path.write_text(text)
@@ -116,19 +132,23 @@ fi
 
 mkdir -p dist
 python3 scripts/check_api_compat.py --output dist/api-compatibility.json
-python3 scripts/release_manifest.py \
-  --output dist/release-manifest.json \
-  --version "$version" \
-  --source-commit "$candidate" \
-  --yjson-commit "$yjson_commit" \
-  --cjc-version "$(cjc -v 2>&1 | head -n 1)" \
-  --cjpm-version "$(cjpm --version 2>&1 | head -n 1)" \
-  --smoke-evidence "$smoke_dir" \
-  --smoke-provenance "$smoke_provenance" \
+manifest_args=(
+  --output dist/release-manifest.json
+  --version "$version"
+  --source-commit "$candidate"
+  --yjson-commit "$yjson_commit"
+  --cjc-version "$(cjc -v 2>&1 | head -n 1)"
+  --cjpm-version "$(cjpm --version 2>&1 | head -n 1)"
+  --evidence-mode "$evidence_mode"
   --api-compatibility dist/api-compatibility.json
+)
+if [[ "$evidence_mode" == live ]]; then
+  manifest_args+=(--smoke-evidence "$smoke_dir" --smoke-provenance "$smoke_provenance")
+fi
+python3 scripts/release_manifest.py "${manifest_args[@]}"
 (
   cd dist
   sha256sum api-compatibility.json release-manifest.json > SHA256SUMS
 )
 
-printf 'llm4cj release gate passed: %s at %s\n' "$version" "$candidate"
+printf 'llm4cj release gate passed: %s at %s (provider evidence mode: %s)\n' "$version" "$candidate" "$evidence_mode"

@@ -6,7 +6,15 @@ on:
       candidate_sha:
         description: Exact candidate commit SHA
         required: true
-
+      run_cache_experiment:
+        description: Run the protected advisory cache experiment
+        required: true
+        default: false
+        type: boolean
+      cache_dialect:
+        description: Dialect scenario configured in the provider-cache environment
+        required: true
+        default: openai-responses
 permissions:
   contents: read
 
@@ -50,4 +58,41 @@ jobs:
         with:
           name: provider-smoke-${{ matrix.dialect }}
           path: provider-smoke-${{ matrix.dialect }}.json
+          if-no-files-found: error
+
+  cache-experiment:
+    if: github.ref == 'refs/heads/main' && inputs.run_cache_experiment == true
+    runs-on: ubuntu-latest
+    environment: provider-cache
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+      - name: Verify protected main candidate for cache evidence
+        env:
+          REQUESTED_SHA: ${{ inputs.candidate_sha }}
+          TRUSTED_SHA: ${{ github.sha }}
+        run: |
+          test "${GITHUB_REF}" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "${TRUSTED_SHA}"
+          test "${REQUESTED_SHA}" = "${TRUSTED_SHA}"
+      - name: Setup latest stable Cangjie
+        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571
+        with:
+          channel: sts
+          version: latest
+      - name: Build public codec probe
+        working-directory: support/provider_probe
+        run: cjpm build
+      - name: Run advisory provider cache experiment
+        env:
+          DIALECT: ${{ inputs.cache_dialect }}
+          PROVIDER_CACHE_CONFIG: ${{ secrets.PROVIDER_CACHE_CONFIG }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: scripts/provider_cache_experiment.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: provider-cache-${{ inputs.cache_dialect }}
+          path: provider-cache-${{ inputs.cache_dialect }}.json
           if-no-files-found: error

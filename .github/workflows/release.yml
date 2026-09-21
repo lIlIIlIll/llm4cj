@@ -4,11 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag, for example v0.1.1
+        description: Existing release tag, for example v0.2.0
         required: true
       provider_smoke_run_id:
         description: Successful Provider Smoke workflow run ID for the same commit
-        required: true
+        required: false
+        default: ""
+      offline_evidence:
+        description: Run without protected provider credentials and record smoke/cache as advisory
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   actions: read
@@ -38,6 +44,7 @@ jobs:
           channel: sts
           version: latest
       - name: Verify provider smoke run provenance
+        if: inputs.offline_evidence != true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SMOKE_RUN_ID: ${{ inputs.provider_smoke_run_id }}
@@ -52,6 +59,7 @@ jobs:
             --candidate "${CANDIDATE_SHA}" \
             --output "${RUNNER_TEMP}/provider-smoke-provenance.json"
       - name: Download provider smoke evidence
+        if: inputs.offline_evidence != true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -63,9 +71,15 @@ jobs:
         env:
           PROVIDER_SMOKE_EVIDENCE_DIR: ${{ runner.temp }}/provider-smoke
           PROVIDER_SMOKE_PROVENANCE: ${{ runner.temp }}/provider-smoke-provenance.json
+          OFFLINE_EVIDENCE: ${{ inputs.offline_evidence }}
+          VERSION: ${{ steps.candidate.outputs.version }}
         run: |
-          scripts/release_gate.sh '${{ steps.candidate.outputs.version }}'
-          scripts/tag_consumer_gate.sh '${{ steps.candidate.outputs.version }}'
+          if [[ "$OFFLINE_EVIDENCE" == "true" ]]; then
+            scripts/release_gate.sh "$VERSION" --offline-evidence
+          else
+            scripts/release_gate.sh "$VERSION"
+          fi
+          scripts/tag_consumer_gate.sh "$VERSION"
       - name: Publish immutable release evidence
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
