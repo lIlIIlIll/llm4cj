@@ -61,7 +61,10 @@ def main(argv: list[str] | None = None) -> int:
     tag = tags[0]
     previous_manifest = tomllib.loads(git("show", f"{tag}:cjpm.toml"))
     current_manifest = tomllib.loads((ROOT / "cjpm.toml").read_text(encoding="utf-8"))
-    previous = parse_version(previous_manifest["package"]["version"])
+    # The release tag names the baseline; tolerate stale manifest version metadata.
+    tag_version = tag[1:] if tag.startswith("v") else tag
+    previous = parse_version(tag_version)
+    baseline_version = ".".join(str(value) for value in previous)
     current = parse_version(current_manifest["package"]["version"])
     previous_digest = shape_digest(source_at(tag))
     current_source = "\n".join(
@@ -76,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         "scope": "stable llm4cj package only",
         "experimentalExcluded": True,
         "baselineTag": tag,
-        "baselineVersion": previous_manifest["package"]["version"],
+        "baselineVersion": baseline_version,
         "candidateVersion": current_manifest["package"]["version"],
         "baselineShapeSha256": previous_digest,
         "candidateShapeSha256": current_digest,
@@ -89,11 +92,11 @@ def main(argv: list[str] | None = None) -> int:
     if not permitted:
         raise SystemExit(
             f"public API changed since {tag} without a breaking semver bump: "
-            f"{previous_manifest['package']['version']} -> {current_manifest['package']['version']}"
+            f"{baseline_version} -> {current_manifest['package']['version']}"
         )
     print(
         f"public API compatibility passed against {tag}: "
-        f"{previous_manifest['package']['version']} -> {current_manifest['package']['version']}"
+        f"{baseline_version} -> {current_manifest['package']['version']}"
     )
     return 0
 

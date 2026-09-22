@@ -22,5 +22,7 @@ __pycache__/
 !/fixtures/*.json
 !/fixtures/requests/
 !/fixtures/requests/*.json
+!/fixtures/transcripts/
+!/fixtures/transcripts/*.json
 !/fixtures/streams/
 !/fixtures/streams/*.json

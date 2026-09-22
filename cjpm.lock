@@ -1,5 +1,5 @@
 version = 0
 
 [requires]
-  yjson = {git = "https://github.com/lIlIIlIll/yjson.git", commitId = "0f2071a0ad59ad43a369abe51abaceaf873f0c63", branch = "main", output-type = "static"}
-  yjson_macros = {git = "https://github.com/lIlIIlIll/yjson_macros.git", commitId = "0847b59e0c8c47b7c5b52b550ef8765c0cbddb03"}
+  yjson = {git = "https://github.com/lIlIIlIll/yjson.git", commitId = "c91859feb77aeba392a1fad0f99d731df66be831", tag = "0.1.0", output-type = "static"}
+  yjson_macros = {git = "https://github.com/lIlIIlIll/yjson_macros.git", commitId = "fec0adce41f73d037d876cbac7a28aee8108bb5c"}

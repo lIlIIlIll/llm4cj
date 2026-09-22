@@ -1,0 +1,159 @@
+{
+  "scenario": "openai-responses-additional-tools",
+  "fixture": "openai.responses.v1",
+  "model": "gpt-5.4",
+  "captured": "2026-09-21",
+  "source": "https://developers.openai.com/api/docs/guides/tools",
+  "request": {
+    "model": "gpt-5.4",
+    "initial_context": {
+      "tools": [
+        {
+          "name": "search",
+          "version": "v1",
+          "description": "find information",
+          "arguments_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          },
+          "visibility": "deferred"
+        }
+      ]
+    },
+    "items": [
+      {
+        "kind": "message",
+        "role": "user",
+        "text": "find"
+      },
+      {
+        "kind": "instruction_update",
+        "role": "developer",
+        "text": "be concise"
+      },
+      {
+        "kind": "tool_activation",
+        "name": "search",
+        "version": "v1"
+      },
+      {
+        "kind": "tool_call",
+        "id": "call-1",
+        "name": "search",
+        "arguments": {}
+      },
+      {
+        "kind": "tool_result",
+        "id": "call-1",
+        "text": "found"
+      }
+    ]
+  },
+  "profile": {
+    "endpoint_profile_id": "openai.responses.v1",
+    "contract_version": "1",
+    "capabilities": [
+      "instruction_update:openai_developer_input",
+      "tool_declaration:openai_additional_tools",
+      "tool_activation:openai_additional_tools"
+    ]
+  },
+  "expected": {
+    "body": {
+      "model": "gpt-5.4",
+      "max_output_tokens": 64,
+      "input": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "find"
+            }
+          ]
+        },
+        {
+          "role": "developer",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "be concise"
+            }
+          ]
+        },
+        {
+          "type": "additional_tools",
+          "role": "developer",
+          "tools": [
+            {
+              "type": "function",
+              "name": "search",
+              "description": "find information",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "call_id": "call-1",
+          "name": "search",
+          "arguments": "{}"
+        },
+        {
+          "type": "function_call_output",
+          "call_id": "call-1",
+          "output": [
+            {
+              "type": "input_text",
+              "text": "found"
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "name": "search",
+          "description": "find information",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          },
+          "defer_loading": true
+        }
+      ]
+    },
+    "headers": [
+      {
+        "name": "content-type",
+        "value": "application/json"
+      },
+      {
+        "name": "accept",
+        "value": "application/json"
+      }
+    ]
+  },
+  "negative": [
+    {
+      "scenario": "openai-responses-unverified",
+      "model": "gpt-5.4",
+      "error": "llm.context_update_unsupported"
+    }
+  ]
+}

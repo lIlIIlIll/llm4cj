@@ -35,7 +35,7 @@ output-type = "executable"
 
 [dependencies]
 llm4cj = {{ path = "{ROOT}" }}
-yjson = {{ git = "https://github.com/lIlIIlIll/yjson.git", branch = "main", output-type = "static" }}
+yjson = {{ git = "https://github.com/lIlIIlIll/yjson.git", tag = "0.1.0", output-type = "static" }}
 '''
         (work / "cjpm.toml").write_text(manifest, encoding="utf-8")
         (work / "src/main.cj").write_text(source, encoding="utf-8")

@@ -1,0 +1,205 @@
+{
+  "scenario": "anthropic-messages-tool-changes",
+  "fixture": "anthropic.messages.v1",
+  "model": "claude-opus-5",
+  "captured": "2026-09-21",
+  "source": "https://platform.claude.com/docs/en/build-with-claude/tool-use",
+  "request": {
+    "model": "claude-opus-5",
+    "initial_context": {
+      "tools": [
+        {
+          "name": "lookup",
+          "version": "v1",
+          "description": "find a value",
+          "arguments_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          },
+          "visibility": "deferred"
+        }
+      ]
+    },
+    "items": [
+      {
+        "kind": "message",
+        "role": "user",
+        "text": "start"
+      },
+      {
+        "kind": "instruction_update",
+        "role": "system",
+        "text": "new system"
+      },
+      {
+        "kind": "message",
+        "role": "assistant",
+        "text": "answer"
+      },
+      {
+        "kind": "message",
+        "role": "user",
+        "text": "activate"
+      },
+      {
+        "kind": "tool_activation",
+        "name": "lookup",
+        "version": "v1"
+      },
+      {
+        "kind": "message",
+        "role": "assistant",
+        "text": "tool-ready"
+      },
+      {
+        "kind": "message",
+        "role": "user",
+        "text": "deactivate"
+      },
+      {
+        "kind": "tool_deactivation",
+        "name": "lookup",
+        "version": "v1"
+      }
+    ]
+  },
+  "profile": {
+    "endpoint_profile_id": "anthropic.messages.v1",
+    "contract_version": "1",
+    "capabilities": [
+      "instruction_update:anthropic_system_text",
+      "tool_activation:anthropic_tool_reference",
+      "tool_deactivation:anthropic_tool_reference"
+    ]
+  },
+  "expected": {
+    "body": {
+      "model": "claude-opus-5",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "start"
+            }
+          ]
+        },
+        {
+          "role": "system",
+          "content": [
+            {
+              "type": "text",
+              "text": "new system"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "answer"
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "activate"
+            }
+          ]
+        },
+        {
+          "role": "system",
+          "content": [
+            {
+              "type": "tool_addition",
+              "tool": {
+                "type": "tool_reference",
+                "name": "lookup"
+              }
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "tool-ready"
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "deactivate"
+            }
+          ]
+        },
+        {
+          "role": "system",
+          "content": [
+            {
+              "type": "tool_removal",
+              "tool": {
+                "type": "tool_reference",
+                "name": "lookup"
+              }
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "lookup",
+          "description": "find a value",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          },
+          "defer_loading": true
+        }
+      ]
+    },
+    "headers": [
+      {
+        "name": "content-type",
+        "value": "application/json"
+      },
+      {
+        "name": "accept",
+        "value": "application/json"
+      },
+      {
+        "name": "anthropic-version",
+        "value": "2023-06-01"
+      },
+      {
+        "name": "anthropic-beta",
+        "value": "mid-conversation-tool-changes-2026-07-01"
+      }
+    ]
+  },
+  "negative": [
+    {
+      "scenario": "anthropic-messages-cache-with-changes",
+      "model": "claude-opus-5",
+      "error": "llm.cache_unsupported"
+    }
+  ]
+}

@@ -1,0 +1,167 @@
+{
+  "scenario": "kimi-chat-dynamic-tools",
+  "fixture": "kimi.chat.v1",
+  "model": "kimi-k3",
+  "captured": "2026-09-21",
+  "source": "https://platform.kimi.ai/docs/api/chat",
+  "request": {
+    "model": "kimi-k3",
+    "initial_context": {
+      "tools": [
+        {
+          "name": "lookup",
+          "version": "v1",
+          "description": "find a value",
+          "arguments_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "items": [
+      {
+        "kind": "message",
+        "role": "user",
+        "text": "start"
+      },
+      {
+        "kind": "instruction_update",
+        "role": "system",
+        "text": "updated"
+      },
+      {
+        "kind": "tool_declaration",
+        "name": "fetch",
+        "version": "v1",
+        "description": "fetch a value",
+        "arguments_schema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "kind": "tool_call",
+        "id": "call-1",
+        "name": "fetch",
+        "arguments": {}
+      },
+      {
+        "kind": "tool_result",
+        "id": "call-1",
+        "text": "done"
+      }
+    ]
+  },
+  "profile": {
+    "endpoint_profile_id": "kimi.chat.v1",
+    "contract_version": "1",
+    "capabilities": [
+      "instruction_update:kimi_system_text",
+      "tool_declaration:kimi_system_tools",
+      "tool_activation:kimi_system_tools"
+    ]
+  },
+  "expected": {
+    "body": {
+      "model": "kimi-k3",
+      "max_completion_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "start"
+        },
+        {
+          "role": "system",
+          "content": "updated"
+        },
+        {
+          "role": "system",
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "fetch",
+                "description": "fetch a value",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "query": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "id": "call-1",
+              "type": "function",
+              "function": {
+                "name": "fetch",
+                "arguments": "{}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "call-1",
+          "content": [
+            {
+              "type": "text",
+              "text": "done"
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup",
+            "description": "find a value",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "query": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "headers": [
+      {
+        "name": "content-type",
+        "value": "application/json"
+      },
+      {
+        "name": "accept",
+        "value": "application/json"
+      }
+    ]
+  },
+  "negative": [
+    {
+      "scenario": "kimi-chat-misplaced-update",
+      "model": "kimi-k3",
+      "error": "llm.context_update_position_invalid"
+    }
+  ]
+}

@@ -24,7 +24,7 @@ All notable changes are recorded here.
 - Enforce aggregate stream limits, message phases, immutable tool identities, executable tool arguments, and request schema invariants.
 - Verify public request, fixed-response, and stream fixtures with deterministic byte fragmentation, and refuse release-asset replacement.
 - Rebuild SSE parsing around bytes with CR/LF/CRLF, BOM, empty data, persistent fields, complete-event limits, and RFC-compatible `Retry-After` dates.
-- Track the `yjson` dependency on its `main` branch (previously pinned to `92858f75aedc3dd6f7322789117854549e62c`); the release gate verifies the lock resolves to the yjson main head, with API, error-code, fixture, coverage, consumer, and provider-smoke release evidence.
+- Pin the release yjson dependency to the 0.1.0 tag and record its resolved commit in the release lock; release consumers and gates use the same tag pin.
 - Freeze dialect contracts inside codecs, add model-level image modalities (including DeepSeek Vision file/header encoding), and restrict native reasoning replay to built-in dialect identities.
 - Count every provider stream event, preserve failed/incomplete Responses classification, and count both CRLF bytes against SSE event limits.
 - Require `[DONE]` for built-in Chat transport completion, coalesce pre-identity tool fragments, enforce Responses value-done ordering, and use current OpenAI prompt-cache TTL mapping.

@@ -21,6 +21,6 @@ cache experiment 是独立的手动 advisory job。它要求 trusted main SHA、
 
 ## Release candidate
 
-Release workflow 默认要求同一 candidate SHA 的成功 Provider Smoke provenance。没有受保护 provider credentials 时，显式勾选 `offline_evidence`：workflow 跳过 smoke 下载与 provenance 硬门禁，`scripts/release_gate.sh 0.2.0 --offline-evidence` 仍执行 check、coverage、contract、API compatibility、候选 commit consumers、yjson main lock consistency 和 release manifest，并把 provider smoke/cache 记录为 `advisory_not_run`。它不会生成伪造的 passed artifact。
+Release workflow 默认要求同一 candidate SHA 的成功 Provider Smoke provenance。没有受保护 provider credentials 时，显式勾选 `offline_evidence`：workflow 跳过 smoke 下载与 provenance 硬门禁，`scripts/release_gate.sh 0.2.0 --offline-evidence` 仍执行 check、coverage、contract、API compatibility、候选 commit consumers、yjson 0.1.0 tag lock consistency 和 release manifest，并把 provider smoke/cache 记录为 `advisory_not_run`。它不会生成伪造的 passed artifact。
 
 candidate release gate 要求干净 checkout 和版本为 v0.2.0；tag consumer gate 只在发布流程已授权并存在本地 tag 时执行。`scripts/release_manifest.py` 记录 exact source commit、contract digests、fixture digest、coverage、API compatibility 与实际 provider evidence status。未运行的 live/cache gate 必须在交付中明确列为未验证。
