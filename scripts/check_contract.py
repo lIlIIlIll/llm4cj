@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import hashlib
+import datetime
+import json
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 production_sources = [path for path in sorted((ROOT / "src").glob("*.cj")) if not path.name.endswith("_test.cj")]
@@ -184,9 +187,36 @@ def main() -> int:
         sorted((ROOT / "fixtures").glob("*.json"))
         + sorted((ROOT / "fixtures/requests").glob("*.json"))
         + sorted((ROOT / "fixtures/streams").glob("*.json"))
+        + sorted((ROOT / "fixtures/transcripts").glob("*.json"))
     )
-    if len(fixtures) != 18:
-        raise SystemExit(f"expected six response, six request, and six stream dialect fixtures, found {len(fixtures)}")
+    if len(fixtures) != 21:
+        raise SystemExit(f"expected six response, six request, six stream and three native transcript fixtures, found {len(fixtures)}")
+    native_sources = {
+        "openai-responses": ("developers.openai.com", "openai.responses.v1"),
+        "anthropic-messages": ("platform.claude.com", "anthropic.messages.v1"),
+        "kimi-chat": ("platform.kimi.ai", "kimi.chat.v1"),
+    }
+    native_fixtures = sorted((ROOT / "fixtures/transcripts").glob("*.json"))
+    if {path.stem for path in native_fixtures} != set(native_sources):
+        raise SystemExit("native transcript fixture set is incomplete")
+    for path in native_fixtures:
+        record = json.loads(path.read_text())
+        expected_host, expected_dialect = native_sources[path.stem]
+        if urlsplit(record.get("source", "")).hostname != expected_host:
+            raise SystemExit(f"native fixture source is not a primary protocol document: {path.name}")
+        try:
+            datetime.date.fromisoformat(record.get("checked_at", ""))
+        except (ValueError, TypeError):
+            raise SystemExit(f"native fixture has no fixed check date: {path.name}") from None
+        profile, body = record.get("profile", {}), record.get("body", {})
+        endpoint = urlsplit(profile.get("endpoint", ""))
+        if (profile.get("dialect") != expected_dialect or profile.get("contract_version") != 1 or
+            profile.get("evidence") != "caller_declared" or profile.get("live_verified") is not False or
+            not profile.get("id") or not profile.get("model") or profile["model"] != body.get("model") or
+            endpoint.scheme != "https" or not endpoint.hostname or endpoint.username or endpoint.query or endpoint.fragment):
+            raise SystemExit(f"native fixture has no exact offline endpoint/model/contract identity: {path.name}")
+        if not isinstance(record.get("required_headers"), list):
+            raise SystemExit(f"native fixture has no explicit required-header contract: {path.name}")
     for path in fixtures:
         digest.update(path.relative_to(ROOT / "fixtures").as_posix().encode("utf-8") + b"\0" + path.read_bytes() + b"\0")
     actual_digest = digest.hexdigest()

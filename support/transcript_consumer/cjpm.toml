@@ -1,0 +1,10 @@
+[package]
+cjc-version = "1.1.0"
+name = "llm4cj_transcript_consumer"
+organization = ""
+description = "Typed transcript consumer and end-view tool admission contract"
+version = "0.3.0"
+output-type = "executable"
+
+[dependencies]
+llm4cj = { git = "https://github.com/lIlIIlIll/llm4cj.git", tag = "v0.3.0" }

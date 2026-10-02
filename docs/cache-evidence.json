@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-10-02",
+  "candidate_sha": null,
+  "candidate_state": "reconstructed_pending_fresh_checks",
+  "cache_benefit_claim": false,
+  "paths": [
+    {"path": "openai-responses", "status": "not_run", "reason": "No explicit supported live model, provider credentials, or live cache response evidence supplied."},
+    {"path": "anthropic-messages", "status": "not_run", "reason": "No explicit supported live model, provider credentials, or live cache response evidence supplied."},
+    {"path": "kimi-chat", "status": "not_run", "reason": "No provider credentials or live kimi-k3 cache response evidence supplied."}
+  ]
+}

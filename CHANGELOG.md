@@ -2,6 +2,17 @@
 
 All notable changes are recorded here.
 
+## [0.3.0] - Unreleased
+
+- Replace the separated request `instructions`, `messages`, and `tools` API with one immutable ordered transcript and its initial context. Remove the old request constructor and builder input setters without compatibility shims.
+- Preserve dynamic instruction, tool declaration, activation, and deactivation positions; derive the active tool view by replay and validate historical calls against the definitions active at each point.
+- Add versioned transcript snapshots, explicit tool definition identities, deterministic duplicate handling, bounded diagnostics, and endpoint/model/dialect-bound native update capability declarations.
+- Encode Responses `additional_tools`, Anthropic predeclared/deferred tool references and native update beta headers, and Kimi `system.tools` without collapsing updates into the initial context or falling back to another protocol.
+- Update fixtures, public API snapshots, examples, and external consumers for the breaking contract; document the Axyndra integration boundary and reproducible live cache experiment procedure.
+- Keep absent cache usage unknown and distinguish it from reported zero. Offline protocol fixtures prove layout and semantics only; no real provider cache benefit is claimed without a recorded live experiment.
+
+See [the v0.2 migration guide](docs/migrating-from-v0.2.md) and [the transcript ADR](docs/adr/0002-ordered-transcript.md). A release tag, remote consumer result, and live provider/cache evidence are separate gates; this entry does not assert that they have run. Reconstructed candidates require fresh evidence and do not inherit checks from an unavailable earlier commit.
+
 ## [0.1.1]
 
 - Replace protocol-only entry points with `LlmWireCodec`, explicit provider dialects, model capabilities, and strict-only validation.

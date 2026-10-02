@@ -1,0 +1,21 @@
+{
+  "source": "https://developers.openai.com/api/docs/guides/tools-tool-search#add-tools-at-a-specific-point-in-the-input",
+  "checked_at": "2026-10-01",
+  "profile": {"id": "fixture.responses", "model": "gpt-6-sol", "dialect": "openai.responses.v1", "endpoint": "https://api.openai.com/v1/responses", "contract_version": 1, "evidence": "caller_declared", "live_verified": false},
+  "body": {
+    "model": "gpt-6-sol", "max_output_tokens": 32,
+    "input": [
+      {"role": "system", "content": [{"type": "input_text", "text": "Initial instruction"}]},
+      {"role": "user", "content": [{"type": "input_text", "text": "History"}]},
+      {"type": "additional_tools", "role": "developer", "tools": [{"type": "function", "name": "C", "description": "Tool C", "parameters": {"type": "object", "properties": {}}}]},
+      {"role": "developer", "content": [{"type": "input_text", "text": "Updated instruction"}]},
+      {"type": "function_call", "call_id": "call-C", "name": "C", "arguments": "{}"},
+      {"type": "function_call_output", "call_id": "call-C", "output": [{"type": "input_text", "text": "done"}]}
+    ],
+    "tools": [
+      {"type": "function", "name": "A", "description": "Tool A", "parameters": {"type": "object", "properties": {}}},
+      {"type": "function", "name": "B", "description": "Tool B", "parameters": {"type": "object", "properties": {}}}
+    ]
+  },
+  "required_headers": []
+}

@@ -73,8 +73,30 @@ func mergeWireUsage(current: LlmWireUsage, next: LlmWireUsage, style: LlmWireUsa
         totalTokens: mergeUsageValue(current.totalTokens, next.totalTokens, style),
         webSearchRequests: mergeUsageValue(current.webSearchRequests, next.webSearchRequests, style),
         webFetchRequests: mergeUsageValue(current.webFetchRequests, next.webFetchRequests, style),
-        serviceTier: match (next.serviceTier) { case Some(_) => next.serviceTier; case None => current.serviceTier }
+        serviceTier: match (next.serviceTier) { case Some(_) => next.serviceTier; case None => current.serviceTier },
+        source: match (next.source) { case LlmWireUsageSource.Unknown => current.source; case _ => next.source }
     )
+}
+
+func terminalWithObservedUsage(value: LlmWireTerminal, usage: ?LlmWireUsage): LlmWireTerminal {
+    match (value) {
+        case LlmWireTerminal.Completed(reply) => match (usage) {
+            case Some(merged) => LlmWireTerminal.Completed(LlmWireReply(
+                responseId: reply.responseId, model: reply.model, rawStopReason: reply.rawStopReason,
+                choices: reply.choices, usage: merged
+            ))
+            case None => value
+        }
+        case LlmWireTerminal.ProviderFailed(failure) => LlmWireTerminal.ProviderFailed(failureWithObservedUsage(failure, usage))
+        case LlmWireTerminal.Cancelled(failure) => LlmWireTerminal.Cancelled(failureWithObservedUsage(failure, usage))
+    }
+}
+
+func failureWithObservedUsage(failure: LlmWireFailure, usage: ?LlmWireUsage): LlmWireFailure {
+    LlmWireFailure(failure.kind, failure.message, provider: failure.provider,
+        providerErrorCode: failure.providerErrorCode, providerErrorType: failure.providerErrorType,
+        retryable: failure.retryable, httpStatus: failure.httpStatus, retryAfterMillis: failure.retryAfterMillis,
+        providerRequestId: failure.providerRequestId, usage: match (usage) { case Some(_) => usage; case None => failure.usage })
 }
 
 func mergeUsageValue(current: ?Int64, next: ?Int64, style: LlmWireUsageMergeStyle): ?Int64 {

@@ -5,6 +5,10 @@ import std.collection.*
 import std.convert.*
 import std.fs.*
 
+func messageItems(messages: Array<LlmWireMessage>): Array<LlmWireInputItem> {
+    messages.map({message: LlmWireMessage => LlmWireInputItem.Message(message)})
+}
+
 func codecFor(name: String, model!: String = "probe-model"): LlmWireCodec {
     match (name) {
         case "openai-responses" => openAiResponsesCodec(openAiResponsesModelProfile(model))
@@ -19,11 +23,7 @@ func codecFor(name: String, model!: String = "probe-model"): LlmWireCodec {
 
 func encode(name: String, model: String, streaming: Bool): Int64 {
     let codec = codecFor(name, model: model)
-    let request = LlmWireRequest(
-        model,
-        [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("hello"))])],
-        maxOutputTokens: Some(256)
-    )
+    let request = LlmWireRequest(model, LlmWireTranscript(LlmWireInitialContext(), items: messageItems([LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("hello"))])])), maxOutputTokens: Some(256))
     let prepared = codec.encodeRequest(request, streaming: streaming)
     let materialized = match (prepared.materialize()) {
         case LlmWireResult.Ok(value) => value

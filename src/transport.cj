@@ -32,6 +32,12 @@ public class LlmWireError <: Exception {
     public let eventType: String
     public let blockIndex: Int64
     public let toolCallId: String
+    public let inputItemIndex: Int64
+    public let toolName: String
+    public let toolVersion: String
+    public let missingCapability: String
+    public let profileId: String
+    public let contractVersion: Int64
     public let providerRequestId: String
     // Usage observed on the wire before the failure was raised (message
     // start / delta totals). None when nothing was observable. Lets hosts
@@ -46,6 +52,8 @@ public class LlmWireError <: Exception {
         protocol!: ?LlmWireProtocol = None, dialectId!: String = "",
         eventType!: String = "", blockIndex!: Int64 = -1,
         toolCallId!: String = "", providerRequestId!: String = "",
+        inputItemIndex!: Int64 = -1, toolName!: String = "", toolVersion!: String = "",
+        missingCapability!: String = "", profileId!: String = "", contractVersion!: Int64 = 0,
         usage!: ?LlmWireUsage = None
     ) {
         super(message)
@@ -56,14 +64,19 @@ public class LlmWireError <: Exception {
         this.diagnosticJson = diagnosticJson
         this.phase = phase; this.protocol = protocol; this.dialectId = dialectId
         this.eventType = eventType; this.blockIndex = blockIndex; this.toolCallId = toolCallId
+        this.inputItemIndex = inputItemIndex; this.contractVersion = contractVersion
+        this.toolName = boundedTranscriptEvidence(toolName)
+        this.toolVersion = boundedTranscriptEvidence(toolVersion)
+        this.missingCapability = boundedTranscriptEvidence(missingCapability)
+        this.profileId = boundedTranscriptEvidence(profileId)
         this.providerRequestId = providerRequestId
         this.usage = usage
     }
 }
 
 // Returns a copy of the error carrying the usage observed on the wire. The
-// observed totals always equal or supersede whatever the error already
-// carries, so the copy is branch-free and every call site stays coverable.
+// observed totals supersede prior totals. A path without a newer observation
+// must retain the usage already attached to the error.
 func withObservedUsage(error: LlmWireError, observedUsage: ?LlmWireUsage): LlmWireError {
     LlmWireError(
         error.kind, error.code, error.message, retryable: error.retryable,
@@ -72,7 +85,9 @@ func withObservedUsage(error: LlmWireError, observedUsage: ?LlmWireUsage): LlmWi
         providerErrorType: error.providerErrorType, diagnosticJson: error.diagnosticJson,
         phase: error.phase, protocol: error.protocol, dialectId: error.dialectId,
         eventType: error.eventType, blockIndex: error.blockIndex, toolCallId: error.toolCallId,
-        providerRequestId: error.providerRequestId, usage: observedUsage
+        inputItemIndex: error.inputItemIndex, toolName: error.toolName, toolVersion: error.toolVersion,
+        missingCapability: error.missingCapability, profileId: error.profileId, contractVersion: error.contractVersion,
+        providerRequestId: error.providerRequestId, usage: match (observedUsage) { case Some(_) => observedUsage; case None => error.usage }
     )
 }
 

@@ -59,7 +59,8 @@ scripts/coverage.sh
 
 consumer_root=$(mktemp -d -t llm4cj-consumer.XXXXXX)
 experimental_consumer_root=$(mktemp -d -t llm4cj-experimental-consumer.XXXXXX)
-trap 'rm -rf -- "$consumer_root" "$experimental_consumer_root"' EXIT
+transcript_consumer_root=$(mktemp -d -t llm4cj-transcript-consumer.XXXXXX)
+trap 'rm -rf -- "$consumer_root" "$experimental_consumer_root" "$transcript_consumer_root"' EXIT
 cp -a support/external_consumer/. "$consumer_root/"
 python3 - "$consumer_root/cjpm.toml" "$candidate" <<'PY'
 import pathlib, re, sys
@@ -101,6 +102,27 @@ PY
   cjpm check
   cjpm build
   target/release/bin/main
+)
+
+cp -a support/transcript_consumer/. "$transcript_consumer_root/"
+python3 - "$transcript_consumer_root/cjpm.toml" "$candidate" <<'PY'
+import pathlib, re, sys
+path, candidate = pathlib.Path(sys.argv[1]), sys.argv[2]
+text = path.read_text()
+text, count = re.subn(r'llm4cj = \{ git = "([^"]+)", tag = "[^"]+" \}', rf'llm4cj = {{ git = "\1", commitId = "{candidate}" }}', text)
+if count != 1:
+    raise SystemExit("transcript consumer dependency shape drifted")
+path.write_text(text)
+PY
+(
+  cd "$transcript_consumer_root"
+  cjpm check
+  cjpm build
+  target/release/bin/main
+  if ! grep -Fq "commitId = \"$candidate\"" cjpm.lock; then
+    printf 'transcript consumer did not resolve candidate %s\n' "$candidate" >&2
+    exit 1
+  fi
 )
 
 python3 - <<'PY2'

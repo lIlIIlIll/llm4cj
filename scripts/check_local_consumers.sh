@@ -5,7 +5,7 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 work=$(mktemp -d -t llm4cj-local-consumers.XXXXXX)
 trap 'rm -rf -- "$work"' EXIT
 
-for consumer in external_consumer experimental_consumer; do
+for consumer in external_consumer experimental_consumer transcript_consumer; do
   target="$work/$consumer"
   cp -a "$root/support/$consumer/." "$target/"
   python3 - "$target/cjpm.toml" "$root" <<'PY'
@@ -29,4 +29,4 @@ PY
   )
 done
 
-printf 'stable and experimental local consumers passed\n'
+printf 'stable, experimental and transcript local consumers passed\n'

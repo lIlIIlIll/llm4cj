@@ -26,3 +26,7 @@ nightly 是定时 advisory，不阻塞发布。provider smoke 是手动 workflow
 发布使用手动 `Release` workflow：输入已存在的 tag 和同一 candidate SHA 的成功 Provider Smoke run ID。下载 artifact 前，workflow 会通过 GitHub API 验证 run 来自固定 `provider-smoke.yml`、事件为 `workflow_dispatch`、分支为 `main`、head SHA 等于 tag candidate、状态为成功，并验证六个 artifact 的 run identity 与 SHA-256 digest。run ID、workflow ID、workflow path 和 artifact digest 会写入 release manifest。工作流随后运行 candidate release gate，并分别从候选 commit 和远端 tag 安装稳定包及 `llm4cj.experimental` 外部 consumer。稳定 API 会与最新发布 tag 比较并生成 `api-compatibility.json`；实验包参与构建和覆盖率，但明确排除在稳定 API 兼容承诺之外。`api-compatibility.json`、`release-manifest.json` 与 `SHA256SUMS` 会作为 GitHub Release assets 上传。若同名 GitHub Release 已存在，workflow 会失败，不覆盖原有证据。创建 tag/release 仍是显式发布动作，不由普通 CI 自动执行。
 
 手动 Provider Smoke 会在受保护 main 上构建 `support/provider_probe`，通过公共 `encodeRequest` 生成 streaming body，再把真实 `text/event-stream` 的网络分片直接交给公共 byte stream decoder。secret 只提供 endpoint、model 与认证 header；预制 raw body 不再是被测试对象。`scripts/check_provider_smoke_security.py` 由普通 CI 执行，防止 workflow 重新 checkout `inputs.candidate_sha` 或移除 main/Environment 限制。
+
+v0.3.0 的 transcript fixture 与性质用例还需覆盖时序工具视图、原生追加位置、snapshot/version、数组/schema 冻结、非法插入点、能力准入、native replay 顺序、unknown/zero usage 及失败前 usage。API baseline 和全部 consumer 必须使用新输入；旧重载/旧快照不能作为 breaking 门禁的绕过路径。
+
+动态路径的缓存实验是独立证据。运行方法和当前 not-run 状态见[缓存实验](cache-experiments.md)。provider smoke 通过不等于缓存收益证明；仅有离线布局回归也不能把 W6 的 live 项标成通过。Axyndra 迁移、固定远端 commit/tag consumer 与发布仍需各自实跑，本仓库本地 external consumer 通过只能证明本地契约可集成。重建候选必须重新执行门禁，不能引用已丢失候选的通过记录。

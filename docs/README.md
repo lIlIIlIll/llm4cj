@@ -4,6 +4,10 @@
 
 - [协议与 dialect](choosing-a-protocol.md)
 - [请求与响应](requests-and-replies.md)
+- [有序 transcript 与动态上下文](ordered-transcript.md)
+- [从 v0.2 迁移与 Axyndra 消费契约](migrating-from-v0.2.md)
+- [缓存实验与证据边界](cache-experiments.md)
+- [Issue #27 实施与证据](issue-27-implementation.md)
 - [流式与传输](streaming-and-transport.md)
 - [Tools、thinking 与 structured output](tools-thinking-and-structured-output.md)
 - [错误与限制](errors-and-limits.md)
