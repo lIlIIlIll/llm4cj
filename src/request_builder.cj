@@ -1,13 +1,9 @@
 package llm4cj
 
-import std.collection.*
-
 public class LlmWireRequestBuilder {
     private let codec: LlmWireCodec
     private let model: String
-    private let instructions = ArrayList<LlmWireInstruction>()
-    private let messages = ArrayList<LlmWireMessage>()
-    private let tools = ArrayList<LlmWireTool>()
+    private var transcript = LlmWireTranscript()
     private var thinkingMode = LlmWireThinkingMode.ProviderDefault
     private var reasoningEffort = LlmWireReasoningEffort.ProviderDefault
     private var maxOutputTokens: ?Int64 = None
@@ -21,21 +17,63 @@ public class LlmWireRequestBuilder {
 
     init(codec: LlmWireCodec, model: String) { this.codec = codec; this.model = model }
 
-    public func addInstruction(role: LlmWireInstructionRole, text: String): Unit {
-        if (text.trimAscii() == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.instruction_empty", "instruction text must not be empty") }
-        instructions.add(LlmWireInstruction(role, text))
+    public func setInitialContext(context: LlmWireInitialContext): Unit {
+        requireNoItems()
+        try { validateInitialShape(context) }
+        catch (error: LlmWireError) { throw withCodecContext(error, codec, LlmTransportPhase.Encode) }
+        transcript = LlmWireTranscript(context)
     }
-
-    public func addMessage(message: LlmWireMessage): Unit {
-        if (!messageHasContent(message)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.message_empty", "messages must contain semantic content") }
-        for (block in message.blocks) { validateBlockShape(block) }
-        messages.add(message)
+    public func setTranscript(value: LlmWireTranscript): Unit {
+        requireNoItems()
+        try { validateInitialShape(value.initialContext) }
+        catch (error: LlmWireError) { throw withCodecContext(error, codec, LlmTransportPhase.Encode) }
+        let items = value.items
+        for (index in 0..items.size) {
+            try { validateItemShape(items[index]) }
+            catch (error: LlmWireError) { throw withCodecContext(withInputItemContext(error, index), codec, LlmTransportPhase.Encode) }
+        }
+        transcript = value
     }
-
-    public func addTool(tool: LlmWireTool): Unit {
-        if (!validToolName(tool.name)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_invalid", "tool names must use the tool-name grammar") }
-        if (tool.inputSchema.kind != LlmWireJsonKind.Object) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_schema_invalid", "tool input schema must be a JSON object") }
-        tools.add(tool)
+    public func append(item: LlmWireInputItem): Unit {
+        try { validateItemShape(item) }
+        catch (error: LlmWireError) { throw withCodecContext(withInputItemContext(error, transcript.itemCount()), codec, LlmTransportPhase.Encode) }
+        transcript = transcript.append(item)
+    }
+    public func appendMessage(message: LlmWireMessage): Unit { append(LlmWireInputItem.Message(message)) }
+    private func requireNoItems(): Unit {
+        if (transcript.itemCount() != 0) {
+            throw withCodecContext(LlmWireError(LlmWireErrorKind.InvalidState, "llm.initial_context_already_started", "initial context must be assigned before transcript items",
+                inputItemIndex: transcript.itemCount()), codec, LlmTransportPhase.Encode)
+        }
+    }
+    private func validateInitialShape(context: LlmWireInitialContext): Unit {
+        for (instruction in context.instructions) { validateInstructionShape(instruction) }
+        for (declaration in context.tools) { validateDeclarationShape(declaration) }
+    }
+    private func validateInstructionShape(instruction: LlmWireInstruction): Unit {
+        if (instruction.text.trimAscii() == "") {
+            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.instruction_empty", "instruction text must not be empty")
+        }
+    }
+    private func validateDeclarationShape(declaration: LlmWireToolDeclaration): Unit {
+        if (!validToolName(declaration.tool.name)) {
+            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_invalid", "tool names must use the tool-name grammar", toolName: declaration.tool.name, toolVersion: declaration.version)
+        }
+        if (declaration.tool.inputSchema.kind != LlmWireJsonKind.Object) {
+            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_schema_invalid", "tool input schema must be a JSON object", toolName: declaration.tool.name, toolVersion: declaration.version)
+        }
+    }
+    private func validateItemShape(item: LlmWireInputItem): Unit {
+        match (item) {
+            case LlmWireInputItem.Message(message) =>
+                if (!messageHasContent(message)) {
+                    throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.message_empty", "messages must contain semantic content")
+                }
+                for (block in message.blocks) { validateBlockShape(block) }
+            case LlmWireInputItem.InstructionUpdate(instruction) => validateInstructionShape(instruction)
+            case LlmWireInputItem.ToolDeclaration(declaration) => validateDeclarationShape(declaration)
+            case _ => ()
+        }
     }
 
     public func setThinking(mode: LlmWireThinkingMode, effort!: LlmWireReasoningEffort = LlmWireReasoningEffort.ProviderDefault): Unit {
@@ -65,7 +103,7 @@ public class LlmWireRequestBuilder {
 
     public func build(): LlmWireResult<LlmWireRequest> {
         let request = LlmWireRequest(
-            model, messages.toArray(), instructions: instructions.toArray(), tools: tools.toArray(),
+            model, transcript,
             thinkingMode: thinkingMode, reasoningEffort: reasoningEffort, maxOutputTokens: maxOutputTokens,
             parallelToolCalls: parallelToolCalls, serviceTier: serviceTier, generationSpeed: generationSpeed,
             promptCache: promptCache, promptCacheRoutingKey: promptCacheRoutingKey,
@@ -76,7 +114,7 @@ public class LlmWireRequestBuilder {
     }
 
     public func reset(): Unit {
-        instructions.clear(); messages.clear(); tools.clear()
+        transcript = LlmWireTranscript()
         thinkingMode = LlmWireThinkingMode.ProviderDefault; reasoningEffort = LlmWireReasoningEffort.ProviderDefault
         maxOutputTokens = None; parallelToolCalls = None; serviceTier = LlmWireServiceTier.ProviderDefault
         generationSpeed = LlmWireGenerationSpeed.ProviderDefault; promptCache = LlmWirePromptCache.ProviderDefault

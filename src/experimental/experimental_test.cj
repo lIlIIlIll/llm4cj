@@ -4,6 +4,10 @@ import llm4cj.*
 import std.unittest.*
 import std.unittest.testmacro.*
 
+func messageItems(messages: Array<LlmWireMessage>): Array<LlmWireInputItem> {
+    messages.map({message: LlmWireMessage => LlmWireInputItem.Message(message)})
+}
+
 func prewarmCodec(): LlmWireCodec {
     anthropicMessagesCodec(anthropicMessagesModelProfile(
         "claude-test",
@@ -18,15 +22,7 @@ func prewarmRequest(
     structuredOutput!: LlmWireStructuredOutput = LlmWireStructuredOutput.ProviderDefault,
     toolChoice!: LlmWireToolChoice = LlmWireToolChoice.ProviderDefault
 ): LlmWireRequest {
-    LlmWireRequest(
-        "claude-test",
-        [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm this prompt"))])],
-        thinkingMode: thinkingMode,
-        maxOutputTokens: Some(0),
-        promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault),
-        toolChoice: toolChoice,
-        structuredOutput: structuredOutput
-    )
+    LlmWireRequest("claude-test", LlmWireTranscript(LlmWireInitialContext(), items: messageItems([LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm this prompt"))])])), thinkingMode: thinkingMode, maxOutputTokens: Some(0), promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault), toolChoice: toolChoice, structuredOutput: structuredOutput)
 }
 
 func expectExperimentalError(code: String, body: () -> Unit): Unit {
@@ -116,31 +112,20 @@ class Llm4CjExperimentalTests {
             case _ => @Fail("required-tool pre-warm must fail")
         }
 
-        let wrongTokens = LlmWireRequest(
-            "claude-test", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm"))])],
-            maxOutputTokens: Some(1),
-            promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault)
-        )
+        let wrongTokens = LlmWireRequest("claude-test", LlmWireTranscript(LlmWireInitialContext(), items: messageItems([LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm"))])])), maxOutputTokens: Some(1), promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault))
         match (prepareAnthropicCachePrewarm(prewarmCodec(), wrongTokens)) {
             case LlmWireResult.Err(error) => @Expect(error.code, "llm.cache_prewarm_tokens_invalid")
             case _ => @Fail("positive-token pre-warm must fail")
         }
 
-        let missingCache = LlmWireRequest(
-            "claude-test", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm"))])],
-            maxOutputTokens: Some(0)
-        )
+        let missingCache = LlmWireRequest("claude-test", LlmWireTranscript(LlmWireInitialContext(), items: messageItems([LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm"))])])), maxOutputTokens: Some(0))
         match (prepareAnthropicCachePrewarm(prewarmCodec(), missingCache)) {
             case LlmWireResult.Err(error) => @Expect(error.code, "llm.cache_prewarm_cache_missing")
             case _ => @Fail("uncached pre-warm must fail")
         }
 
         let openAi = openAiResponsesCodec(openAiResponsesModelProfile("gpt"))
-        match (prepareAnthropicCachePrewarm(openAi, LlmWireRequest(
-            "gpt", [LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm"))])],
-            maxOutputTokens: Some(0),
-            promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault)
-        ))) {
+        match (prepareAnthropicCachePrewarm(openAi, LlmWireRequest("gpt", LlmWireTranscript(LlmWireInitialContext(), items: messageItems([LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm"))])])), maxOutputTokens: Some(0), promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault)))) {
             case LlmWireResult.Err(error) => @Expect(error.code, "llm.cache_prewarm_dialect_unsupported")
             case _ => @Fail("non-Anthropic pre-warm must fail")
         }

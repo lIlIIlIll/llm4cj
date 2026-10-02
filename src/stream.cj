@@ -322,7 +322,7 @@ open class StreamLifecycle {
             case Some(value) => value
             case None =>
                 let value = LlmWireTerminal.Cancelled(LlmWireFailure(
-                    LlmWireFailureKind.Cancelled, "stream decoding was cancelled", provider: codec.provider
+                    LlmWireFailureKind.Cancelled, "stream decoding was cancelled", provider: codec.provider, usage: observedUsage()
                 ))
                 terminal = Some(value)
                 value
@@ -444,10 +444,11 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
             case "response.completed" | "response.incomplete" | "response.failed" =>
                 let terminalResponse = wireObject(wireRequiredField(root, "response", provider: codec.provider), "Responses terminal response", provider: codec.provider)
                 reconcileResponsesMetadata(terminalResponse)
+                usage = mergeWireUsage(usage, decodeResponsesUsage(codec, terminalResponse), codec.dialect.contract.usageMergeStyle)
                 let state = decodeResponsesResponse(codec, terminalResponse)
-                match (state) { case LlmWireResponseState.Terminal(LlmWireTerminal.Completed(reply)) => usage = reply.usage; case _ => () }
                 match (state) {
-                    case LlmWireResponseState.Terminal(value) =>
+                    case LlmWireResponseState.Terminal(decodedTerminal) =>
+                        let value = terminalWithObservedUsage(decodedTerminal, observedUsage())
                         if (!responsesEventMatchesTerminal(kind, value)) {
                             invalidWire("llm.responses_terminal_mismatch", "Responses terminal event type does not match the response status", provider: codec.provider)
                         }
@@ -473,7 +474,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
                         LlmWireStreamUpdate(events: finalEvents.toArray(), terminal: Some(value))
                     case _ => invalidWire("llm.responses_terminal_invalid", "terminal event contains a non-terminal response", provider: codec.provider)
                 }
-            case "error" => providerErrorUpdate(codec, match (root.field("error")) { case Some(value) => value; case None => root }, { value => terminal = Some(value) })
+            case "error" => providerErrorUpdate(codec, match (root.field("error")) { case Some(value) => value; case None => root }, { value => terminal = Some(value) }, usage: observedUsage())
             case "response.output_item.done" => completeResponsesItem(root)
             case "response.output_text.done" => completeResponsesText(root, "output_text", false)
             case "response.refusal.done" => completeResponsesText(root, "refusal", false)
@@ -495,9 +496,14 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
             if (inProgressObserved) { invalidWire("llm.responses_start_duplicate", "Responses response.in_progress appeared more than once", provider: codec.provider) }
             inProgressObserved = true
         }
-        if (started) { return LlmWireStreamUpdate() }
-        started = true
-        LlmWireStreamUpdate(events: [LlmWireEvent.StreamStarted(responseId, model)])
+        let events = ArrayList<LlmWireEvent>()
+        if (!started) { started = true; events.add(LlmWireEvent.StreamStarted(responseId, model)) }
+        let nextUsage = decodeResponsesUsage(codec, response)
+        if (observedWireUsage(nextUsage).isSome()) {
+            usage = mergeWireUsage(usage, nextUsage, codec.dialect.contract.usageMergeStyle)
+            events.add(LlmWireEvent.UsageUpdated(usage))
+        }
+        LlmWireStreamUpdate(events: events.toArray())
     }
 
     private func reconcileResponsesMetadata(response: JsonNode): Unit {
@@ -752,7 +758,7 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
             return LlmWireStreamUpdate(events: [LlmWireEvent.UsageUpdated(usage), LlmWireEvent.TerminalObserved(value)], terminal: Some(value))
         }
         let root = wireObject(parseWireJson(event.data), "Chat stream event", provider: codec.provider)
-        match (root.field("error")) { case Some(raw) => return providerErrorUpdate(codec, raw, { value => terminal = Some(value) }); case None => () }
+        match (root.field("error")) { case Some(raw) => return providerErrorUpdate(codec, raw, { value => terminal = Some(value) }, usage: observedUsage()); case None => () }
         match (wireOptionalString(root, "id", provider: codec.provider)) {
             case Some(value) => if (responseId != "" && responseId != value) { invalidWire("llm.chat_id_mismatch", "Chat response ID changed during streaming", provider: codec.provider) } else if (responseId == "") { budget.retain(value); responseId = value }
             case None => ()
@@ -806,7 +812,7 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
         for (choice in choices) {
             let reason = match (choice.finishReason) { case Some(value) => value; case None => invalidWire("llm.chat_choice_terminal_missing", "Chat stream ended before every choice reported finish_reason", provider: codec.provider) }
             if (reason == "insufficient_system_resource") {
-                return LlmWireTerminal.ProviderFailed(LlmWireFailure(LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true))
+                return LlmWireTerminal.ProviderFailed(LlmWireFailure(LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true, usage: observedUsage()))
             }
             outputChoices.add(materializeChatChoice(choice, reason))
         }
@@ -821,7 +827,7 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
         let blocks = ArrayList<LlmWireOutputBlock>()
         let content = choice.text.toString(); if (content != "") { blocks.add(LlmWireOutputBlock.Text(LlmWireTextBlock(content))) }
         let thought = choice.reasoning.toString(); if (thought != "") {
-            if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.DeepSeekChat) { blocks.add(LlmWireOutputBlock.NativeReplay(chatReasoningReplay(codec, thought, if (model == "") { None } else { Some(model) }, blocks.size))) }
+            if (chatHasReplayReasoning(codec)) { blocks.add(LlmWireOutputBlock.NativeReplay(chatReasoningReplay(codec, thought, if (model == "") { None } else { Some(model) }, blocks.size))) }
             else { blocks.add(LlmWireOutputBlock.Reasoning(LlmWireReasoningBlock(thought))) }
         }
         let denied = choice.refusal.toString(); if (denied != "") { blocks.add(LlmWireOutputBlock.Refusal(LlmWireRefusalBlock(denied))) }
@@ -1000,7 +1006,7 @@ class MessagesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
                 let events = ArrayList<LlmWireEvent>()
                 match (refusalUpdate) { case Some(value) => events.add(LlmWireEvent.RefusalObserved(value)); case None => () }
                 match (wireOptionalObject(root, "usage", provider: codec.provider)) {
-                    case Some(value) => usage = mergeWireUsage(usage, LlmWireUsage(outputTokens: wireOptionalUsageInt(value, "output_tokens", codec.provider)), codec.dialect.contract.usageMergeStyle); events.add(LlmWireEvent.UsageUpdated(usage))
+                    case Some(value) => usage = mergeWireUsage(usage, LlmWireUsage(outputTokens: wireOptionalUsageInt(value, "output_tokens", codec.provider), source: LlmWireUsageSource.ProviderReported(codec.provider, codec.dialect.compatibilityId)), codec.dialect.contract.usageMergeStyle); events.add(LlmWireEvent.UsageUpdated(usage))
                     case None => ()
                 }
                 LlmWireStreamUpdate(events: events.toArray())
@@ -1010,7 +1016,7 @@ class MessagesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
                 let value = messagesTerminal()
                 terminal = Some(value)
                 LlmWireStreamUpdate(events: [LlmWireEvent.UsageUpdated(usage), LlmWireEvent.TerminalObserved(value)], terminal: Some(value))
-            case "error" => providerErrorUpdate(codec, match (root.field("error")) { case Some(value) => value; case None => root }, { value => terminal = Some(value) })
+            case "error" => providerErrorUpdate(codec, match (root.field("error")) { case Some(value) => value; case None => root }, { value => terminal = Some(value) }, usage: observedUsage())
             case "ping" => LlmWireStreamUpdate()
             case _ => unsupportedSemantic(codec, kind, root, "llm.messages_stream_event_unsupported", eventType: kind)
         }
@@ -1165,8 +1171,8 @@ func materializeMessageBlock(codec: LlmWireCodec, block: MessageStreamBlock, mod
     }
 }
 
-func providerErrorUpdate(codec: LlmWireCodec, raw: JsonNode, storeTerminal: (LlmWireTerminal) -> Unit): LlmWireStreamUpdate {
-    let failure = providerFailure(codec, raw)
+func providerErrorUpdate(codec: LlmWireCodec, raw: JsonNode, storeTerminal: (LlmWireTerminal) -> Unit, usage!: ?LlmWireUsage = None): LlmWireStreamUpdate {
+    let failure = providerFailure(codec, raw, usage: usage)
     let value = LlmWireTerminal.ProviderFailed(failure)
     storeTerminal(value)
     LlmWireStreamUpdate(events: [LlmWireEvent.ProviderFailure(failure), LlmWireEvent.TerminalObserved(value)], terminal: Some(value))

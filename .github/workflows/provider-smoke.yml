@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: provider-smoke
     timeout-minutes: 20
+    env:
+      # Explicit qualification for the probe entry project and all dependencies.
+      LLM4CJ_CONSUMER_COMPILE_OPTION: -O1
     strategy:
       fail-fast: false
       matrix:
@@ -38,8 +41,7 @@ jobs:
           channel: sts
           version: latest
       - name: Build public codec probe
-        working-directory: support/provider_probe
-        run: cjpm build
+        run: python3 scripts/consumer_compile.py support/provider_probe cjpm build
       - name: Run protected-main provider smoke
         env:
           DIALECT: ${{ matrix.dialect }}

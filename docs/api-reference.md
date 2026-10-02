@@ -1,6 +1,6 @@
 # API reference
 
-本页列出 v0.1.1 的 public declaration。字段和构造参数以源码为准；语义见主题文档。
+本页列出 v0.3.0 候选的 public declaration。字段和构造参数以源码为准；语义见主题文档。
 
 ## Codec 与 dialect
 
@@ -14,19 +14,23 @@
 
 `LlmWireProtocol`、`LlmWireRole`、`LlmWireInstructionRole`、`LlmWireInstruction`、`LlmWireInputModality`、`LlmWireImageSourceKind`、`LlmWireImageDetail`、`LlmWireReasoningEffort`、`LlmWireThinkingMode`、`LlmWireServiceTier`、`LlmWireGenerationSpeed`、`LlmWirePromptCacheLifetime`、`LlmWirePromptCache`、`LlmWireToolChoice`、`LlmWireOpaqueCompletion`、`LlmWireNativeReplayScope`、`LlmWireImageBlock`、`LlmWireTextBlock`、`LlmWireReasoningBlock`、`LlmWireToolArguments`、`LlmWireToolCallBlock`、`LlmWireToolResultContent`、`LlmWireToolResultBlock`、`LlmWireRefusalBlock`、`LlmWireNativeReplayBlock`、`LlmWireOpaqueBlock`、`LlmWireBlock`、`LlmWireOutputBlock`、`LlmWireOutputPhase`、`LlmWireCitation`、`LlmWireCitationKind`、`LlmWireAnnotation`、`LlmWireTokenLogprob`、`LlmWireTokenLogprobCandidate`、`LlmWireMessage`、`LlmWireTool`、`LlmWireJson`、`LlmWireJsonSchema`、`LlmWireStructuredOutput`、`LlmWireRequest`、`LlmWireRequestBuilder`、`LlmWireUsage`、`LlmWireChoice`、`LlmWireChoiceOutcome`、`LlmWireReply`、`LlmWirePendingReply`、`LlmWireIncompleteReason`、`LlmWireFailureKind`、`LlmWireFailure`、`LlmWireTerminal`、`LlmWireResponseState`。
 
-`LlmWireRequest.instructions` 保留 system 与 developer instruction 的顺序。Messages dialect 不表示 developer role，因此在构建请求时返回 `Unsupported`。`LlmWireToolResultBlock.content` 是 `LlmWireToolResultContent` 数组，每个元素是 text 或 image。
+`LlmWireRequest.transcript` 保存单一输入事实。`LlmWireInitialContext` 保留初始 system/developer instruction 和工具池；`LlmWireInputItem` 有序联合保存 Message、InstructionUpdate、ToolDeclaration、ToolActivation 和 ToolDeactivation。`LlmWireToolDeclaration` 绑定完整工具、version、deferred；其 identity 为 `LlmWireToolDefinitionIdentity`。`LlmWireTranscript` 的 append 返回新快照，effectiveTools 是顺序重放的只读派生视图。snapshot/restore 只支持 llm4cj.transcript version 1，返回 Result。Messages dialect 不表示 developer role，因此构建请求时返回 `Unsupported`。`LlmWireToolResultBlock.content` 是 `LlmWireToolResultContent` 数组，每个元素是 text 或 image。
+
+`LlmWireContextUpdateStyle`、`LlmWireContextUpdateContract` 与 `LlmWireContextUpdateCapabilities` 区分各原生更新及延迟池能力。`LlmWireEndpointProfile` 绑定 profileId/model/dialectId/endpoint/contractVersion/capabilities/evidenceSource/checkedAt；`LlmWireCapabilityEvidence.CallerDeclared` 明确表明其为调用方声明。缺少能力/绑定不匹配时编码前失败，不提供兼容回退。内置契约矩阵见[有序 transcript](ordered-transcript.md)。
+
+usage 来源以 `LlmWireUsageSource.Unknown` 或 ProviderReported(provider, dialectId) 表示。cacheReadAvailability/cacheWriteAvailability 使用 `LlmWireUsageAvailability.Unknown`/Reported；None 与 Some(0) 保持区分。`LlmWireError.usage` 和 `LlmWireFailure.usage` 保留失败前已观测计数。
 
 `LlmWireDialectContract.toolErrorStyle` 声明工具失败语义的编码策略：`NativeField`（Anthropic Messages，发送原生 `is_error` 字段）、`ContentMarker`（DeepSeek Messages，失败结果在 `content` 前插入固定 text block `[tool_error]`，并不再发送被 provider 忽略的 `is_error`，属于有损兼容）或 `Unsupported`（Messages dialect 默认，`isError=true` 会以 `llm.tool_result_error_semantics_unsupported` 拒绝）。
 
-`validateReplyToolInputs(reply, tools, mode:)` 在 wire-valid reply 与工具执行之间提供协议无关的输入契约屏障，模式由 `LlmWireToolInputValidationMode` 声明：`Disabled` 不做任何检查，`ValidateSupportedSubset` 跳过不支持的 schema feature，`Strict` 以 `llm.tool_schema_unsupported` 拒绝。支持 `type`、`properties`、`required`、`additionalProperties`（仅 boolean 形式）、`items` 与 `enum`；其余关键字（含未知关键字）一律视为 unsupported。违例以 `llm.tool_arguments_schema_violation` 返回，携带 `toolCallId` 与有界 diagnostic（`tool_name`、`schema_path`、`instance_path`、`violation`、`expected`、`actual`），按 block 顺序与固定关键字优先级报告第一个违例。未声明工具的调用与参数不是完整 JSON object 的调用会被跳过。
+`validateReplyToolInputs(reply, transcript, mode:)` 在 wire-valid reply 与工具执行之间提供协议无关的输入契约屏障。它始终拒绝末端未声明/未激活工具；`LlmWireToolInputValidationMode.Disabled` 仅关闭 schema 检查，`ValidateSupportedSubset` 跳过不支持的 schema feature，`Strict` 以 `llm.tool_schema_unsupported` 拒绝。支持 `type`、`properties`、`required`、`additionalProperties`（仅 boolean 形式）、`items` 与 `enum`；其余关键字（含未知关键字）视为 unsupported。违例以 `llm.tool_arguments_schema_violation` 返回，携带 `toolCallId` 与有界 diagnostic（`tool_name`、`schema_path`、`instance_path`、`violation`、`expected`、`actual`），按 block 顺序与固定关键字优先级报告第一个违例。参数不是完整 JSON object 的调用由 wire 层处理，schema 屏障不把它重新分类为 schema 违例。
 
 `LlmWireCapabilities` 由 `input`、`thinking`、`tools`、`output` 和 `cache` 五个不可变能力对象组成。`input.modalities` 默认为仅 `Text`。图片 source 支持 `Url`、`Base64` 与 `File`；是否可用由具体 model profile 决定。
 
 对应类型是 `LlmWireInputCapabilities`、`LlmWireThinkingCapabilities`、`LlmWireToolCapabilities`、`LlmWireOutputCapabilities` 和 `LlmWireCacheCapabilities`。
 
-`LlmWireModelProfile` 把模型名、dialect compatibility ID 和模型能力绑定在一起。工厂为 `openAiResponsesModelProfile`、`openAiChatModelProfile`、`anthropicMessagesModelProfile`、`deepSeekResponsesModelProfile`、`deepSeekChatModelProfile` 和 `deepSeekMessagesModelProfile`。对应的推荐 codec 入口为 `openAiResponsesCodec`、`openAiChatCodec`、`anthropicMessagesCodec`、`deepSeekResponsesCodec`、`deepSeekChatCodec` 和 `deepSeekMessagesCodec`。codec 会拒绝与 profile 不一致的模型名或 dialect。
+`LlmWireModelProfile` 把模型名、dialect compatibility ID 和模型能力绑定在一起。工厂为 `openAiResponsesModelProfile`、`openAiChatModelProfile`、`anthropicMessagesModelProfile`、`deepSeekResponsesModelProfile`、`deepSeekChatModelProfile`、`deepSeekMessagesModelProfile` 和 `kimiChatModelProfile`。对应 codec 入口为 `openAiResponsesCodec`、`openAiChatCodec`、`anthropicMessagesCodec`、`deepSeekResponsesCodec`、`deepSeekChatCodec`、`deepSeekMessagesCodec` 和 `kimiChatCodec`；Kimi dialect 入口为 `kimiChatDialect`。codec 会拒绝与 profile 不一致的模型名或 dialect。原生更新支持的 model-profile 工厂还接受显式 endpoint/endpointProfile。
 
-`LlmWireCodec` 的构造器不是稳定 public API；稳定调用方必须使用上述六个工厂。自定义 dialect、cache pre-warm、custom tool 与 grammar 见[实验 API](experimental.md)。
+`LlmWireCodec` 的构造器不是稳定 public API；稳定调用方使用上述工厂。自定义 dialect、cache pre-warm、custom tool 与 grammar 见[实验 API](experimental.md)。
 
 调用 `codec.newRequestBuilder()` 可复用 profile 中的模型和 codec 校验。builder 的 setter 检查局部输入，`build()` 返回 `LlmWireResult<LlmWireRequest>` 并执行完整请求校验。调用 `codec.encodeRequest(request, streaming: true)` 才会发送 streaming 字段；同一个 request 可用于固定响应和流式响应。
 

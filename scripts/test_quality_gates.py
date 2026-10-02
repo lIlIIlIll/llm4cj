@@ -5,13 +5,160 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
+import os
+import subprocess
+import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import check_api_compat
 import check_patch_coverage
 import bootstrap_repository
+import consumer_compile
+
+
+class ConsumerCompileTests(unittest.TestCase):
+    def project(self, content: bytes | None = None) -> tuple[Path, bytes]:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        project = Path(temporary.name)
+        original = content if content is not None else (
+            b"# exact bytes must survive\r\n"
+            b"[package]\r\nname = \"dummy\"\r\nversion = \"1.0.0\"\r\n"
+            b"[dependencies]\r\noverride-compile-option = \"leave-me\"\r\n"
+        )
+        (project / "cjpm.toml").write_bytes(original)
+        return project, original
+
+    def command(self, project: Path, code: str, *arguments: str, option: str = "-O1") -> subprocess.CompletedProcess[str]:
+        script = project / "dummy_command.py"
+        script.write_text(code, encoding="utf-8")
+        environment = dict(os.environ, LLM4CJ_CONSUMER_COMPILE_OPTION=option)
+        return subprocess.run(
+            [sys.executable, str(Path(consumer_compile.__file__).resolve()), str(project),
+             sys.executable, str(script), *arguments],
+            env=environment, capture_output=True, text=True, check=False,
+        )
+
+    def test_default_is_a_no_op_even_without_a_manifest(self) -> None:
+        project, original = self.project()
+        with patch.dict(os.environ, {consumer_compile.ENVIRONMENT_OPTION: ""}):
+            with consumer_compile.consumer_compile_options(project) as selected:
+                self.assertIsNone(selected)
+                self.assertEqual((project / "cjpm.toml").read_bytes(), original)
+            (project / "cjpm.toml").unlink()
+            with consumer_compile.consumer_compile_options(project) as selected:
+                self.assertIsNone(selected)
+        self.assertFalse((project / "cjpm.toml").exists())
+
+    def test_existing_override_and_other_sections_are_restored_exactly(self) -> None:
+        project, original = self.project(
+            b"[dependencies]\r\noverride-compile-option = \"before\"\r\n"
+            b"[package] # entry\r\nname = \"dummy\"\r\n"
+            b"override-compile-option = \"-O2\" # preserve this comment\r\n"
+            b"[profile]\r\noverride-compile-option = \"after\"\r\n"
+        )
+        with patch.dict(os.environ, {consumer_compile.ENVIRONMENT_OPTION: "-O1"}):
+            with contextlib.redirect_stdout(io.StringIO()):
+                with consumer_compile.consumer_compile_options(project) as selected:
+                    self.assertEqual(selected, "-O1")
+                    document = tomllib.loads((project / "cjpm.toml").read_text())
+                    self.assertEqual(document["package"]["override-compile-option"], "-O1")
+                    self.assertEqual(document["dependencies"]["override-compile-option"], "before")
+                    self.assertEqual(document["profile"]["override-compile-option"], "after")
+        self.assertEqual((project / "cjpm.toml").read_bytes(), original)
+
+    def test_exception_restores_the_original_bytes(self) -> None:
+        project, original = self.project()
+        with patch.dict(os.environ, {consumer_compile.ENVIRONMENT_OPTION: "-O1"}):
+            with contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(RuntimeError, "build failed"):
+                    with consumer_compile.consumer_compile_options(project):
+                        self.assertIn(b'override-compile-option = "-O1"', (project / "cjpm.toml").read_bytes())
+                        raise RuntimeError("build failed")
+        self.assertEqual((project / "cjpm.toml").read_bytes(), original)
+
+    def test_cli_keeps_the_override_for_multiple_commands_and_exact_arguments(self) -> None:
+        project, original = self.project()
+        literal = "literal;$(printf should-never-run) `echo untouched`"
+        result = self.command(project, '''import json, subprocess, sys
+step = r"""import json, sys, tomllib
+from pathlib import Path
+document = tomllib.loads(Path('cjpm.toml').read_text())
+assert document['package']['override-compile-option'] == '-O1'
+assert document['dependencies']['override-compile-option'] == 'leave-me'
+with Path('steps.jsonl').open('a') as output:
+    output.write(json.dumps([sys.argv[1], sys.argv[2]]) + '\\n')
+"""
+for stage in ['check', 'build-and-run']:
+    subprocess.run([sys.executable, '-c', step, stage, sys.argv[1]], check=True)
+''', literal)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        records = [json.loads(line) for line in (project / "steps.jsonl").read_text().splitlines()]
+        self.assertEqual(records, [["check", literal], ["build-and-run", literal]])
+        self.assertIn("entry module and all dependencies", result.stdout)
+        self.assertEqual((project / "cjpm.toml").read_bytes(), original)
+
+    def test_nonzero_command_exit_restores_manifest_and_exit_status(self) -> None:
+        project, original = self.project()
+        result = self.command(project, "import sys, tomllib\nfrom pathlib import Path\n"
+                              "assert tomllib.loads(Path('cjpm.toml').read_text())['package']['override-compile-option'] == '-O1'\n"
+                              "sys.exit(7)\n")
+        self.assertEqual(result.returncode, 7, result.stderr)
+        self.assertEqual((project / "cjpm.toml").read_bytes(), original)
+
+    def test_invalid_option_cannot_run_a_command_or_modify_the_manifest(self) -> None:
+        project, original = self.project()
+        for option in ["-O0", "-O2", " -O1", "-O1 --unsafe"]:
+            with self.subTest(option=option):
+                result = self.command(project, "from pathlib import Path\nPath('executed').touch()\n", option=option)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(consumer_compile.ENVIRONMENT_OPTION, result.stderr)
+                self.assertFalse((project / "executed").exists())
+                self.assertEqual((project / "cjpm.toml").read_bytes(), original)
+
+    def test_workspace_override_is_applied_to_the_root_without_inventing_a_package(self) -> None:
+        project, original = self.project(
+            b'# workspace root\r\n[workspace]\r\nmembers = ["model_adapters"]\r\n'
+            b'build-members = ["model_adapters"]\r\n'
+            b'[profile.build]\r\ncompile-option = "-O2"\r\n'
+        )
+        result = self.command(project, "import tomllib\nfrom pathlib import Path\n"
+                              "document = tomllib.loads(Path('cjpm.toml').read_text())\n"
+                              "assert 'package' not in document\n"
+                              "assert document['workspace']['override-compile-option'] == '-O1'\n"
+                              "assert document['workspace']['members'] == ['model_adapters']\n"
+                              "assert document['workspace']['build-members'] == ['model_adapters']\n"
+                              "assert document['profile']['build']['compile-option'] == '-O2'\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("entry workspace and all dependencies", result.stdout)
+        self.assertEqual((project / "cjpm.toml").read_bytes(), original)
+
+    def test_existing_workspace_override_is_restored_after_a_failed_command(self) -> None:
+        project, original = self.project(
+            b'[workspace]\nmembers = ["model_adapters"]\n'
+            b'override-compile-option = "-O2" # exact restoration\n'
+        )
+        result = self.command(project, "import sys, tomllib\nfrom pathlib import Path\n"
+                              "assert tomllib.loads(Path('cjpm.toml').read_text())['workspace']['override-compile-option'] == '-O1'\n"
+                              "sys.exit(9)\n")
+        self.assertEqual(result.returncode, 9, result.stderr)
+        self.assertEqual((project / "cjpm.toml").read_bytes(), original)
+
+    def test_missing_or_ambiguous_entry_tables_are_rejected_without_writing(self) -> None:
+        for original in [b'[profile]\nname = "missing-entry"\n',
+                         b'[package]\nname = "ambiguous"\n[workspace]\nmembers = []\n']:
+            with self.subTest(manifest=original):
+                project, original = self.project(original)
+                result = self.command(project, "from pathlib import Path\nPath('executed').touch()\n")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("exactly one [package] or [workspace]", result.stderr)
+                self.assertFalse((project / "executed").exists())
+                self.assertEqual((project / "cjpm.toml").read_bytes(), original)
 
 
 class PatchCoverageTests(unittest.TestCase):

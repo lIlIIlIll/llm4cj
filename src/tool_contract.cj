@@ -7,7 +7,8 @@ import yjson.*
 // Tool Input Contract Validation: a protocol-independent barrier between a
 // wire-valid reply and tool execution. The validator never runs inside the
 // decoders; callers opt in by invoking `validateReplyToolInputs` with the tool
-// definitions from the originating request.
+// transcript from the originating request. Its end-state visibility is the
+// authority for newly generated calls, independent of historical visibility.
 @Derive[Equatable]
 public enum LlmWireToolInputValidationMode {
     Disabled
@@ -270,50 +271,83 @@ internal func checkToolInputValue(schema: JsonNode, value: JsonNode, schemaPath:
 
 internal func toolInputViolationError(call: LlmWireToolCallBlock, violation: ToolInputViolation): LlmWireError {
     let diagnostic = wireJsonObject([
-        WireJsonField("tool_name", wireJsonString(call.name)),
-        WireJsonField("schema_path", wireJsonString(violation.schemaPath)),
-        WireJsonField("instance_path", wireJsonString(violation.instancePath)),
+        WireJsonField("tool_name", wireJsonString(boundedTranscriptEvidence(call.name))),
+        WireJsonField("schema_path", wireJsonString(boundedTranscriptEvidence(violation.schemaPath))),
+        WireJsonField("instance_path", wireJsonString(boundedTranscriptEvidence(violation.instancePath))),
         WireJsonField("violation", wireJsonString(toolInputViolationName(violation.kind)))
     ])
     if (violation.expected != "") { diagnostic.put("expected", wireJsonString(violation.expected)) }
     if (violation.actual != "") { diagnostic.put("actual", wireJsonString(violation.actual)) }
     LlmWireError(
         LlmWireErrorKind.InvalidWire, "llm.tool_arguments_schema_violation",
-        "tool arguments do not satisfy the declared input schema at " + violation.instancePath,
-        phase: Some(LlmTransportPhase.SemanticAssembly), toolCallId: call.callId, diagnosticJson: Some(diagnostic.stringify())
+        "tool arguments do not satisfy the declared input schema at " + boundedTranscriptEvidence(violation.instancePath),
+        phase: Some(LlmTransportPhase.SemanticAssembly), toolCallId: boundedTranscriptEvidence(call.callId), toolName: call.name, diagnosticJson: Some(diagnostic.stringify())
     )
 }
 
 internal func toolInputUnsupportedError(call: LlmWireToolCallBlock, feature: String): LlmWireError {
     let diagnostic = wireJsonObject([
-        WireJsonField("tool_name", wireJsonString(call.name)),
-        WireJsonField("feature", wireJsonString(feature))
+        WireJsonField("tool_name", wireJsonString(boundedTranscriptEvidence(call.name))),
+        WireJsonField("feature", wireJsonString(boundedTranscriptEvidence(feature)))
     ])
     LlmWireError(
         LlmWireErrorKind.Unsupported, "llm.tool_schema_unsupported",
-        "tool input schema uses features outside the supported validation subset: " + feature,
-        phase: Some(LlmTransportPhase.SemanticAssembly), toolCallId: call.callId, diagnosticJson: Some(diagnostic.stringify())
+        "tool input schema uses features outside the supported validation subset: " + boundedTranscriptEvidence(feature),
+        phase: Some(LlmTransportPhase.SemanticAssembly), toolCallId: boundedTranscriptEvidence(call.callId), toolName: call.name, diagnosticJson: Some(diagnostic.stringify())
     )
 }
 
 // Validates tool call arguments in a wire-valid reply against the input schemas
-// of the tools declared on the originating request. Calls for undeclared tools
-// and calls whose arguments are not complete JSON objects are skipped; the
-// latter are already rejected by wire assembly. Reports the first violation in
+// active tools at the end of the originating transcript. The temporal replay
+// checks every historical call at its own item; this barrier checks newly
+// generated calls against the final state. Unknown or inactive tools are always
+// rejected, including when argument-schema validation is disabled. Calls whose
+// arguments are not complete JSON objects are skipped by the schema barrier.
+// Reports the first violation in
 // deterministic order: block order, then fixed keyword priority, then sorted
 // property names. Undeclared schema keywords and unsupported forms surface as
 // `llm.tool_schema_unsupported` under Strict and are skipped under
-// ValidateSupportedSubset; Disabled performs no checks at all.
+// ValidateSupportedSubset; Disabled performs no argument-schema checks.
 public func validateReplyToolInputs(
-    reply: LlmWireReply, tools: Array<LlmWireTool>,
+    reply: LlmWireReply, transcript: LlmWireTranscript,
     mode!: LlmWireToolInputValidationMode = LlmWireToolInputValidationMode.ValidateSupportedSubset
+): LlmWireResult<Unit> {
+    try {
+        let view = replayTranscript(transcript)
+        for (choice in reply.choices) { for (block in choice.blocks) { match (block) {
+            case LlmWireOutputBlock.ToolCall(call) =>
+                var active = false
+                for (tool in view.activeTools where tool.name == call.name) { active = true }
+                if (!active) {
+                    var declared: ?LlmWireToolDeclaration = None
+                    for (value in view.declaredTools where value.tool.name == call.name) { declared = Some(value) }
+                    let (code, version) = match (declared) {
+                        case Some(value) => ("llm.tool_not_active", value.version)
+                        case None => ("llm.tool_reference_unknown", "")
+                    }
+                    return LlmWireResult.Err(LlmWireError(LlmWireErrorKind.InvalidWire, code,
+                        "generated tool calls must refer to a tool active at the request end",
+                        phase: Some(LlmTransportPhase.SemanticAssembly), inputItemIndex: transcript.items.size,
+                        toolName: call.name, toolVersion: version, toolCallId: boundedTranscriptEvidence(call.callId), usage: observedWireUsage(reply.usage)))
+                }
+            case _ => ()
+        } } }
+        match (validateReplyToolInputSchemas(reply, view.activeTools, mode)) {
+            case LlmWireResult.Ok(_) => LlmWireResult.Ok(())
+            case LlmWireResult.Err(error) => LlmWireResult.Err(withObservedUsage(error, observedWireUsage(reply.usage)))
+        }
+    } catch (error: LlmWireError) { LlmWireResult.Err(withObservedUsage(error, observedWireUsage(reply.usage))) }
+}
+
+internal func validateReplyToolInputSchemas(
+    reply: LlmWireReply, tools: Array<LlmWireTool>, mode: LlmWireToolInputValidationMode
 ): LlmWireResult<Unit> {
     match (mode) {
         case LlmWireToolInputValidationMode.Disabled => return LlmWireResult.Ok(())
         case _ => ()
     }
     let strict = mode == LlmWireToolInputValidationMode.Strict
-    for (block in reply.blocks) {
+    for (choice in reply.choices) { for (block in choice.blocks) {
         match (block) {
             case LlmWireOutputBlock.ToolCall(call) =>
                 match (call.arguments) {
@@ -333,6 +367,6 @@ public func validateReplyToolInputs(
                 }
             case _ => ()
         }
-    }
+    } }
     LlmWireResult.Ok(())
 }

@@ -10,6 +10,10 @@
 
 `llm.tool_arguments_schema_violation` 表示 wire 合法的 tool arguments 违反声明 schema（`type`/`properties`/`required`/`additionalProperties`/`items`/`enum` 子集），诊断携带 `tool_name`、`schema_path`、`instance_path`、`violation` 与有界 `expected`/`actual`；`llm.tool_schema_unsupported` 表示 schema 使用了验证子集之外的 feature（Strict 模式），不支持的 feature 名随诊断返回。两者与 `llm.tool_arguments_not_executable` 永久分离。
 
+transcript 校验区分 `llm.context_update_unsupported`（缺少原生/模型/端点能力）、`llm.context_update_position_invalid`（非法插入点）、`llm.tool_definition_conflict`（同名不同定义或版本）、`llm.tool_reference_unknown`（引用未声明身份）、`llm.endpoint_profile_capability_unsupported`（声明超出原生契约的能力）与 `llm.transcript_version_unsupported`。本版没有 Replacement 输入项；同名替换尝试作为定义冲突拒绝，profile 宣称替换能力则作为契约外能力拒绝。这些输入失败在网络发送前返回，并保留有界的 item/profile/tool 上下文。已知不支持不能通过改写旧输入或改变协议重试。
+
+新 reply 的 `validateReplyToolInputs(reply, transcript)` 若引用未声明工具或末端 inactive 工具，以 InvalidWire 的 `llm.tool_reference_unknown` / `llm.tool_not_active` 拒绝，连同已观测 reply usage 返回。Disabled 只关闭 schema 检查，不能绕过工具身份与可见性。
+
 默认 JSON 与字符串上限是 8 MiB，深度上限是 256。默认 SSE 单事件上限是 8 MiB，buffer 与单次 push 输出上限是 16 MiB；CRLF 的两个原始字节都计入事件上限。协议流另由 `LlmWireStreamLimits` 限制累计语义字节、文本、reasoning、tool arguments、block、tool call 和输入 provider event 数量。HTTP body 必须由调用方传入正数上限。达到 deadline 或取消后，应用应停止网络读取；本库不拥有 socket 生命周期。
 
 协议流还通过 `maxRetainedStateBytes` 限制 decoder 实际保留的 metadata、native payload 与累计内容。终态完整 body 或 done-only arguments 不得绕过更小的 text/tool/total semantic limit。

@@ -288,7 +288,8 @@ func validateNativeReplayPayload(protocol: LlmWireProtocol, dialectId: String, n
              (LlmWireProtocol.Messages, "deepseek.messages.v1", "thinking") |
              (LlmWireProtocol.Responses, "openai.responses.v1", "reasoning") |
              (LlmWireProtocol.Responses, "deepseek.responses.v1", "reasoning") |
-             (LlmWireProtocol.ChatCompletions, "deepseek.chat.v1", "reasoning_content") => true
+             (LlmWireProtocol.ChatCompletions, "deepseek.chat.v1", "reasoning_content") |
+             (LlmWireProtocol.ChatCompletions, "kimi.chat.v1", "reasoning_content") => true
         case _ => false
     }
     if (!allowed) {
@@ -374,9 +375,7 @@ public enum LlmWireStructuredOutput {
 
 public class LlmWireRequest {
     public let model: String
-    public let instructions: Array<LlmWireInstruction>
-    public let messages: Array<LlmWireMessage>
-    public let tools: Array<LlmWireTool>
+    public let transcript: LlmWireTranscript
     public let thinkingMode: LlmWireThinkingMode
     public let reasoningEffort: LlmWireReasoningEffort
     public let maxOutputTokens: ?Int64
@@ -390,9 +389,7 @@ public class LlmWireRequest {
 
     public init(
         model: String,
-        messages: Array<LlmWireMessage>,
-        instructions!: Array<LlmWireInstruction> = [],
-        tools!: Array<LlmWireTool> = [],
+        transcript: LlmWireTranscript,
         thinkingMode!: LlmWireThinkingMode = LlmWireThinkingMode.ProviderDefault,
         reasoningEffort!: LlmWireReasoningEffort = LlmWireReasoningEffort.ProviderDefault,
         maxOutputTokens!: ?Int64 = None,
@@ -405,9 +402,7 @@ public class LlmWireRequest {
         structuredOutput!: LlmWireStructuredOutput = LlmWireStructuredOutput.ProviderDefault
     ) {
         this.model = model
-        this.messages = messages
-        this.instructions = instructions
-        this.tools = tools
+        this.transcript = transcript
         this.thinkingMode = thinkingMode
         this.reasoningEffort = reasoningEffort
         this.maxOutputTokens = maxOutputTokens
@@ -421,6 +416,11 @@ public class LlmWireRequest {
     }
 }
 
+@Derive[Equatable]
+public enum LlmWireUsageAvailability { Unknown | Reported }
+@Derive[Equatable]
+public enum LlmWireUsageSource { Unknown | ProviderReported(String, String) }
+
 public class LlmWireUsage {
     public let inputTokens: ?Int64
     public let outputTokens: ?Int64
@@ -431,10 +431,18 @@ public class LlmWireUsage {
     public let webSearchRequests: ?Int64
     public let webFetchRequests: ?Int64
     public let serviceTier: ?String
+    public let source: LlmWireUsageSource
+    public prop cacheReadAvailability: LlmWireUsageAvailability { get() {
+        match (cacheReadTokens) { case Some(_) => LlmWireUsageAvailability.Reported; case None => LlmWireUsageAvailability.Unknown }
+    } }
+    public prop cacheWriteAvailability: LlmWireUsageAvailability { get() {
+        match (cacheWriteTokens) { case Some(_) => LlmWireUsageAvailability.Reported; case None => LlmWireUsageAvailability.Unknown }
+    } }
     public init(
         inputTokens!: ?Int64 = None, outputTokens!: ?Int64 = None, reasoningTokens!: ?Int64 = None,
         cacheReadTokens!: ?Int64 = None, cacheWriteTokens!: ?Int64 = None, totalTokens!: ?Int64 = None,
-        webSearchRequests!: ?Int64 = None, webFetchRequests!: ?Int64 = None, serviceTier!: ?String = None
+        webSearchRequests!: ?Int64 = None, webFetchRequests!: ?Int64 = None, serviceTier!: ?String = None,
+        source!: LlmWireUsageSource = LlmWireUsageSource.Unknown
     ) {
         this.inputTokens = inputTokens
         this.outputTokens = outputTokens
@@ -445,6 +453,7 @@ public class LlmWireUsage {
         this.webSearchRequests = webSearchRequests
         this.webFetchRequests = webFetchRequests
         this.serviceTier = serviceTier
+        this.source = source
     }
 }
 
@@ -547,11 +556,12 @@ public class LlmWireFailure {
     public let httpStatus: ?Int64
     public let retryAfterMillis: ?Int64
     public let providerRequestId: String
+    public let usage: ?LlmWireUsage
     public init(
         kind: LlmWireFailureKind, message: String, provider!: String = "",
         providerErrorCode!: String = "", providerErrorType!: String = "",
         retryable!: Bool = false, httpStatus!: ?Int64 = None,
-        retryAfterMillis!: ?Int64 = None, providerRequestId!: String = ""
+        retryAfterMillis!: ?Int64 = None, providerRequestId!: String = "", usage!: ?LlmWireUsage = None
     ) {
         this.kind = kind
         this.message = message
@@ -562,6 +572,7 @@ public class LlmWireFailure {
         this.httpStatus = httpStatus
         this.retryAfterMillis = retryAfterMillis
         this.providerRequestId = providerRequestId
+        this.usage = usage
     }
 }
 public enum LlmWireTerminal {

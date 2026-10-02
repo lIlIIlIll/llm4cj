@@ -59,7 +59,8 @@ scripts/coverage.sh
 
 consumer_root=$(mktemp -d -t llm4cj-consumer.XXXXXX)
 experimental_consumer_root=$(mktemp -d -t llm4cj-experimental-consumer.XXXXXX)
-trap 'rm -rf -- "$consumer_root" "$experimental_consumer_root"' EXIT
+transcript_consumer_root=$(mktemp -d -t llm4cj-transcript-consumer.XXXXXX)
+trap 'rm -rf -- "$consumer_root" "$experimental_consumer_root" "$transcript_consumer_root"' EXIT
 cp -a support/external_consumer/. "$consumer_root/"
 python3 - "$consumer_root/cjpm.toml" "$candidate" <<'PY'
 import pathlib, re, sys
@@ -70,8 +71,8 @@ if count != 1:
     raise SystemExit("external consumer dependency shape drifted")
 path.write_text(text)
 PY
-(
-  cd "$consumer_root"
+python3 "$root/scripts/consumer_compile.py" "$consumer_root" bash -euo pipefail -s -- "$candidate" <<'SH'
+  candidate=$1
   cjpm check
   cjpm build
   cjpm test
@@ -84,7 +85,7 @@ PY
     printf 'external consumer is not pinned to the candidate commit\n' >&2
     exit 1
   fi
-)
+SH
 
 cp -a support/experimental_consumer/. "$experimental_consumer_root/"
 python3 - "$experimental_consumer_root/cjpm.toml" "$candidate" <<'PY'
@@ -96,12 +97,32 @@ if count != 1:
     raise SystemExit("experimental consumer dependency shape drifted")
 path.write_text(text)
 PY
-(
-  cd "$experimental_consumer_root"
+python3 "$root/scripts/consumer_compile.py" "$experimental_consumer_root" bash -euo pipefail -s <<'SH'
   cjpm check
   cjpm build
   target/release/bin/main
-)
+SH
+
+cp -a support/transcript_consumer/. "$transcript_consumer_root/"
+python3 - "$transcript_consumer_root/cjpm.toml" "$candidate" <<'PY'
+import pathlib, re, sys
+path, candidate = pathlib.Path(sys.argv[1]), sys.argv[2]
+text = path.read_text()
+text, count = re.subn(r'llm4cj = \{ git = "([^"]+)", tag = "[^"]+" \}', rf'llm4cj = {{ git = "\1", commitId = "{candidate}" }}', text)
+if count != 1:
+    raise SystemExit("transcript consumer dependency shape drifted")
+path.write_text(text)
+PY
+python3 "$root/scripts/consumer_compile.py" "$transcript_consumer_root" bash -euo pipefail -s -- "$candidate" <<'SH'
+  candidate=$1
+  cjpm check
+  cjpm build
+  target/release/bin/main
+  if ! grep -Fq "commitId = \"$candidate\"" cjpm.lock; then
+    printf 'transcript consumer did not resolve candidate %s\n' "$candidate" >&2
+    exit 1
+  fi
+SH
 
 python3 - <<'PY2'
 import pathlib

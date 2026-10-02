@@ -31,6 +31,11 @@ jobs:
     name: verify (stable-latest)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # SDK 1.2 LLVM crashes compiling yjson in consumer/probe projects at -O2.
+      # The explicit override covers each entry project and all its dependencies.
+      # Core check/build/test retain their default flags.
+      LLM4CJ_CONSUMER_COMPILE_OPTION: -O1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

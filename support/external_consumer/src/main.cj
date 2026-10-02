@@ -3,15 +3,16 @@ package llm4cj_external_consumer
 import llm4cj.*
 import std.convert.*
 
+func messageItems(messages: Array<LlmWireMessage>): Array<LlmWireInputItem> {
+    messages.map({message: LlmWireMessage => LlmWireInputItem.Message(message)})
+}
+
 main(): Int64 {
     let codec = openAiResponsesCodec(openAiResponsesModelProfile("demo-model"))
-    let request = LlmWireRequest(
-        "demo-model",
-        [LlmWireMessage(
+    let request = LlmWireRequest("demo-model", LlmWireTranscript(LlmWireInitialContext(), items: messageItems([LlmWireMessage(
             LlmWireRole.User,
             [LlmWireBlock.Text(LlmWireTextBlock("你好"))]
-        )]
-    )
+        )])))
     let payload = match (codec.encodeRequest(request).materialize()) {
         case LlmWireResult.Ok(value) => value
         case LlmWireResult.Err(_) => return 1

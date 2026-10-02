@@ -10,6 +10,7 @@ python3 scripts/check_contract.py
 python3 scripts/check_api_compat.py
 python3 scripts/test_quality_gates.py
 python3 scripts/check_provider_smoke_security.py
+python3 scripts/cache_experiment.py --offline-check
 python3 scripts/check_fixtures.py
 cjpm clean
 cjpm check

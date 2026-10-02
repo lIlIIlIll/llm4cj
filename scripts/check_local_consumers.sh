@@ -5,7 +5,7 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 work=$(mktemp -d -t llm4cj-local-consumers.XXXXXX)
 trap 'rm -rf -- "$work"' EXIT
 
-for consumer in external_consumer experimental_consumer; do
+for consumer in external_consumer experimental_consumer transcript_consumer; do
   target="$work/$consumer"
   cp -a "$root/support/$consumer/." "$target/"
   python3 - "$target/cjpm.toml" "$root" <<'PY'
@@ -21,12 +21,15 @@ if count != 1:
     raise SystemExit("consumer dependency shape drifted")
 path.write_text(text)
 PY
-  (
-    cd "$target"
+  python3 "$root/scripts/consumer_compile.py" "$target" bash -eu -c '
     cjpm check
-    cjpm build
+    if [ -n "${LLM4CJ_CONSUMER_COMPILE_OPTION:-}" ]; then
+      cjpm build -V
+    else
+      cjpm build
+    fi
     target/release/bin/main
-  )
+  '
 done
 
-printf 'stable and experimental local consumers passed\n'
+printf 'stable, experimental and transcript local consumers passed\n'

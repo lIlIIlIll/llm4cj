@@ -96,55 +96,66 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCach
     if (codec.dialect.contract.requireMaxOutputTokens && request.maxOutputTokens.isNone()) {
         throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.max_output_tokens_required", "this dialect requires maxOutputTokens")
     }
-    for (instruction in request.instructions) {
+    let view = replayTranscript(request.transcript)
+    validateTranscriptPositions(codec, request.transcript)
+    validateTranscriptCapabilities(codec, request)
+    for (instruction in request.transcript.initialContext.instructions) {
         if (instruction.text.trimAscii() == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.instruction_empty", "instruction text must not be empty") }
         if (codec.protocol == LlmWireProtocol.Messages && instruction.role == LlmWireInstructionRole.Developer) {
             unsupportedRequest("llm.developer_instruction_unsupported", "Messages does not represent developer instructions")
         }
     }
+    let transcriptItems = request.transcript.items
+    for (itemIndex in 0..transcriptItems.size) { match (transcriptItems[itemIndex]) {
+        case LlmWireInputItem.InstructionUpdate(instruction) =>
+            if (instruction.text.trimAscii() == "") { throw transcriptError("llm.instruction_empty", "instruction updates must not be empty", itemIndex) }
+        case _ => ()
+    } }
     match (codec.protocol) {
         case LlmWireProtocol.Responses =>
-            if (request.messages.isEmpty() && request.instructions.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.responses_input_required", "Responses requires input messages or instructions") }
+            if (request.transcript.items.isEmpty() && request.transcript.initialContext.instructions.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.responses_input_required", "Responses requires input items or instructions") }
         case LlmWireProtocol.ChatCompletions =>
-            if (request.messages.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.chat_messages_required", "Chat Completions requires at least one message") }
+            if (view.messages.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.chat_messages_required", "Chat Completions requires at least one message") }
         case LlmWireProtocol.Messages =>
-            if (request.messages.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.messages_required", "Messages requires at least one message") }
+            if (view.messages.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.messages_required", "Messages requires at least one message") }
     }
     validateThinking(codec, request)
     validateRequestCombinations(codec, request)
-    validateToolsAndSchemas(request)
-    var usesTools = !request.tools.isEmpty()
-    for (message in request.messages) { for (block in message.blocks) { match (block) { case LlmWireBlock.ToolCall(_) | LlmWireBlock.ToolResult(_) => usesTools = true; case _ => () } } }
+    validateStructuredSchema(request)
+    var usesTools = !view.declaredTools.isEmpty()
+    for (message in view.messages) { for (block in message.blocks) { match (block) { case LlmWireBlock.ToolCall(_) | LlmWireBlock.ToolResult(_) => usesTools = true; case _ => () } } }
     match (request.toolChoice) { case LlmWireToolChoice.ProviderDefault => (); case _ => usesTools = true }
     if (usesTools && (!codec.dialect.contract.tools || !codec.capabilities.tools.enabled)) { unsupportedRequest("llm.tools_unsupported", "tools require an explicit dialect and model capability") }
-    if ((request.toolChoice == LlmWireToolChoice.Required || request.toolChoice == LlmWireToolChoice.Auto) && request.tools.isEmpty()) {
+    if ((request.toolChoice == LlmWireToolChoice.Required || request.toolChoice == LlmWireToolChoice.Auto) && view.activeTools.isEmpty()) {
         throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_choice_without_tools", "toolChoice requires at least one declared tool")
     }
     validateStructuredOutput(codec, request.structuredOutput)
     match (request.parallelToolCalls) {
         case Some(_) =>
-            if (request.tools.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.parallel_tools_without_tools", "parallel tool calls require declared tools") }
+            if (view.activeTools.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.parallel_tools_without_tools", "parallel tool calls require active tools") }
             if (codec.dialect.contract.parallelToolStyle == LlmWireParallelToolStyle.Unsupported || !codec.capabilities.tools.parallelCalls) { unsupportedRequest("llm.parallel_tools_unsupported", "parallel tool calls are not supported by this dialect and model") }
         case None => ()
     }
     validateServiceTier(codec, request.serviceTier)
     validateGenerationSpeed(codec, request.generationSpeed)
     validatePromptCache(codec, request.promptCache, request.promptCacheRoutingKey)
-    for (messageIndex in 0..request.messages.size) {
-        let message = request.messages[messageIndex]
+    for (itemIndex in 0..transcriptItems.size) { match (transcriptItems[itemIndex]) {
+        case LlmWireInputItem.Message(message) =>
+        try {
+        let blocks = message.blocks
         var deepSeekReasoningBlocks: Int64 = 0
         if (!messageHasContent(message)) {
             throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.message_empty", "canonical messages must contain at least one non-empty block")
         }
-        for (blockIndex in 0..message.blocks.size) {
-            validateBlockForReplay(codec, request, message, message.blocks[blockIndex], blockIndex)
-            validateBlockShape(message.blocks[blockIndex])
-            match (message.blocks[blockIndex]) {
+        for (blockIndex in 0..blocks.size) {
+            validateBlockForReplay(codec, request, message, blocks[blockIndex], blockIndex)
+            validateBlockShape(blocks[blockIndex])
+            match (blocks[blockIndex]) {
                 case LlmWireBlock.Image(value) => validateImageCapability(codec, message, value)
                 case LlmWireBlock.NativeReplay(value) =>
-                    if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.DeepSeekChat && value.nativeType == "reasoning_content") {
+                    if (chatHasReplayReasoning(codec) && value.nativeType == "reasoning_content") {
                         deepSeekReasoningBlocks++
-                        if (deepSeekReasoningBlocks > 1) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_cardinality_invalid", "DeepSeek Chat assistant turns may contain only one reasoning_content replay block") }
+                        if (deepSeekReasoningBlocks > 1) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_cardinality_invalid", "Chat assistant turns may contain only one reasoning_content replay block") }
                     }
                 case LlmWireBlock.ToolResult(value) =>
                     if (value.content.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty", "tool results require at least one content part") }
@@ -152,14 +163,15 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCach
                         case LlmWireToolResultContent.Text(text) => if (text.text == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty", "tool-result text must not be empty") }
                         case LlmWireToolResultContent.Image(image) => validateBlockShape(LlmWireBlock.Image(image)); validateImageCapability(codec, message, image)
                     } }
-                    if (codec.protocol == LlmWireProtocol.Messages && codec.dialect.contract.toolErrorStyle == LlmWireToolErrorStyle.Unsupported && value.isError) {
-                        unsupportedRequest("llm.tool_result_error_semantics_unsupported", "this Messages dialect does not declare tool-result error semantics")
+                    if (codec.dialect.contract.toolErrorStyle == LlmWireToolErrorStyle.Unsupported && value.isError) {
+                        unsupportedRequest("llm.tool_result_error_semantics_unsupported", "this dialect does not declare tool-result error semantics")
                     }
                 case _ => ()
             }
         }
-    }
-    validateConversation(request.messages)
+        } catch (error: LlmWireError) { throw withInputItemContext(error, itemIndex) }
+        case _ => ()
+    } }
 }
 
 func validateRequestCombinations(codec: LlmWireCodec, request: LlmWireRequest): Unit {
@@ -325,14 +337,6 @@ func validateBlockForReplay(codec: LlmWireCodec, request: LlmWireRequest, messag
         case LlmWireBlock.Opaque(_) => unsupportedRequest("llm.opaque_diagnostic_only", "unknown native diagnostics cannot be replayed")
         case LlmWireBlock.Reasoning(_) => unsupportedRequest("llm.reasoning_display_only", "display reasoning is not request-encodable")
         case LlmWireBlock.Refusal(_) => unsupportedRequest("llm.refusal_display_only", "refusal output is not request-encodable")
-        case LlmWireBlock.ToolCall(value) =>
-            if (!validToolName(value.name)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_name_invalid", "tool call names must use the tool-name grammar") }
-            match (value.arguments) {
-            case LlmWireToolArguments.Complete(arguments) =>
-                if (arguments.jsonNode().wireKind != WireJsonKind.Object) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object") }
-            case LlmWireToolArguments.Partial(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be sent as an executable tool call")
-            case _ => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_not_executable", "invalid tool arguments cannot be sent as an executable tool call")
-        }
         case _ => ()
     }
 }
@@ -345,14 +349,7 @@ func messageHasContent(message: LlmWireMessage): Bool {
     false
 }
 
-func validateToolsAndSchemas(request: LlmWireRequest): Unit {
-    let names = HashSet<String>()
-    for (tool in request.tools) {
-        if (!validToolName(tool.name)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_invalid", "tool names must be 1-64 ASCII letters, digits, underscore, or hyphen") }
-        if (names.contains(tool.name)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_duplicate", "tool names must be unique") }
-        names.add(tool.name)
-        if (tool.inputSchema.jsonNode().wireKind != WireJsonKind.Object) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_schema_invalid", "tool input schema must be a JSON object") }
-    }
+func validateStructuredSchema(request: LlmWireRequest): Unit {
     match (request.structuredOutput) {
         case LlmWireStructuredOutput.JsonSchema(value) =>
             if (value.name == "" || value.schema.jsonNode().wireKind != WireJsonKind.Object) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.structured_schema_invalid", "structured output name and object schema are required") }
@@ -374,6 +371,15 @@ func validToolName(value: String): Bool {
 
 func validateBlockShape(block: LlmWireBlock): Unit {
     match (block) {
+        case LlmWireBlock.ToolCall(value) =>
+            if (!validToolName(value.name)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_name_invalid", "tool call names must use the tool-name grammar", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId)) }
+            match (value.arguments) {
+                case LlmWireToolArguments.Complete(arguments) =>
+                    if (arguments.jsonNode().wireKind != WireJsonKind.Object) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId)) }
+                case LlmWireToolArguments.Partial(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be sent as an executable tool call", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId))
+                case LlmWireToolArguments.InvalidShape(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "invalid-shape tool arguments cannot be sent as an executable tool call", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId))
+                case _ => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_not_executable", "invalid tool arguments cannot be sent as an executable tool call", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId))
+            }
         case LlmWireBlock.Image(value) => match (value.sourceKind) {
             case LlmWireImageSourceKind.Url => if (value.data.trimAscii() == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.image_url_invalid", "image URL must not be empty") }
             case LlmWireImageSourceKind.Base64 => if (value.data == "" || value.mediaType == "" || !value.mediaType.contains("/")) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.image_base64_invalid", "base64 images require data and a media type") }
@@ -381,36 +387,4 @@ func validateBlockShape(block: LlmWireBlock): Unit {
         }
         case _ => ()
     }
-}
-
-func validateConversation(messages: Array<LlmWireMessage>): Unit {
-    let known = HashSet<String>()
-    let pending = HashSet<String>()
-    for (message in messages) {
-        if (!pending.isEmpty()) {
-            if (message.role != LlmWireRole.User) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_conversation_out_of_phase", "only tool results may follow unresolved tool calls", phase: Some(LlmTransportPhase.Encode)) }
-            for (block in message.blocks) { match (block) {
-                case LlmWireBlock.ToolResult(_) => ()
-                case _ => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_conversation_out_of_phase", "ordinary content cannot appear while tool calls are unresolved", phase: Some(LlmTransportPhase.Encode))
-            } }
-        }
-        for (block in message.blocks) {
-        match (block) {
-            case LlmWireBlock.ToolCall(call) =>
-                if (message.role != LlmWireRole.Assistant) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_role_invalid", "tool calls must belong to assistant messages") }
-                if (call.callId == "" || known.contains(call.callId)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_duplicate", "tool call IDs must be non-empty and unique") }
-                known.add(call.callId)
-                pending.add(call.callId)
-            case LlmWireBlock.ToolResult(result) =>
-                if (message.role != LlmWireRole.User) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_role_invalid", "tool results must belong to user messages") }
-                if (!pending.contains(result.callId)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_unmatched", "tool result must match a prior unconsumed tool call") }
-                pending.remove(result.callId)
-            case _ => ()
-        }
-        }
-        if (message.role == LlmWireRole.User && !pending.isEmpty()) {
-            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_results_incomplete", "one tool-result message must close every pending parallel tool call", phase: Some(LlmTransportPhase.Encode))
-        }
-    }
-    if (!pending.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_unresolved", "every tool call must have exactly one later result") }
 }

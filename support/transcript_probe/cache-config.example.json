@@ -1,0 +1,26 @@
+{
+  "openai-responses": {
+    "endpoint": "https://api.openai.com/v1/responses",
+    "model": "REPLACE_WITH_MODEL_SUPPORTING_ADDITIONAL_TOOLS",
+    "auth_env": "OPENAI_API_KEY",
+    "auth_header": "Authorization",
+    "auth_prefix": "Bearer ",
+    "options": {"cache": "automatic-default", "max_output_tokens": 64}
+  },
+  "anthropic-messages": {
+    "endpoint": "https://api.anthropic.com/v1/messages",
+    "model": "REPLACE_WITH_MODEL_SUPPORTING_MID_CONVERSATION_TOOL_REFERENCES",
+    "auth_env": "ANTHROPIC_API_KEY",
+    "auth_header": "x-api-key",
+    "headers": {"anthropic-version": "2023-06-01"},
+    "options": {"cache": "automatic-default", "max_output_tokens": 64}
+  },
+  "kimi-chat": {
+    "endpoint": "https://api.moonshot.ai/v1/chat/completions",
+    "model": "kimi-k3",
+    "auth_env": "MOONSHOT_API_KEY",
+    "auth_header": "Authorization",
+    "auth_prefix": "Bearer ",
+    "options": {"cache": "provider-default", "max_output_tokens": 64}
+  }
+}

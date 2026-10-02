@@ -29,6 +29,9 @@ llm.chat_tool_call_name_mismatch
 llm.chat_tool_call_type_missing
 llm.chat_tool_type_unsupported
 llm.choice_index_invalid
+llm.context_contract_version_unsupported
+llm.context_update_position_invalid
+llm.context_update_unsupported
 llm.continuation_choice_missing
 llm.continuation_choice_required
 llm.continuation_projection_lossy
@@ -37,6 +40,9 @@ llm.dialect_identity_mismatch
 llm.dialect_identity_reserved
 llm.dialect_protocol_mismatch
 llm.dialect_thinking_replay_unsupported
+llm.endpoint_profile_capability_unsupported
+llm.endpoint_profile_invalid
+llm.endpoint_profile_mismatch
 llm.envelope_identity_mismatch
 llm.feature_requirement_unresolved
 llm.feature_requirement_unsatisfied
@@ -52,11 +58,13 @@ llm.image_input_unsupported
 llm.image_media_type_unsupported
 llm.image_role_unsupported
 llm.image_url_invalid
+llm.initial_context_already_started
 llm.instruction_empty
 llm.integer_invalid
 llm.json_duplicate_key
 llm.json_invalid
 llm.json_number_invalid
+llm.kimi_tool_result_content_unsupported
 llm.logprob_byte_invalid
 llm.max_output_tokens_invalid
 llm.max_output_tokens_required
@@ -203,8 +211,10 @@ llm.tool_call_stop_mismatch
 llm.tool_call_unresolved
 llm.tool_choice_without_tools
 llm.tool_conversation_out_of_phase
-llm.tool_name_duplicate
+llm.tool_definition_conflict
 llm.tool_name_invalid
+llm.tool_not_active
+llm.tool_reference_unknown
 llm.tool_result_content_empty
 llm.tool_result_error_semantics_unsupported
 llm.tool_result_role_invalid
@@ -213,7 +223,11 @@ llm.tool_results_incomplete
 llm.tool_schema_invalid
 llm.tool_schema_unsupported
 llm.tool_stop_without_call
+llm.tool_version_invalid
 llm.tools_unsupported
+llm.transcript_snapshot_invalid
+llm.transcript_snapshot_limit_exceeded
+llm.transcript_version_unsupported
 llm.usage_decreased
 llm.usage_negative
 llm.usage_overflow

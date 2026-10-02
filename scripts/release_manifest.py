@@ -67,9 +67,14 @@ evidence = {
         "workflowPath": smoke_provenance["workflowPath"],
         "artifactDigests": smoke_provenance["artifactDigests"],
     },
+    "consumerContracts": [
+        {"name": name, "sourceCommit": args.source_commit, "fixture": f"support/{name}"}
+        for name in ("external_consumer", "experimental_consumer", "transcript_consumer")
+    ],
     "gates": [
         "check", "coverage", "contract", "stable API versus release tag",
-        "exact Git stable consumer", "exact Git experimental consumer", "provider smoke",
+        "exact Git stable consumer", "exact Git experimental consumer",
+        "exact Git transcript consumer", "provider smoke",
     ],
 }
 args.output.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
