@@ -1,6 +1,6 @@
 # 缓存实验与证据边界
 
-当前恢复候选只声明确定性模型输入布局，未宣称任何原生路径的真实缓存收益。丢失的先前候选检查结果不适用于重建源码；当前 candidate 需要重新执行全部门禁。2026-10-02 的 live 状态如下：
+证据绑定源码 [b8bd5b6fd41349900a3806212c63f62694379385](https://github.com/lIlIIlIll/llm4cj/commit/b8bd5b6fd41349900a3806212c63f62694379385)。库只声明确定性模型输入布局，未宣称任何原生路径的真实缓存收益。2026-10-02 的 live 状态如下：
 
 | 路径 | 本地需要验证的内容 | Live cache 状态 | 缺少证据 |
 | --- | --- | --- | --- |
@@ -17,9 +17,6 @@
 先选择目标 endpoint/model，核对当前原生能力与最低可缓存长度，再复制并填写配置。配置样本的 OpenAI/Anthropic model 是必须替换的占位符；Kimi 契约固定为 kimi-k3 和文档 endpoint。能力记录是 caller declaration。凭据只从命名的环境变量读取，不能写入配置文件；beta header 由 codec 产生。
 
 ```sh
-cd support/transcript_probe
-cjpm build
-cd ../..
 cp support/transcript_probe/cache-config.example.json /tmp/llm4cj-cache-config.json
 # 编辑 /tmp/llm4cj-cache-config.json 的显式模型和选项；不写入凭据。
 python3 scripts/cache_experiment.py --self-test
@@ -32,6 +29,8 @@ python3 scripts/cache_experiment.py \
 
 prepare-only 不发送请求，检查原生追加前后已有模型输入项和初始 tools/system 相等，control 确实改动基线。它记录每次请求的 input/body hash 和长度，仅作为可重现输入标记。
 
+每次 prepare/live 命令都会先构建 public probe，再在同一 compiler wrapper 作用域运行，不能用环境变量猜测预编译 binary 的选项。输出 `probe_compilation` 记录实际 `override_compile_option`、作用范围及 fresh build；默认选项记录为 null。SDK 1.2.0 默认优化编译 yjson 的 LLVM 崩溃已复现，该工具链可显式设置 `LLM4CJ_CONSUMER_COMPILE_OPTION=-O1`。这一覆盖影响 probe 入口及全部依赖，并在失败后恢复 manifest；资格范围见[测试与发布](testing-and-releasing.md)。checkout 的 clean/SHA 状态在 wrapper 修改临时 manifest 前记录。
+
 offline-check 会构建 probe，在无网络调用的情况下验证三条路径各 3 个样本的 warm/native/control 布局，并经 public decoder 核对缺失计数、明确零和 provider failure 前已观测 usage/source。它不接受 live 模型或凭据，不把 fixture-model 当作真实支持模型。
 
 在干净且已固定的候选 commit 上配置 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 和 `MOONSHOT_API_KEY` 后运行：
@@ -43,7 +42,7 @@ python3 scripts/cache_experiment.py \
   --output /tmp/llm4cj-cache-observations.json
 ```
 
-每条路径每个样本先 warm，再随机顺序发送 native/control，共 45 次网络调用（默认 5 个样本 × 3 个 arm × 3 条路径）。输出固定 candidate SHA、UTC 时间、endpoint/model/options、契约版本、prefix seed、arm 顺序、输入哈希与字节数、HTTP status、公共 codec outcome、端到端耗时和原生 read/write 计数。输出不保存凭据、prompt 或原始响应。请求不跟随 redirect，不自动重试；transport/provider/codec 失败保留在记录中，不删除失败样本。
+每条路径每个样本先 warm，再随机顺序发送 native/control，共 45 次网络调用（默认 5 个样本 × 3 个 arm × 3 条路径）。输出固定 candidate SHA、UTC 时间、endpoint/model/options、probe 编译选项、契约版本、prefix seed、arm 顺序、输入哈希与字节数、HTTP status、公共 codec outcome、端到端耗时和原生 read/write 计数。输出不保存凭据、prompt 或原始响应。请求不跟随 redirect，不自动重试；transport/provider/codec 失败保留在记录中，不删除失败样本。
 
 `elapsed_ms` 是整次固定响应的网络耗时，含排队和生成，不是单独的 prefill 或 TTFT。预设 64 输出 token 并要求 OK 可减少生成差异，但不能消除 provider 负载噪声。65536 字节只表示生成前缀大小；provider tokenizer 的 token 数以返回 usage 或独立计数证据为准。如果不足最低缓存长度，扩大前缀并重新固定配置，不能把无命中样本当作布局失败。
 

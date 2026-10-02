@@ -1,6 +1,6 @@
 # ADR 0002：有序 transcript 与原生上下文更新
 
-- 状态：接受；v0.3.0 breaking 候选，恢复候选需重新验证。
+- 状态：接受；v0.3.0 breaking 候选。
 - 决策日期：2026-10-02（Asia/Shanghai）。
 - 跟踪：[issue #27](https://github.com/lIlIIlIll/llm4cj/issues/27)。
 

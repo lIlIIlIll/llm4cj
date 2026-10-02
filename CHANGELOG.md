@@ -11,7 +11,7 @@ All notable changes are recorded here.
 - Update fixtures, public API snapshots, examples, and external consumers for the breaking contract; document the Axyndra integration boundary and reproducible live cache experiment procedure.
 - Keep absent cache usage unknown and distinguish it from reported zero. Offline protocol fixtures prove layout and semantics only; no real provider cache benefit is claimed without a recorded live experiment.
 
-See [the v0.2 migration guide](docs/migrating-from-v0.2.md) and [the transcript ADR](docs/adr/0002-ordered-transcript.md). A release tag, remote consumer result, and live provider/cache evidence are separate gates; this entry does not assert that they have run. Reconstructed candidates require fresh evidence and do not inherit checks from an unavailable earlier commit.
+See [the v0.2 migration guide](docs/migrating-from-v0.2.md) and [the transcript ADR](docs/adr/0002-ordered-transcript.md). A release tag, remote consumer result, and live provider/cache evidence are separate gates; this entry does not assert that they have run. Evidence is bound to the published source commit in [the implementation record](docs/issue-27-implementation.md).
 
 ## [0.1.1]
 

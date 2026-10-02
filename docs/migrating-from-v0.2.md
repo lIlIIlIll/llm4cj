@@ -23,12 +23,11 @@ Axyndra 的适配边界如下：
 
 该仓库的 external consumer 是本契约的编译/运行样本。[Axyndra 适配补丁](../support/axyndra/README.md) 新增 ProviderTranscriptExchange/ProviderTranscriptPort，直接接收一份 `LlmWireRequest` 并保留原 transcript，通过现有 credential/transport 边界发送；它没有重试或 provider fallback。现有静态 ModelRequest adapter 仍只表示初始上下文，无法恢复旧历史中已撤销定义的位置时明确失败。补丁的本地编译/离线 mock 证据不证明远端 Axyndra 已合入；Thread/SQLite、Skill、审批与工具执行策略不由库修改。
 
-发布前需要当前 candidate 的本地门禁、coverage、API/fixture baseline、远端 CI、真实 provider smoke 与 consumer evidence。固定消费请使用实际发布的 v0.3.0 对应 tag，或已合入且通过对应门禁的完整 40 位 commitId。当前恢复候选尚无新的已验证发布 tag/commit；不要把浮动 main 或不可用的先前提交当作固定版本。
+候选源码已发布为 [b8bd5b6fd41349900a3806212c63f62694379385](https://github.com/lIlIIlIll/llm4cj/commit/b8bd5b6fd41349900a3806212c63f62694379385)，可固定 commit 验证集成。正式发布仍需全部本地门禁、coverage、远端 CI、真实 provider smoke 与 consumer evidence；v0.3.0 tag 尚未发布。当前检查状态见[实施与证据](issue-27-implementation.md)。
 
 ```toml
 [dependencies]
-# 将占位符替换为实际经过验证的完整 commit SHA。
-llm4cj = { git = "https://github.com/lIlIIlIll/llm4cj.git", commitId = "<verified-full-40-character-sha>" }
+llm4cj = { git = "https://github.com/lIlIIlIll/llm4cj.git", commitId = "b8bd5b6fd41349900a3806212c63f62694379385" }
 ```
 
 详细不变量与原生能力矩阵见 [ADR](adr/0002-ordered-transcript.md) 和 [有序 transcript](ordered-transcript.md)。

@@ -31,8 +31,9 @@ if count != 1:
 path.write_text(text)
 PY
 
-(
-  cd "$consumer_root"
+python3 "$root/scripts/consumer_compile.py" "$consumer_root" bash -euo pipefail -s -- "$candidate" "$tag" <<'SH'
+  candidate=$1
+  tag=$2
   cjpm clean
   cjpm check
   cjpm build
@@ -46,7 +47,7 @@ PY
     printf 'tag consumer did not resolve %s to candidate %s\n' "$tag" "$candidate" >&2
     exit 1
   fi
-)
+SH
 
 cp -a "$root/support/experimental_consumer/." "$experimental_consumer_root/"
 python3 - "$experimental_consumer_root/cjpm.toml" "$tag" <<'PY'
@@ -58,8 +59,9 @@ if count != 1:
     raise SystemExit("experimental consumer tag dependency shape drifted")
 path.write_text(text)
 PY
-(
-  cd "$experimental_consumer_root"
+python3 "$root/scripts/consumer_compile.py" "$experimental_consumer_root" bash -euo pipefail -s -- "$candidate" "$tag" <<'SH'
+  candidate=$1
+  tag=$2
   cjpm clean
   cjpm check
   cjpm build
@@ -68,7 +70,7 @@ PY
     printf 'experimental tag consumer did not resolve %s to candidate %s\n' "$tag" "$candidate" >&2
     exit 1
   fi
-)
+SH
 
 cp -a "$root/support/transcript_consumer/." "$transcript_consumer_root/"
 python3 - "$transcript_consumer_root/cjpm.toml" "$tag" <<'PY'
@@ -80,8 +82,9 @@ if count != 1:
     raise SystemExit("transcript consumer tag dependency shape drifted")
 path.write_text(text)
 PY
-(
-  cd "$transcript_consumer_root"
+python3 "$root/scripts/consumer_compile.py" "$transcript_consumer_root" bash -euo pipefail -s -- "$candidate" "$tag" <<'SH'
+  candidate=$1
+  tag=$2
   cjpm check
   cjpm build
   target/release/bin/main
@@ -89,6 +92,6 @@ PY
     printf 'transcript tag consumer did not resolve %s to candidate %s\n' "$tag" "$candidate" >&2
     exit 1
   fi
-)
+SH
 
 printf 'tag consumer gate passed: %s at %s\n' "$tag" "$candidate"

@@ -8,6 +8,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from consumer_compile import consumer_compile_options
+
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = [ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))]
 programs: list[tuple[Path, str]] = []
@@ -39,17 +41,18 @@ yjson = {{ git = "https://github.com/lIlIIlIll/yjson.git", tag = "0.1.0", output
 '''
         (work / "cjpm.toml").write_text(manifest, encoding="utf-8")
         (work / "src/main.cj").write_text(source, encoding="utf-8")
-        subprocess.run(["cjpm", "check"], cwd=work, check=True)
-        completed = subprocess.run(
-            ["cjpm", "run"],
-            cwd=work,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
-        if completed.returncode != 0:
-            print(completed.stdout, end="")
-        completed.check_returncode()
+        with consumer_compile_options(work):
+            subprocess.run(["cjpm", "check"], cwd=work, check=True)
+            completed = subprocess.run(
+                ["cjpm", "run"],
+                cwd=work,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            if completed.returncode != 0:
+                print(completed.stdout, end="")
+            completed.check_returncode()
         if index == 0:
             if "你好，仓颉！" not in completed.stdout.splitlines():
                 raise SystemExit("canonical Quick Start produced unexpected output")

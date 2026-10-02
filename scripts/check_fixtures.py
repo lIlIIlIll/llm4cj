@@ -9,6 +9,8 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
+from consumer_compile import consumer_compile_options
+
 ROOT = Path(__file__).resolve().parent.parent
 PROBE = ROOT / "support/protocol_probe"
 STREAM_PROBE = ROOT / "support/provider_probe"
@@ -20,7 +22,7 @@ ALLOWED_SOURCE_HOSTS = {
 }
 
 
-def main() -> None:
+def verify_fixtures() -> None:
     subprocess.run(["cjpm", "build"], cwd=PROBE, check=True)
     subprocess.run(["cjpm", "build"], cwd=STREAM_PROBE, check=True)
     executable = PROBE / "target/release/bin/main"
@@ -90,6 +92,11 @@ def main() -> None:
             )
 
     print(f"provider fixtures verified through public codecs: {len(records) + len(request_records) + len(stream_records)}")
+
+
+def main() -> None:
+    with consumer_compile_options(PROBE), consumer_compile_options(STREAM_PROBE):
+        verify_fixtures()
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # 安装与首个程序
 
-当前 `main` 是 `v0.3.0` 候选源码，尚无对应 release tag。开发验证使用相邻 checkout 的固定路径：
+本分支是 `v0.3.0` 候选源码，尚无对应 release tag。可用[固定源码 commit](https://github.com/lIlIIlIll/llm4cj/commit/b8bd5b6fd41349900a3806212c63f62694379385) 验证，或使用相邻 checkout 的固定路径：
 
 ```toml
 [dependencies]

@@ -47,3 +47,23 @@ commit is not reused or claimed to be remotely available.
 `support/transcript_consumer` is the smaller always-on consumer contract. It
 covers native removal after a valid historical call/result, snapshot restore,
 and generated fixed/stream calls checked against the request-end tool view.
+
+On SDK 1.2.0, the bundled LLVM backend can crash in X86DAG instruction selection
+while compiling the pinned yjson dependency at its original `-O2` setting.
+[Upstream's consumer/examples/conformance workaround](https://github.com/lIlIIlIll/yjson/blob/0f2071a0ad59ad43a369abe51abaceaf873f0c63/.github/workflows/ci.yml#L205-L208)
+uses a temporary entry `-O1` override; its
+[implementation](https://github.com/lIlIIlIll/yjson/blob/0f2071a0ad59ad43a369abe51abaceaf873f0c63/scripts/ci_job.sh)
+provides the same precedent. To select that workaround explicitly:
+
+```bash
+export LLM4CJ_CONSUMER_COMPILE_OPTION=-O1
+scripts/check_axyndra_consumer.sh /absolute/path/to/Axyndra --git-pin
+```
+
+This option covers the consumer entry and all dependencies for the complete
+check/build/test invocation. Axyndra uses the legal workspace
+`override-compile-option` field, applying it to the selected `model_adapters`
+member and its dependency closure. The helper restores the temporary entry manifest
+in `finally`, including failed commands. With the option unset, compilation uses
+the original settings. The override does not change library source, API or Git
+pins, and it does not claim that the SDK's `-O2` failure has been fixed.

@@ -16,15 +16,17 @@ from pathlib import Path
 import random
 import re
 import subprocess
-import sys
 import tempfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
+from consumer_compile import consumer_compile_options
+
 ROOT = Path(__file__).resolve().parent.parent
-PROBE = ROOT / "support/transcript_probe/target/release/bin/main"
+PROBE_PROJECT = ROOT / "support/transcript_probe"
+PROBE = PROBE_PROJECT / "target/release/bin/main"
 PATHS = {"openai-responses", "anthropic-messages", "kimi-chat"}
 COUNTERS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens")
 MAX_RESPONSE = 8 * 1024 * 1024
@@ -173,7 +175,13 @@ def self_test() -> None:
 
 def offline_check() -> None:
     """Compile and exercise the actual consumer with all network calls disabled."""
-    subprocess.run(["cjpm", "build"], cwd=PROBE.parents[3], check=True)
+    checkout = checkout_state()
+    with consumer_compile_options(PROBE_PROJECT) as compile_option:
+        subprocess.run(["cjpm", "build"], cwd=PROBE_PROJECT, check=True)
+        offline_check_prepared(compile_option, checkout)
+
+
+def offline_check_prepared(compile_option: str | None, checkout: tuple[str, bool]) -> None:
     with tempfile.TemporaryDirectory(prefix="llm4cj-cache-offline-") as raw:
         work = Path(raw)
         config = json.loads((ROOT / "support/transcript_probe/cache-config.example.json").read_text())
@@ -181,10 +189,12 @@ def offline_check() -> None:
         config["anthropic-messages"]["model"] = "fixture-model"
         config_path, output_path = work / "config.json", work / "prepared.json"
         config_path.write_text(json.dumps(config))
-        subprocess.run([sys.executable, str(Path(__file__).resolve()), "--config", str(config_path),
-                        "--prepare-only", "--samples", "3", "--history-bytes", "16384", "--output", str(output_path)], check=True)
+        run_experiment(argparse.Namespace(config=config_path, output=output_path, prepare_only=True,
+                                          samples=3, history_bytes=16384, random_seed=27003),
+                       compile_option, checkout)
         record = json.loads(output_path.read_text())
         assert record["status"] == "prepared_only" and record["cache_benefit_claim"] is False
+        assert record["probe_compilation"]["override_compile_option"] == compile_option
         assert len(record["paths"]) == 3
         for path_record in record["paths"]:
             assert len(path_record["samples"]) == 3
@@ -210,39 +220,28 @@ def offline_check() -> None:
     print("cache experiment public consumer check passed (three paths; missing/zero/failure usage; offline)")
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path)
-    parser.add_argument("--output", type=Path)
-    parser.add_argument("--prepare-only", action="store_true", help="encode/layout check only; sends no requests")
-    parser.add_argument("--samples", type=int, default=5)
-    parser.add_argument("--history-bytes", type=int, default=65536)
-    parser.add_argument("--random-seed", type=int, default=27003)
-    parser.add_argument("--self-test", action="store_true")
-    parser.add_argument("--offline-check", action="store_true", help="build and check public codec plans/usage without network calls")
-    args = parser.parse_args()
-    if args.self_test:
-        self_test()
-        return 0
-    if args.offline_check:
-        self_test()
-        offline_check()
-        return 0
-    if not args.config or not args.output or args.samples < 3 or not 16384 <= args.history_bytes <= 1048576:
-        parser.error("config/output, at least three samples, and a 16 KiB–1 MiB prefix are required")
+def checkout_state() -> tuple[str, bool]:
+    candidate = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
+    dirty = bool(subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, check=True, capture_output=True, text=True).stdout)
+    return candidate, dirty
+
+
+def run_experiment(args: argparse.Namespace, compile_option: str | None, checkout: tuple[str, bool]) -> int:
     config = json.loads(args.config.read_text())
     if set(config) != PATHS:
         raise ValueError("configure all three native paths separately")
     if not PROBE.is_file():
         raise ValueError("build support/transcript_probe before running the experiment")
-    candidate = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
-    dirty = bool(subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, check=True, capture_output=True, text=True).stdout)
+    candidate, dirty = checkout
     if dirty and not args.prepare_only:
         raise ValueError("live evidence requires a clean, fixed candidate commit")
     record = {"schema_version": 1, "experiment": "llm4cj.native-update-cache", "candidate_sha": candidate,
               "dirty_checkout": dirty, "status": "prepared_only" if args.prepare_only else "observed",
               "started_at": dt.datetime.now(dt.timezone.utc).isoformat(), "samples_per_path": args.samples,
               "history_bytes_requested": args.history_bytes, "random_seed": args.random_seed,
+              "probe_compilation": {"override_compile_option": compile_option,
+                                    "scope": "entry_project_and_all_dependencies" if compile_option else "default_flags",
+                                    "fresh_build": True},
               "cache_benefit_claim": False, "paths": []}
     rng = random.Random(args.random_seed)
     for path, entry in sorted(config.items()):
@@ -276,6 +275,34 @@ def main() -> int:
                 args.output.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n")
     print(f"cache experiment {record['status']}: {args.output}; observed hits/benefits require separate analysis")
     return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--prepare-only", action="store_true", help="encode/layout check only; sends no requests")
+    parser.add_argument("--samples", type=int, default=5)
+    parser.add_argument("--history-bytes", type=int, default=65536)
+    parser.add_argument("--random-seed", type=int, default=27003)
+    parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--offline-check", action="store_true", help="build and check public codec plans/usage without network calls")
+    args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return 0
+    if args.offline_check:
+        self_test()
+        offline_check()
+        return 0
+    if not args.config or not args.output or args.samples < 3 or not 16384 <= args.history_bytes <= 1048576:
+        parser.error("config/output, at least three samples, and a 16 KiB–1 MiB prefix are required")
+    checkout = checkout_state()
+    if checkout[1] and not args.prepare_only:
+        raise ValueError("live evidence requires a clean, fixed candidate commit")
+    with consumer_compile_options(PROBE_PROJECT) as compile_option:
+        subprocess.run(["cjpm", "build"], cwd=PROBE_PROJECT, check=True)
+        return run_experiment(args, compile_option, checkout)
 
 
 if __name__ == "__main__":

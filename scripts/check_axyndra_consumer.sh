@@ -46,11 +46,14 @@ for lock in work.rglob("cjpm.lock"):
 PY
 fi
 export LD_LIBRARY_PATH="$work/libs/process4cj/native:$CANGJIE_STDX_PATH:${LD_LIBRARY_PATH:-}"
-(
-  cd "$work"
+python3 "$root/scripts/consumer_compile.py" "$work" bash -eu -c '
   scripts/prepare_native_deps.sh
   cjpm check --member model_adapters
-  cjpm build --member model_adapters
+  if [ -n "${LLM4CJ_CONSUMER_COMPILE_OPTION:-}" ]; then
+    cjpm build --member model_adapters -V
+  else
+    cjpm build --member model_adapters
+  fi
   cjpm test --member model_adapters
-)
+'
 printf 'Axyndra model_adapters consumer gate passed at %s (%s dependency)\n' "$base" "$mode"

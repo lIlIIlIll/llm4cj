@@ -21,12 +21,15 @@ if count != 1:
     raise SystemExit("consumer dependency shape drifted")
 path.write_text(text)
 PY
-  (
-    cd "$target"
+  python3 "$root/scripts/consumer_compile.py" "$target" bash -eu -c '
     cjpm check
-    cjpm build
+    if [ -n "${LLM4CJ_CONSUMER_COMPILE_OPTION:-}" ]; then
+      cjpm build -V
+    else
+      cjpm build
+    fi
     target/release/bin/main
-  )
+  '
 done
 
 printf 'stable, experimental and transcript local consumers passed\n'

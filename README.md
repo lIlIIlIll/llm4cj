@@ -14,7 +14,7 @@
 
 ## 快速开始
 
-当前 `main` 是 `v0.3.0` 候选源码，尚未发布对应 tag；manifest 要求 Cangjie `>= 1.1.0`。在 tag 发布前，从相邻 checkout 以固定本地路径验证：
+本分支是 `v0.3.0` 候选源码，已提供[固定源码 commit](https://github.com/lIlIIlIll/llm4cj/commit/b8bd5b6fd41349900a3806212c63f62694379385)，尚未发布对应 tag；manifest 要求 Cangjie `>= 1.1.0`。从相邻 checkout 以固定本地路径验证：
 
 ```toml
 [dependencies]
