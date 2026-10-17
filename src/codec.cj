@@ -620,11 +620,11 @@ func decodeChatChoice(codec: LlmWireCodec, root: JsonNode, choice: JsonNode, ind
         case Some(calls) => for (raw in calls) {
             let call = wireObject(raw, "Chat tool call", provider: codec.provider)
             let incomplete = stop == "length" || stop == "content_filter"
-            let callType = if (incomplete) { wireOptionalString(call, "type", provider: codec.provider) } else { Some(wireRequiredString(call, "type", provider: codec.provider)) }
-            match (callType) {
-                case Some(value) => if (value != "function") { unsupportedSemantic(codec, value, call, "llm.chat_tool_type_unsupported", eventType: "message.tool_calls") }
-                case None => ()
+            let callType = match (wireOptionalString(call, "type", provider: codec.provider)) {
+                case Some(value) => value
+                case None => invalidWire("llm.chat_tool_call_type_missing", "Chat tool call never declared its type", provider: codec.provider)
             }
+            if (callType != "function") { unsupportedSemantic(codec, callType, call, "llm.chat_tool_type_unsupported", eventType: "message.tool_calls") }
             let function = match (wireOptionalObject(call, "function", provider: codec.provider)) {
                 case Some(value) => value
                 case None => if (incomplete) { wireJsonObject([]) } else { invalidWire("llm.field_missing", "Chat tool call is missing function", provider: codec.provider) }

@@ -6,6 +6,153 @@ import std.unittest.testmacro.*
 @Test
 class ChatStreamRegressionTests {
     @TestCase
+    func chatTruncatedDuplicateIdsRemainDiagnosticButCannotContinue() {
+        let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
+        for (reason in ["length", "content_filter"]) {
+            for (duplicate in [false, true]) {
+                for (raw in ["{}", "{", "[]"]) {
+                    let secondId = if (duplicate) { "c" } else { "d" }
+                    let first = "\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"f\",\"arguments\":\"{}\"}"
+                    let second = "\"id\":\"" + secondId + "\",\"type\":\"function\",\"function\":{\"name\":\"g\",\"arguments\":\"" + raw + "\"}"
+                    let fixed = streamRegressionFixed(codec, "{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{" + first + "},{" + second + "}]},\"finish_reason\":\"" + reason + "\"}]}")
+                    let source = "data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0," + first + "},{\"index\":1," + second + "}]},\"finish_reason\":\"" + reason + "\"}]}\n\ndata: [DONE]\n\n"
+                    let streamed = streamRegressionBytes(codec, source, 1)
+                    let expected = if (duplicate) { "llm.tool_call_id_duplicate" } else if (raw != "{}") { "llm.tool_arguments_not_executable" } else { "" }
+                    for (reply in [fixed, streamed]) {
+                        @Expect(reply.blocks.size, 2)
+                        match (reply.choices[0].outcome) { case LlmWireChoiceOutcome.Incomplete(value) => @Expect(value, if (reason == "length") { LlmWireIncompleteReason.Length } else { LlmWireIncompleteReason.ContentFilter }); case _ => @Fail("duplicate diagnostic calls must preserve truncation") }
+                        match (reply.blocks[1]) {
+                            case LlmWireOutputBlock.ToolCall(value) =>
+                                @Expect(value.callId, secondId); @Expect(value.name, "g")
+                                match (value.arguments) {
+                                    case LlmWireToolArguments.Complete(value) => @Expect(raw, "{}"); @Expect(value.stringify(), raw)
+                                    case LlmWireToolArguments.InvalidJson(value) => @Expect(raw, "{"); @Expect(value, raw)
+                                    case LlmWireToolArguments.InvalidShape(value) => @Expect(raw, "[]"); @Expect(value.stringify(), raw)
+                                    case _ => @Fail("duplicate IDs must not change argument classification")
+                                }
+                            case _ => @Fail("expected diagnostic tool call")
+                        }
+                        for (result in [reply.choices[0].toContinuationInput(), reply.toContinuationInput(0)]) {
+                            match (result) {
+                                case LlmWireResult.Ok(messages) => @Expect(expected, ""); @Expect(messages.size, 1); @Expect(messages[0].blocks.size, 2)
+                                case LlmWireResult.Err(error) => @Expect(error.code, expected); @Expect(error.kind, LlmWireErrorKind.InvalidState)
+                            }
+                        }
+                        try {
+                            let messages = reply.toContinuationInput()
+                            @Expect(expected, ""); @Expect(messages.size, 1); @Expect(messages[0].blocks.size, 2)
+                        } catch (error: LlmWireError) { @Expect(error.code, expected); @Expect(error.kind, LlmWireErrorKind.InvalidState) }
+                    }
+                }
+            }
+        }
+    }
+
+    @TestCase
+    func chatFixedUnobservedTypeCannotReachEitherContinuation() {
+        let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
+        let body = "{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{\"id\":\"c\",\"function\":{\"name\":\"f\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"length\"}]}"
+        match (codec.decodeResponse(LlmWireHttpResponse(200, [], body.toArray()))) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.chat_tool_call_type_missing")
+            case LlmWireResult.Ok(LlmWireResponseState.Terminal(LlmWireTerminal.Completed(reply))) =>
+                @Expect(reply.toContinuationInput().size, 0)
+                @Expect(streamRegressionValue(reply.toContinuationInput(0)).size, 0)
+                @Fail("fixed decoding accepted a call without an observed function type")
+            case _ => @Fail("unobserved tool type must fail decoding")
+        }
+    }
+
+    @TestCase
+    func chatStreamUnobservedTypeCannotReachEitherContinuation() {
+        let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
+        let decoder = codec.newStreamDecoder()
+        let update = streamRegressionPush(decoder, "{\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"function\":{\"name\":\"f\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"length\"}]}")
+        for (entry in update.events) { match (entry) { case LlmWireEvent.ToolCallStarted(_) => @Fail("unobserved type cannot start a function call"); case _ => () } }
+        match (decoder.push("data: [DONE]\n\n".toArray())) {
+            case LlmWireResult.Err(error) => @Expect(error.code, "llm.chat_tool_call_type_missing")
+            case LlmWireResult.Ok(value) => match (value.terminal) {
+                case Some(LlmWireTerminal.Completed(reply)) =>
+                    @Expect(reply.toContinuationInput().size, 0)
+                    @Expect(streamRegressionValue(reply.toContinuationInput(0)).size, 0)
+                    @Fail("stream decoding accepted a call without an observed function type")
+                case _ => @Fail("unobserved tool type must fail decoding")
+            }
+        }
+    }
+
+    @TestCase
+    func chatTruncatedToolTypesFailClosedWithMatchingUsage() {
+        let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), provider: "openai")
+        let usage = "{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5,\"prompt_tokens_details\":{\"cached_tokens\":0}}"
+        for (reason in ["length", "content_filter"]) {
+            for (raw in ["{}", "{", "[]"]) {
+                for ((typeField, code) in [
+                    ("", "llm.chat_tool_call_type_missing"),
+                    ("\"type\":null,", "llm.chat_tool_call_type_missing"),
+                    ("\"type\":\"other\",", "llm.chat_tool_type_unsupported"),
+                    ("\"type\":\"\",", "llm.chat_tool_type_unsupported"),
+                    ("\"type\":1,", "llm.field_type_invalid"),
+                    ("\"type\":false,", "llm.field_type_invalid")
+                ]) {
+                    let call = "\"id\":\"c\"," + typeField + "\"function\":{\"name\":\"f\",\"arguments\":\"" + raw + "\"}"
+                    let fixed = streamRegressionFixedError(codec, "{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{" + call + "}]},\"finish_reason\":\"" + reason + "\"}],\"usage\":" + usage + "}")
+                    let decoder = codec.newStreamDecoder()
+                    let first = decoder.push(("data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0," + call + "}]},\"finish_reason\":\"" + reason + "\"}],\"usage\":" + usage + "}\n\n").toArray())
+                    let streamed = match (first) {
+                        case LlmWireResult.Err(error) => error
+                        case LlmWireResult.Ok(update) =>
+                            for (entry in update.events) { match (entry) { case LlmWireEvent.ToolCallStarted(_) | LlmWireEvent.ToolArgumentsDelta(_, _) => @Fail("unobserved function type must not emit executable tool identity"); case _ => () } }
+                            streamRegressionError(decoder.push("data: [DONE]\n\n".toArray()))
+                    }
+                    @Expect(fixed.code, code); @Expect(streamed.code, code); @Expect(streamed.kind, fixed.kind)
+                    @Expect(fixed.usage.getOrThrow().inputTokens, Some(3)); @Expect(fixed.usage.getOrThrow().outputTokens, Some(2))
+                    streamRegressionUsageEqual(streamed.usage.getOrThrow(), fixed.usage.getOrThrow())
+                }
+            }
+        }
+    }
+
+    @TestCase
+    func chatDelayedFunctionTypeSurvivesLaterAbsenceAndNull() {
+        let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
+        for (reason in ["length", "content_filter"]) {
+            for (raw in ["{}", "{", "[]"]) {
+                for (laterType in ["", ",\"type\":null"]) {
+                    let decoder = codec.newStreamDecoder()
+                    let prefix = if (raw == "[]") { "[" } else { "{" }
+                    let suffix = if (raw == "{}") { "}" } else if (raw == "[]") { "]" } else { "" }
+                    let first = streamRegressionPush(decoder, "{\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"function\":{\"name\":\"f\",\"arguments\":\"" + prefix + "\"}}]}}]}")
+                    for (entry in first.events) { match (entry) { case LlmWireEvent.ToolCallStarted(_) | LlmWireEvent.ToolArgumentsDelta(_, _) => @Fail("tool events must wait for actual function type"); case _ => () } }
+                    let typed = streamRegressionPush(decoder, "{\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"type\":\"function\",\"function\":{\"arguments\":\"" + suffix + "\"}}]}}]}")
+                    var starts = 0
+                    for (entry in typed.events) { match (entry) { case LlmWireEvent.ToolCallStarted(identity) => starts++; @Expect(identity.callId, "c"); @Expect(identity.name, "f"); case _ => () } }
+                    @Expect(starts, 1)
+                    let last = streamRegressionPush(decoder, "{\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0" + laterType + "}]},\"finish_reason\":\"" + reason + "\"}]}")
+                    for (entry in last.events) { match (entry) { case LlmWireEvent.ToolCallStarted(_) => @Fail("later absent or null type must not restart the call"); case _ => () } }
+                    let reply = streamRegressionReply(streamRegressionPush(decoder, "[DONE]").terminal.getOrThrow())
+                    match (reply.choices[0].outcome) { case LlmWireChoiceOutcome.Incomplete(value) => @Expect(value, if (reason == "length") { LlmWireIncompleteReason.Length } else { LlmWireIncompleteReason.ContentFilter }); case _ => @Fail("tool type must not change truncation outcome") }
+                    match (reply.blocks[0]) {
+                        case LlmWireOutputBlock.ToolCall(value) => match (value.arguments) {
+                            case LlmWireToolArguments.Complete(value) => @Expect(raw, "{}"); @Expect(value.stringify(), raw)
+                            case LlmWireToolArguments.InvalidJson(value) => @Expect(raw, "{"); @Expect(value, raw)
+                            case LlmWireToolArguments.InvalidShape(value) => @Expect(raw, "[]"); @Expect(value.stringify(), raw)
+                            case _ => @Fail("observed function type must preserve argument classification")
+                        }
+                        case _ => @Fail("expected observed function call")
+                    }
+                    if (raw == "{}") {
+                        @Expect(reply.toContinuationInput().size, 1)
+                        @Expect(streamRegressionValue(reply.toContinuationInput(0)).size, 1)
+                    } else {
+                        match (reply.toContinuationInput(0)) { case LlmWireResult.Err(error) => @Expect(error.code, "llm.tool_arguments_not_executable"); case _ => @Fail("diagnostic arguments cannot continue") }
+                        try { let _ = reply.toContinuationInput(); @Fail("default continuation must reject diagnostic arguments") } catch (error: LlmWireError) { @Expect(error.code, "llm.tool_arguments_not_executable") }
+                    }
+                }
+            }
+        }
+    }
+
+    @TestCase
     func chatResourceFailurePrecedesMalformedOrOverBudgetLogprobs() {
         let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), provider: "openai")
         let finalUsage = "{\"prompt_tokens\":5,\"completion_tokens\":3,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0}}"
@@ -300,13 +447,13 @@ class ChatStreamRegressionTests {
     @TestCase
     func chatTruncatedOptionalIdentityStillRejectsMalformedTypes() {
         let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
-        for (call in ["\"id\":1,\"function\":{\"arguments\":\"{}\"}", "\"function\":{\"name\":1,\"arguments\":\"{}\"}", "\"type\":1,\"function\":{\"arguments\":\"{}\"}", "\"type\":\"other\",\"function\":{\"arguments\":\"{}\"}", "\"type\":\"\",\"function\":{\"arguments\":\"{}\"}", "\"function\":false", "\"function\":{\"arguments\":1}"]) {
+        for (call in ["\"type\":\"function\",\"id\":1,\"function\":{\"arguments\":\"{}\"}", "\"type\":\"function\",\"function\":{\"name\":1,\"arguments\":\"{}\"}", "\"type\":1,\"function\":{\"arguments\":\"{}\"}", "\"type\":\"other\",\"function\":{\"arguments\":\"{}\"}", "\"type\":\"\",\"function\":{\"arguments\":\"{}\"}", "\"type\":\"function\",\"function\":false", "\"type\":\"function\",\"function\":{\"arguments\":1}"]) {
             let fixed = streamRegressionFixedError(codec, "{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{" + call + "}]},\"finish_reason\":\"length\"}]}")
             let decoder = codec.newStreamDecoder()
             let streamed = streamRegressionError(decoder.push(("data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0," + call + "}]},\"finish_reason\":\"length\"}]}\n\n").toArray()))
             @Expect(streamed.code, fixed.code); @Expect(streamed.kind, fixed.kind)
         }
-        for (call in ["", "\"id\":null,\"type\":null,\"function\":null", "\"function\":{}", "\"function\":{\"arguments\":null}"]) {
+        for (call in ["\"type\":\"function\"", "\"id\":null,\"type\":\"function\",\"function\":null", "\"type\":\"function\",\"function\":{}", "\"type\":\"function\",\"function\":{\"arguments\":null}"]) {
             let fixed = streamRegressionFixed(codec, "{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{" + call + "}]},\"finish_reason\":\"length\"}]}")
             let indexedCall = if (call == "") { "\"index\":0" } else { "\"index\":0," + call }
             let source = "data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{" + indexedCall + "}]},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n\n"

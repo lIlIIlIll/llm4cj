@@ -1807,7 +1807,7 @@ class Llm4CjV02Tests {
         expectLlmError("llm.chat_tool_type_unsupported", { => let _ = openAiChat.decodeResponse(
             "{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{\"id\":\"c\",\"type\":\"custom\",\"custom\":{\"name\":\"shell\",\"input\":\"pwd\"}}]},\"finish_reason\":\"tool_calls\"}]}"
         ) })
-        expectLlmError("llm.field_missing", { => let _ = openAiChat.decodeResponse(
+        expectLlmError("llm.chat_tool_call_type_missing", { => let _ = openAiChat.decodeResponse(
             "{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{\"id\":\"c\",\"function\":{\"name\":\"f\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}"
         ) })
         let customStream = openAiChat.newStreamDecoder()

@@ -516,6 +516,7 @@ public class LlmWireReply {
 
 func projectContinuationBlocks(blocks: Array<LlmWireOutputBlock>): Array<LlmWireMessage> {
         let replayable = ArrayList<LlmWireBlock>()
+        let toolCallIds = HashSet<String>()
         for (block in blocks) { match (block) {
             case LlmWireOutputBlock.Text(value) => replayable.add(LlmWireBlock.Text(value))
             case LlmWireOutputBlock.NativeReplay(value) =>
@@ -527,6 +528,10 @@ func projectContinuationBlocks(blocks: Array<LlmWireOutputBlock>): Array<LlmWire
                 if (value.callId == "" || !validToolName(value.name)) {
                     throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.tool_call_incomplete", "tool call requires an id and a valid name")
                 }
+                if (toolCallIds.contains(value.callId)) {
+                    throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.tool_call_id_duplicate", "continuation contains duplicate tool call IDs")
+                }
+                toolCallIds.add(value.callId)
                 match (value.arguments) {
                 case LlmWireToolArguments.Complete(_) => replayable.add(LlmWireBlock.ToolCall(value))
                 case _ => throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.tool_arguments_not_executable", "diagnostic or partial tool arguments cannot be projected into continuation input")

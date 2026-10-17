@@ -863,7 +863,7 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
         let callCount = countChatCalls(calls, choice.index)
         for (toolCallIndex in 0..callCount) {
             let call = match (findExistingChatCall(calls, choice.index, toolCallIndex)) { case Some(value) => value; case None => invalidWire("llm.chat_tool_call_index_gap", "Chat tool call indexes must be contiguous", provider: codec.provider) }
-            if (reason != "length" && reason != "content_filter" && call.nativeType == "") { invalidWire("llm.chat_tool_call_type_missing", "completed Chat tool call never declared its type", provider: codec.provider) }
+            if (call.nativeType == "") { invalidWire("llm.chat_tool_call_type_missing", "Chat tool call never declared its type", provider: codec.provider) }
             if (reason != "length" && reason != "content_filter" && (call.callId == "" || call.name == "")) { invalidWire("llm.chat_tool_call_incomplete", "completed Chat tool call is missing id or name", provider: codec.provider) }
             let raw = call.arguments.toString()
             let arguments = classifyToolArguments(raw)
