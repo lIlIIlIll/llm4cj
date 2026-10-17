@@ -24,7 +24,7 @@ TITLE_RE = re.compile(
     r"^(feat|fix|docs|test|refactor|perf|ci|build|chore|revert)"
     r"(?:\([a-z0-9][a-z0-9-]*\))?!?: .+\S$"
 )
-RISK_RE = re.compile(r"(?im)^Risk:\s*(routine|high)\s*$")
+RISK_RE = re.compile(r"(?im)^Risk:[ \t]*([^\r\n]*)\r?$")
 NA_RE = re.compile(r"(?im)^Issue:\s*N/A:\s*(\S.+)$")
 ISSUE_RE = re.compile(
     r"(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b"
@@ -105,8 +105,10 @@ def evaluate(facts: PullRequestFacts) -> GateResult:
     if not TITLE_RE.fullmatch(facts.title):
         errors.append("PR title must use Conventional Commit syntax")
 
-    risk_match = RISK_RE.search(facts.body)
-    declared_risk = risk_match.group(1).lower() if risk_match else ""
+    risk_declarations = RISK_RE.findall(facts.body)
+    declared_risk = (
+        risk_declarations[0].strip().lower() if len(risk_declarations) == 1 else ""
+    )
     inferred_high = any(_is_sensitive(path, status) for path, status in facts.files)
     if declared_risk not in {"routine", "high"}:
         errors.append("PR body must declare exactly `Risk: routine` or `Risk: high`")

@@ -35,6 +35,35 @@ class PullRequestMetadataTests(unittest.TestCase):
     def test_routine_change_accepts_explained_issue_exception(self) -> None:
         self.assert_state("success")
 
+    def test_risk_declaration_must_be_single_and_valid(self) -> None:
+        declarations = (
+            "Risk: routine\nRisk: routine",
+            "Risk: high\nRisk: high",
+            "Risk: routine\nRisk: high",
+            "Risk: high\nRisk: routine",
+            "",
+            "Risk:",
+            "Risk: invalid",
+            "Risk: routine\nRisk: invalid",
+            "Risk: invalid\nRisk: routine",
+            "Risk:\nroutine",
+        )
+        for declaration in declarations:
+            with self.subTest(declaration=declaration):
+                result = self.assert_state(
+                    "failure",
+                    body=f"{declaration}\nFixes #41\nIssue: N/A: policy test",
+                    open_issue_numbers=frozenset({41}),
+                    land_permissions=((f"/land {SHA}", "write"),),
+                )
+                self.assertIn("must declare exactly", result.errors[0])
+
+    def test_single_risk_declaration_accepts_horizontal_whitespace_and_crlf(self) -> None:
+        self.assert_state(
+            "success",
+            body="Risk:\tRoUtInE \t\r\nIssue: N/A: documentation-only clarification",
+        )
+
     def test_routine_change_rejects_placeholder_issue_exception(self) -> None:
         self.assert_state(
             "failure",
