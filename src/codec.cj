@@ -546,18 +546,23 @@ func decodeChatResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseSta
     let decodedChoices = ArrayList<LlmWireChoice>()
     try {
         var position = 0
+        var resourceFailureObserved = false
+        for (choiceNode in choices) {
+            let (index, reason) = decodeChatChoiceHeader(codec, choiceNode, requireFinishReason: true)
+            if (index != position) { invalidWire("llm.chat_choice_index_invalid", "Chat choices must use contiguous indexes in array order", provider: codec.provider) }
+            if (reason == "insufficient_system_resource") { resourceFailureObserved = true }
+            position++
+        }
+        if (resourceFailureObserved) {
+            return LlmWireResponseState.Terminal(LlmWireTerminal.ProviderFailed(LlmWireFailure(
+                LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true, usage: observedWireUsage(usage)
+            )))
+        }
         for (choiceNode in choices) {
             let choice = wireObject(choiceNode, "Chat choice", provider: codec.provider)
             let index = wireRequiredInt(choice, "index", provider: codec.provider)
-            if (index != position) { invalidWire("llm.chat_choice_index_invalid", "Chat choices must use contiguous indexes in array order", provider: codec.provider) }
-            if (wireRequiredString(choice, "finish_reason", provider: codec.provider) == "insufficient_system_resource") {
-                return LlmWireResponseState.Terminal(LlmWireTerminal.ProviderFailed(LlmWireFailure(
-                    LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true, usage: observedWireUsage(usage)
-                )))
-            }
             let decoded = decodeChatChoice(codec, root, choice, index)
             decodedChoices.add(decoded)
-            position++
         }
     } catch (error: LlmWireError) {
         throw withObservedUsage(error, observedWireUsage(usage))
@@ -571,6 +576,14 @@ func decodeChatResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseSta
     LlmWireResponseState.Terminal(LlmWireTerminal.Completed(reply))
 }
 
+func decodeChatChoiceHeader(codec: LlmWireCodec, raw: JsonNode, requireFinishReason!: Bool = false): (Int64, String) {
+    let choice = wireObject(raw, "Chat choice", provider: codec.provider)
+    let index = wireRequiredInt(choice, "index", provider: codec.provider)
+    let reason = if (requireFinishReason) { wireRequiredString(choice, "finish_reason", provider: codec.provider) }
+        else { optionalStringOrEmpty(choice, "finish_reason", codec.provider) }
+    (index, reason)
+}
+
 func decodeChatChoice(codec: LlmWireCodec, root: JsonNode, choice: JsonNode, index: Int64): LlmWireChoice {
     let stop = wireRequiredString(choice, "finish_reason", provider: codec.provider)
     let message = match (wireOptionalObject(choice, "message", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "Chat choice is missing message", provider: codec.provider) }
@@ -578,9 +591,15 @@ func decodeChatChoice(codec: LlmWireCodec, root: JsonNode, choice: JsonNode, ind
     rejectUnsupportedChatSemantic(codec, message, "message")
     let blocks = ArrayList<LlmWireOutputBlock>()
     let choiceLogprobs = match (wireOptionalObject(choice, "logprobs", provider: codec.provider)) { case Some(value) => value; case None => wireJsonObject([]) }
+    let contentLogprobs = decodeTokenLogprobs(codec, choiceLogprobs, "content", 0, "chat.choice.logprobs")
+    let refusalLogprobs = decodeTokenLogprobs(codec, choiceLogprobs, "refusal", 0, "chat.choice.logprobs")
+    let content = optionalStringOrEmpty(message, "content", codec.provider)
+    let refusal = optionalStringOrEmpty(message, "refusal", codec.provider)
+    requireChatLogprobContent(codec, content, contentLogprobs)
+    requireChatLogprobContent(codec, refusal, refusalLogprobs)
     match (wireOptionalString(message, "content", provider: codec.provider)) {
         case Some(value) => if (value != "") { blocks.add(LlmWireOutputBlock.Text(LlmWireTextBlock(
-            value, logprobs: decodeTokenLogprobs(codec, choiceLogprobs, "content", 0, "chat.choice.logprobs")
+            value, logprobs: contentLogprobs
         ))) }
         case None => ()
     }
@@ -593,17 +612,28 @@ func decodeChatChoice(codec: LlmWireCodec, root: JsonNode, choice: JsonNode, ind
     }
     match (wireOptionalString(message, "refusal", provider: codec.provider)) {
         case Some(value) => if (value != "") { blocks.add(LlmWireOutputBlock.Refusal(LlmWireRefusalBlock(
-            value, logprobs: decodeTokenLogprobs(codec, choiceLogprobs, "refusal", 0, "chat.choice.logprobs")
+            value, logprobs: refusalLogprobs
         ))) }
         case None => ()
     }
     match (wireOptionalArray(message, "tool_calls", provider: codec.provider)) {
         case Some(calls) => for (raw in calls) {
             let call = wireObject(raw, "Chat tool call", provider: codec.provider)
-            let callType = wireRequiredString(call, "type", provider: codec.provider)
+            let incomplete = stop == "length" || stop == "content_filter"
+            let callType = match (wireOptionalString(call, "type", provider: codec.provider)) {
+                case Some(value) => value
+                case None => invalidWire("llm.chat_tool_call_type_missing", "Chat tool call never declared its type", provider: codec.provider)
+            }
             if (callType != "function") { unsupportedSemantic(codec, callType, call, "llm.chat_tool_type_unsupported", eventType: "message.tool_calls") }
-            let function = match (wireOptionalObject(call, "function", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "Chat tool call is missing function", provider: codec.provider) }
-            blocks.add(LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(wireRequiredString(call, "id", provider: codec.provider), wireRequiredString(function, "name", provider: codec.provider), classifyToolArguments(wireRequiredString(function, "arguments", provider: codec.provider)))))
+            let function = match (wireOptionalObject(call, "function", provider: codec.provider)) {
+                case Some(value) => value
+                case None => if (incomplete) { wireJsonObject([]) } else { invalidWire("llm.field_missing", "Chat tool call is missing function", provider: codec.provider) }
+            }
+            blocks.add(LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(
+                if (incomplete) { optionalStringOrEmpty(call, "id", codec.provider) } else { wireRequiredString(call, "id", provider: codec.provider) },
+                if (incomplete) { optionalStringOrEmpty(function, "name", codec.provider) } else { wireRequiredString(function, "name", provider: codec.provider) },
+                classifyToolArguments(if (incomplete) { optionalStringOrEmpty(function, "arguments", codec.provider) } else { wireRequiredString(function, "arguments", provider: codec.provider) })
+            )))
         }
         case None => ()
     }
@@ -731,6 +761,12 @@ func decodeResponsesAnnotations(codec: LlmWireCodec, block: JsonNode, blockIndex
         }
     }
     output.toArray()
+}
+
+func requireChatLogprobContent(codec: LlmWireCodec, content: String, logprobs: Array<LlmWireTokenLogprob>): Unit {
+    if (content == "" && !logprobs.isEmpty()) {
+        invalidWire("llm.chat_logprobs_without_content", "Chat token logprobs require corresponding text or refusal content", provider: codec.provider)
+    }
 }
 
 func decodeTokenLogprobs(codec: LlmWireCodec, value: JsonNode, field: String, blockIndex: Int64, eventType: String): Array<LlmWireTokenLogprob> {

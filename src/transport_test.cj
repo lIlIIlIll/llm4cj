@@ -1051,7 +1051,7 @@ class Llm4CjV02Tests {
         let _ = chatPartial.push(event("{\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"f\",\"arguments\":\"{\"}}]}}]}"))
         let _ = chatPartial.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}]}"))
         let _ = chatPartial.push(event("[DONE]"))
-        match (chatPartial.finishTransport()) { case LlmWireTerminal.Completed(reply) => expectIncomplete(reply, LlmWireIncompleteReason.Length); match (reply.blocks[0]) { case LlmWireOutputBlock.ToolCall(call) => match (call.arguments) { case LlmWireToolArguments.Partial(_) => (); case _ => @Fail("partial call") }; case _ => @Fail("tool call") }; case _ => @Fail("length") }
+        match (chatPartial.finishTransport()) { case LlmWireTerminal.Completed(reply) => expectIncomplete(reply, LlmWireIncompleteReason.Length); match (reply.blocks[0]) { case LlmWireOutputBlock.ToolCall(call) => match (call.arguments) { case LlmWireToolArguments.InvalidJson(raw) => @Expect(raw, "{"); case _ => @Fail("invalid JSON tool arguments") }; case _ => @Fail("tool call") }; case _ => @Fail("length") }
         let unsupportedChat = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect()).newStreamDecoder()
         expectLlmError("llm.chat_finish_reason_unsupported", { => let _ = unsupportedChat.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"future\"}]}")) })
 
@@ -1807,7 +1807,7 @@ class Llm4CjV02Tests {
         expectLlmError("llm.chat_tool_type_unsupported", { => let _ = openAiChat.decodeResponse(
             "{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{\"id\":\"c\",\"type\":\"custom\",\"custom\":{\"name\":\"shell\",\"input\":\"pwd\"}}]},\"finish_reason\":\"tool_calls\"}]}"
         ) })
-        expectLlmError("llm.field_missing", { => let _ = openAiChat.decodeResponse(
+        expectLlmError("llm.chat_tool_call_type_missing", { => let _ = openAiChat.decodeResponse(
             "{\"choices\":[{\"index\":0,\"message\":{\"tool_calls\":[{\"id\":\"c\",\"function\":{\"name\":\"f\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}"
         ) })
         let customStream = openAiChat.newStreamDecoder()

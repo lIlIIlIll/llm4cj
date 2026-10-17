@@ -731,6 +731,8 @@ class ChatStreamChoice {
     let text = StringBuilder()
     let reasoning = StringBuilder()
     let refusal = StringBuilder()
+    let textLogprobs = ArrayList<LlmWireTokenLogprob>()
+    let refusalLogprobs = ArrayList<LlmWireTokenLogprob>()
     var finishReason: ?String = None
     var textBlockAccounted = false
     var reasoningBlockAccounted = false
@@ -744,6 +746,7 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
     private var responseId = ""
     private var model = ""
     private var started = false
+    private var resourceFailureObserved = false
     private let choices = ArrayList<ChatStreamChoice>()
     private let calls = ArrayList<StreamCall>()
     private var usage = LlmWireUsage()
@@ -774,11 +777,33 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
             case None => ()
         }
         let wireChoices = match (wireOptionalArray(root, "choices", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "Chat stream event is missing choices", provider: codec.provider) }
+        if (resourceFailureObserved) {
+            if (!wireChoices.isEmpty()) { invalidWire("llm.chat_event_after_choice_finished", "Chat content appeared after finish_reason", provider: codec.provider) }
+            return LlmWireStreamUpdate(events: events.toArray())
+        }
+        for (raw in wireChoices) {
+            let (choiceIndex, reason) = decodeChatChoiceHeader(codec, raw)
+            let state = chatChoice(choices, choiceIndex)
+            if (state.finishReason.isSome()) { invalidWire("llm.chat_event_after_choice_finished", "Chat content appeared after finish_reason", provider: codec.provider) }
+            if (reason == "insufficient_system_resource") {
+                state.finishReason = Some("insufficient_system_resource")
+                resourceFailureObserved = true
+                events.add(LlmWireEvent.ChoiceCompleted(choiceIndex, "insufficient_system_resource"))
+            }
+        }
+        if (resourceFailureObserved) { return LlmWireStreamUpdate(events: events.toArray()) }
         for (raw in wireChoices) {
             let choice = wireObject(raw, "Chat stream choice", provider: codec.provider)
             let choiceIndex = wireRequiredInt(choice, "index", provider: codec.provider)
             let state = chatChoice(choices, choiceIndex)
             if (state.finishReason.isSome()) { invalidWire("llm.chat_event_after_choice_finished", "Chat content appeared after finish_reason", provider: codec.provider) }
+            match (wireOptionalObject(choice, "logprobs", provider: codec.provider)) {
+                case Some(value) =>
+                    budget.retain(value.stringify())
+                    for (entry in decodeTokenLogprobs(codec, value, "content", 0, "chat.choice.logprobs")) { state.textLogprobs.add(entry) }
+                    for (entry in decodeTokenLogprobs(codec, value, "refusal", 0, "chat.choice.logprobs")) { state.refusalLogprobs.add(entry) }
+                case None => ()
+            }
             match (wireOptionalObject(choice, "delta", provider: codec.provider)) {
                 case Some(delta) =>
                     rejectUnsupportedChatSemantic(codec, delta, "chat.delta")
@@ -807,13 +832,13 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
     }
 
     private func chatTerminal(): LlmWireTerminal {
+        if (resourceFailureObserved) {
+            return LlmWireTerminal.ProviderFailed(LlmWireFailure(LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true, usage: observedUsage()))
+        }
         if (choices.isEmpty()) { invalidWire("llm.chat_choice_terminal_missing", "Chat stream ended without any choices", provider: codec.provider) }
         let outputChoices = ArrayList<LlmWireChoice>()
         for (choice in choices) {
             let reason = match (choice.finishReason) { case Some(value) => value; case None => invalidWire("llm.chat_choice_terminal_missing", "Chat stream ended before every choice reported finish_reason", provider: codec.provider) }
-            if (reason == "insufficient_system_resource") {
-                return LlmWireTerminal.ProviderFailed(LlmWireFailure(LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true, usage: observedUsage()))
-            }
             outputChoices.add(materializeChatChoice(choice, reason))
         }
         LlmWireTerminal.Completed(LlmWireReply(
@@ -825,19 +850,23 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
 
     private func materializeChatChoice(choice: ChatStreamChoice, reason: String): LlmWireChoice {
         let blocks = ArrayList<LlmWireOutputBlock>()
-        let content = choice.text.toString(); if (content != "") { blocks.add(LlmWireOutputBlock.Text(LlmWireTextBlock(content))) }
+        let content = choice.text.toString()
+        requireChatLogprobContent(codec, content, choice.textLogprobs.toArray())
+        if (content != "") { blocks.add(LlmWireOutputBlock.Text(LlmWireTextBlock(content, logprobs: choice.textLogprobs.toArray()))) }
         let thought = choice.reasoning.toString(); if (thought != "") {
             if (chatHasReplayReasoning(codec)) { blocks.add(LlmWireOutputBlock.NativeReplay(chatReasoningReplay(codec, thought, if (model == "") { None } else { Some(model) }, blocks.size))) }
             else { blocks.add(LlmWireOutputBlock.Reasoning(LlmWireReasoningBlock(thought))) }
         }
-        let denied = choice.refusal.toString(); if (denied != "") { blocks.add(LlmWireOutputBlock.Refusal(LlmWireRefusalBlock(denied))) }
+        let denied = choice.refusal.toString()
+        requireChatLogprobContent(codec, denied, choice.refusalLogprobs.toArray())
+        if (denied != "") { blocks.add(LlmWireOutputBlock.Refusal(LlmWireRefusalBlock(denied, logprobs: choice.refusalLogprobs.toArray()))) }
         let callCount = countChatCalls(calls, choice.index)
         for (toolCallIndex in 0..callCount) {
             let call = match (findExistingChatCall(calls, choice.index, toolCallIndex)) { case Some(value) => value; case None => invalidWire("llm.chat_tool_call_index_gap", "Chat tool call indexes must be contiguous", provider: codec.provider) }
-            if (reason != "length" && reason != "content_filter" && call.nativeType == "") { invalidWire("llm.chat_tool_call_type_missing", "completed Chat tool call never declared its type", provider: codec.provider) }
+            if (call.nativeType == "") { invalidWire("llm.chat_tool_call_type_missing", "Chat tool call never declared its type", provider: codec.provider) }
             if (reason != "length" && reason != "content_filter" && (call.callId == "" || call.name == "")) { invalidWire("llm.chat_tool_call_incomplete", "completed Chat tool call is missing id or name", provider: codec.provider) }
             let raw = call.arguments.toString()
-            let arguments = if (reason == "length" || reason == "content_filter") { LlmWireToolArguments.Partial(raw) } else { classifyToolArguments(raw) }
+            let arguments = classifyToolArguments(raw)
             blocks.add(LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(call.callId, call.name, arguments)))
         }
         let reply = assembleCanonicalReply(

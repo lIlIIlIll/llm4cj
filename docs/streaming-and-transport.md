@@ -1,5 +1,9 @@
 # 流式与传输
 
+Chat 的 fixed/stream 路径都保留每个 choice 的 text/refusal token logprobs，使用相同字段校验并限制累计状态。多个 chunk 按原始 token 顺序合并；畸形 metadata 不会被忽略。
+
+`length` 或 `content_filter` 保持 choice 为 `Incomplete`，工具参数仍按实际 JSON 分类：完整对象为 `Complete`，合法非对象为 `InvalidShape`，非法或未闭合 JSON 为 `InvalidJson`。只有完整对象及合法调用 identity 能进入 continuation；允许续轮不会将截断状态改成成功。
+
 把 HTTP body 的任意字节分片直接送给 `codec.newStreamDecoder().push`，网络 EOF 后调用 `finish`。公开 decoder 同时拥有 UTF-8、SSE framing、协议状态机和 canonical assembler；尾 CR 等只能在 EOF 判断的 framing 状态不会被 adapter 丢失。`newHttpStreamDecoder` 还接收 HTTP status、headers 和当前时间，非 2xx body 在有界缓存后统一生成 provider failure。任一层首次失败都会 poison decoder，后续调用稳定返回 `llm.stream_failed`。
 
 `LlmWireEvent` 是带 payload 的封闭 enum。位置由 `LlmWireEventIdentity` 保存可选的 block、output、content、summary、choice 与 tool-call index，不使用数值 sentinel；工具 identity 由 `LlmWireToolIdentity` 绑定位置、call ID 和 name。usage、citation、refusal details、choice completion、provider failure 与 terminal 都有可直接消费的 payload。delta 在 terminal 验证前是 provisional observation；只有 `TerminalObserved(Completed(...))` 中的 canonical reply 是已提交结果。
