@@ -17,6 +17,7 @@ llm.chat_event_after_choice_finished
 llm.chat_finish_reason_unsupported
 llm.chat_id_mismatch
 llm.chat_legacy_function_call_unsupported
+llm.chat_logprobs_without_content
 llm.chat_messages_required
 llm.chat_model_mismatch
 llm.chat_opaque_unsupported
@@ -205,6 +206,7 @@ llm.tool_arguments_shape_invalid
 llm.tool_call_duplicate
 llm.tool_call_id_duplicate
 llm.tool_call_id_missing
+llm.tool_call_incomplete
 llm.tool_call_name_invalid
 llm.tool_call_role_invalid
 llm.tool_call_stop_mismatch

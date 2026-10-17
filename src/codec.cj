@@ -578,9 +578,15 @@ func decodeChatChoice(codec: LlmWireCodec, root: JsonNode, choice: JsonNode, ind
     rejectUnsupportedChatSemantic(codec, message, "message")
     let blocks = ArrayList<LlmWireOutputBlock>()
     let choiceLogprobs = match (wireOptionalObject(choice, "logprobs", provider: codec.provider)) { case Some(value) => value; case None => wireJsonObject([]) }
+    let contentLogprobs = decodeTokenLogprobs(codec, choiceLogprobs, "content", 0, "chat.choice.logprobs")
+    let refusalLogprobs = decodeTokenLogprobs(codec, choiceLogprobs, "refusal", 0, "chat.choice.logprobs")
+    let content = optionalStringOrEmpty(message, "content", codec.provider)
+    let refusal = optionalStringOrEmpty(message, "refusal", codec.provider)
+    requireChatLogprobContent(codec, content, contentLogprobs)
+    requireChatLogprobContent(codec, refusal, refusalLogprobs)
     match (wireOptionalString(message, "content", provider: codec.provider)) {
         case Some(value) => if (value != "") { blocks.add(LlmWireOutputBlock.Text(LlmWireTextBlock(
-            value, logprobs: decodeTokenLogprobs(codec, choiceLogprobs, "content", 0, "chat.choice.logprobs")
+            value, logprobs: contentLogprobs
         ))) }
         case None => ()
     }
@@ -593,17 +599,28 @@ func decodeChatChoice(codec: LlmWireCodec, root: JsonNode, choice: JsonNode, ind
     }
     match (wireOptionalString(message, "refusal", provider: codec.provider)) {
         case Some(value) => if (value != "") { blocks.add(LlmWireOutputBlock.Refusal(LlmWireRefusalBlock(
-            value, logprobs: decodeTokenLogprobs(codec, choiceLogprobs, "refusal", 0, "chat.choice.logprobs")
+            value, logprobs: refusalLogprobs
         ))) }
         case None => ()
     }
     match (wireOptionalArray(message, "tool_calls", provider: codec.provider)) {
         case Some(calls) => for (raw in calls) {
             let call = wireObject(raw, "Chat tool call", provider: codec.provider)
-            let callType = wireRequiredString(call, "type", provider: codec.provider)
-            if (callType != "function") { unsupportedSemantic(codec, callType, call, "llm.chat_tool_type_unsupported", eventType: "message.tool_calls") }
-            let function = match (wireOptionalObject(call, "function", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "Chat tool call is missing function", provider: codec.provider) }
-            blocks.add(LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(wireRequiredString(call, "id", provider: codec.provider), wireRequiredString(function, "name", provider: codec.provider), classifyToolArguments(wireRequiredString(function, "arguments", provider: codec.provider)))))
+            let incomplete = stop == "length" || stop == "content_filter"
+            let callType = if (incomplete) { wireOptionalString(call, "type", provider: codec.provider) } else { Some(wireRequiredString(call, "type", provider: codec.provider)) }
+            match (callType) {
+                case Some(value) => if (value != "function") { unsupportedSemantic(codec, value, call, "llm.chat_tool_type_unsupported", eventType: "message.tool_calls") }
+                case None => ()
+            }
+            let function = match (wireOptionalObject(call, "function", provider: codec.provider)) {
+                case Some(value) => value
+                case None => if (incomplete) { wireJsonObject([]) } else { invalidWire("llm.field_missing", "Chat tool call is missing function", provider: codec.provider) }
+            }
+            blocks.add(LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(
+                if (incomplete) { optionalStringOrEmpty(call, "id", codec.provider) } else { wireRequiredString(call, "id", provider: codec.provider) },
+                if (incomplete) { optionalStringOrEmpty(function, "name", codec.provider) } else { wireRequiredString(function, "name", provider: codec.provider) },
+                classifyToolArguments(if (incomplete) { optionalStringOrEmpty(function, "arguments", codec.provider) } else { wireRequiredString(function, "arguments", provider: codec.provider) })
+            )))
         }
         case None => ()
     }
@@ -731,6 +748,12 @@ func decodeResponsesAnnotations(codec: LlmWireCodec, block: JsonNode, blockIndex
         }
     }
     output.toArray()
+}
+
+func requireChatLogprobContent(codec: LlmWireCodec, content: String, logprobs: Array<LlmWireTokenLogprob>): Unit {
+    if (content == "" && !logprobs.isEmpty()) {
+        invalidWire("llm.chat_logprobs_without_content", "Chat token logprobs require corresponding text or refusal content", provider: codec.provider)
+    }
 }
 
 func decodeTokenLogprobs(codec: LlmWireCodec, value: JsonNode, field: String, blockIndex: Int64, eventType: String): Array<LlmWireTokenLogprob> {

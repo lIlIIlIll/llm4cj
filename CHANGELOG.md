@@ -4,6 +4,8 @@ All notable changes are recorded here.
 
 ## [0.3.0] - Unreleased
 
+- Preserve streamed Chat content/refusal logprobs and make truncated tool argument classification and continuation match fixed responses.
+
 - Make JSON string/array factories return Result, enforce bounded construction before output allocation, and keep successful values readable and immutable.
 - Validate schema integer/enum by exact JSON value semantics while preserving original numeric literals.
 
