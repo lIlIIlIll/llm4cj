@@ -6,6 +6,13 @@ import std.convert.*
 import std.fs.*
 import std.io.*
 
+func jsonString(value: String): LlmWireJson {
+    match (LlmWireJson.string(value)) { case LlmWireResult.Ok(item) => item; case LlmWireResult.Err(error) => throw error }
+}
+func jsonArray(values: Array<LlmWireJson>): LlmWireJson {
+    match (LlmWireJson.array(values)) { case LlmWireResult.Ok(item) => item; case LlmWireResult.Err(error) => throw error }
+}
+
 func jsonObject(fields: Array<LlmWireJsonField>): LlmWireJson {
     match (LlmWireJson.object(fields)) {
         case LlmWireResult.Ok(value) => value
@@ -94,7 +101,7 @@ func encode(path: String, model: String, endpoint: String, arm: String, seed: St
     let plan = match (codecFor(path, model, endpoint).encodeRequest(LlmWireRequest(model, transcript,
         maxOutputTokens: Some(maxTokens), promptCache: promptCache, toolChoice: LlmWireToolChoice.NoTools)).materialize()) {
         case LlmWireResult.Ok(value) => value
-        case LlmWireResult.Err(error) => println(jsonObject([LlmWireJsonField("error", LlmWireJson.string(error.code))]).stringify()); return 3
+        case LlmWireResult.Err(error) => println(jsonObject([LlmWireJsonField("error", jsonString(error.code))]).stringify()); return 3
     }
     let body = match (LlmWireJson.parse(String.fromUtf8(plan.body))) {
         case LlmWireResult.Ok(value) => value
@@ -102,9 +109,9 @@ func encode(path: String, model: String, endpoint: String, arm: String, seed: St
     }
     let headers = ArrayList<LlmWireJson>()
     for (header in plan.headers) { headers.add(jsonObject([
-        LlmWireJsonField("name", LlmWireJson.string(header.name)), LlmWireJsonField("value", LlmWireJson.string(header.value))
+        LlmWireJsonField("name", jsonString(header.name)), LlmWireJsonField("value", jsonString(header.value))
     ])) }
-    println(jsonObject([LlmWireJsonField("body", body), LlmWireJsonField("headers", LlmWireJson.array(headers.toArray()))]).stringify())
+    println(jsonObject([LlmWireJsonField("body", body), LlmWireJsonField("headers", jsonArray(headers.toArray()))]).stringify())
     0
 }
 
@@ -112,7 +119,7 @@ func usageJson(usage: LlmWireUsage): LlmWireJson {
     let source = match (usage.source) {
         case LlmWireUsageSource.Unknown => LlmWireJson.nullValue()
         case LlmWireUsageSource.ProviderReported(provider, dialect) => jsonObject([
-            LlmWireJsonField("provider", LlmWireJson.string(provider)), LlmWireJsonField("dialect", LlmWireJson.string(dialect))
+            LlmWireJsonField("provider", jsonString(provider)), LlmWireJsonField("dialect", jsonString(dialect))
         ])
     }
     jsonObject([
@@ -126,8 +133,8 @@ func usageJson(usage: LlmWireUsage): LlmWireJson {
 
 func decoded(outcome: String, usage: ?LlmWireUsage, error!: String = ""): Int64 {
     println(jsonObject([
-        LlmWireJsonField("outcome", LlmWireJson.string(outcome)),
-        LlmWireJsonField("error", LlmWireJson.string(error)),
+        LlmWireJsonField("outcome", jsonString(outcome)),
+        LlmWireJsonField("error", jsonString(error)),
         LlmWireJsonField("usage", usageJson(match (usage) { case Some(value) => value; case None => LlmWireUsage() }))
     ]).stringify())
     0
@@ -157,7 +164,7 @@ main(args: Array<String>): Int64 {
         }
         2
     } catch (error: LlmWireError) {
-        println(jsonObject([LlmWireJsonField("error", LlmWireJson.string(error.code))]).stringify())
+        println(jsonObject([LlmWireJsonField("error", jsonString(error.code))]).stringify())
         3
     }
 }

@@ -2,11 +2,58 @@ package llm4cj
 
 import std.collection.*
 import std.deriving.Derive
+import std.io.*
 import yjson.*
 
-let LLM_JSON_MAX_BYTES: Int64 = 8388608
-let LLM_JSON_MAX_DEPTH: Int64 = 256
-let LLM_JSON_MAX_STRING_BYTES: Int64 = 8388608
+const LLM_JSON_MAX_BYTES: Int64 = 8388608
+const LLM_JSON_MAX_DEPTH: Int64 = 256
+const LLM_JSON_MAX_STRING_BYTES: Int64 = 8388608
+
+// The streaming writer checks its budget before growing its internal buffer;
+// this sink independently bounds retained bytes before appending a chunk.
+class WireJsonOutput <: OutputStream {
+    private let retained = ArrayList<Byte>()
+    private let retainLimit: Int64
+    var size: Int64 = 0
+
+    init(retainLimit!: Int64 = LLM_JSON_MAX_BYTES) { this.retainLimit = retainLimit }
+
+    public func write(bytes: Array<Byte>): Unit {
+        if (bytes.size > LLM_JSON_MAX_BYTES - size) {
+            throw LlmWireError(LlmWireErrorKind.InvalidWire, "llm.json_invalid", "JSON output exceeds the byte limit")
+        }
+        size += bytes.size
+        if (size <= retainLimit) { retained.add(all: bytes) }
+    }
+
+    public func flush(): Unit {}
+    func text(): String { String.fromUtf8(retained.toArray()) }
+}
+
+func writeBoundedWireJson(value: JsonNode): String {
+    try {
+        let output = WireJsonOutput()
+        value.writeJson(output, options: JsonWriteOptions(maxOutputBytes: LLM_JSON_MAX_BYTES, maxDepth: LLM_JSON_MAX_DEPTH))
+        output.text()
+    } catch (_: JsonException) {
+        throw LlmWireError(LlmWireErrorKind.InvalidWire, "llm.json_invalid", "JSON serialization exceeds the byte or depth limit")
+    }
+}
+
+func wireJsonDepth(value: JsonNode): Int64 {
+    var depth: Int64 = 0
+    if (value.wireKind == WireJsonKind.List) {
+        let array = value.asArray()
+        for (index in 0..array.size()) { depth = max(depth, wireJsonDepth(array.get(index).getOrThrow())) }
+        return depth + 1
+    }
+    if (value.wireKind == WireJsonKind.Object) {
+        let object = value.asObject()
+        for (index in 0..object.size()) { depth = max(depth, wireJsonDepth(object.valueAt(index))) }
+        return depth + 1
+    }
+    depth
+}
 
 @Derive[Equatable]
 enum WireJsonKind {

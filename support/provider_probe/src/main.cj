@@ -5,6 +5,10 @@ import std.collection.*
 import std.convert.*
 import std.fs.*
 
+func providerJsonValue<T>(result: LlmWireResult<T>): T {
+    match (result) { case LlmWireResult.Ok(value) => value; case LlmWireResult.Err(error) => throw error }
+}
+
 func messageItems(messages: Array<LlmWireMessage>): Array<LlmWireInputItem> {
     messages.map({message: LlmWireMessage => LlmWireInputItem.Message(message)})
 }
@@ -36,8 +40,8 @@ func encode(name: String, model: String, streaming: Bool): Int64 {
     let headers = ArrayList<LlmWireJson>()
     for (header in materialized.headers) {
         let encodedHeader = match (LlmWireJson.object([
-            LlmWireJsonField("name", LlmWireJson.string(header.name)),
-            LlmWireJsonField("value", LlmWireJson.string(header.value))
+            LlmWireJsonField("name", providerJsonValue(LlmWireJson.string(header.name))),
+            LlmWireJsonField("value", providerJsonValue(LlmWireJson.string(header.value)))
         ])) {
             case LlmWireResult.Ok(value) => value
             case LlmWireResult.Err(_) => return 3
@@ -46,7 +50,7 @@ func encode(name: String, model: String, streaming: Bool): Int64 {
     }
     let output = match (LlmWireJson.object([
         LlmWireJsonField("body", body),
-        LlmWireJsonField("headers", LlmWireJson.array(headers.toArray()))
+        LlmWireJsonField("headers", providerJsonValue(LlmWireJson.array(headers.toArray())))
     ])) {
         case LlmWireResult.Ok(value) => value
         case LlmWireResult.Err(_) => return 3

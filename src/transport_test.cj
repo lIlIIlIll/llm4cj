@@ -2576,7 +2576,7 @@ class Llm4CjV02Tests {
         @Expect(boolean.booleanValue(), Some(false))
         @Expect(boolean.stringValue(), None)
 
-        let string = LlmWireJson.string("a\"b")
+        let string = jsonFactoryValue(LlmWireJson.string("a\"b"))
         @Expect(string.kind, LlmWireJsonKind.String)
         @Expect(string.stringValue(), Some("a\"b"))
         @Expect(string.booleanValue(), None)
@@ -2597,10 +2597,10 @@ class Llm4CjV02Tests {
             case _ => @Fail("invalid public JSON must fail")
         }
 
-        let emptyArray = LlmWireJson.array([])
+        let emptyArray = jsonFactoryValue(LlmWireJson.array([]))
         @Expect(emptyArray.kind, LlmWireJsonKind.Array)
         @Expect(emptyArray.values().size, 0)
-        let array = LlmWireJson.array([boolean, string, number])
+        let array = jsonFactoryValue(LlmWireJson.array([boolean, string, number]))
         @Expect(array.values().size, 3)
         @Expect(array.values()[1].stringValue(), Some("a\"b"))
 
@@ -2964,9 +2964,9 @@ class Llm4CjV02Tests {
             case LlmWireResult.Err(_) => ()
             case _ => @Fail("duplicate public JSON object fields must fail")
         }
-        @Expect(LlmWireJson.string("x").values().size, 0)
-        @Expect(LlmWireJson.array([]).fields().size, 0)
-        @Expect(LlmWireJson.array([]).field("x").isNone(), true)
+        @Expect(jsonFactoryValue(LlmWireJson.string("x")).values().size, 0)
+        @Expect(jsonFactoryValue(LlmWireJson.array([])).fields().size, 0)
+        @Expect(jsonFactoryValue(LlmWireJson.array([])).field("x").isNone(), true)
 
         let full = allCapabilities()
         let responses = openAiResponsesCodec(openAiResponsesModelProfile("gpt", capabilities: full))

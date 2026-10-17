@@ -34,7 +34,9 @@ usage 来源以 `LlmWireUsageSource.Unknown` 或 ProviderReported(provider, dial
 
 调用 `codec.newRequestBuilder()` 可复用 profile 中的模型和 codec 校验。builder 的 setter 检查局部输入，`build()` 返回 `LlmWireResult<LlmWireRequest>` 并执行完整请求校验。调用 `codec.encodeRequest(request, streaming: true)` 才会发送 streaming 字段；同一个 request 可用于固定响应和流式响应。
 
-公开 JSON 值使用不可变的 `LlmWireJson`，其类型由 `LlmWireJsonKind` 表示，对象工厂接收 `LlmWireJsonField`。它保留 canonical JSON 文本，并提供 object、array、number、string、boolean 和 null 工厂；`yjson.JsonNode` 不再出现在 public API 中。
+公开 JSON 值使用不可变的 `LlmWireJson`，其类型由 `LlmWireJsonKind` 表示，对象工厂接收 `LlmWireJsonField`。`parse`、`number`、`object`、`string` 和 `array` 返回 `LlmWireResult<LlmWireJson>`；`boolean`、`nullValue` 直接返回值。所有成功值均满足 8 MiB/256 层限制，普通读取不会再次发现构造时未检查的超限。内部 DOM 保持私有；`yjson.JsonNode` 不出现在 public API 中。
+
+工具 schema 的 `integer` 按十进制数学值判断，`1.0` 和 `1e0` 均为整数。`enum` 按 JSON 值比较，数字不受机器整数或浮点精度限制，对象键顺序无关，数组顺序保留，布尔值与数字区分；编码保留原始数字文本。
 
 请求计划与 header 协调 API 为 `LlmWireHeader`、`LlmWireFeatureRequirement`、`LlmWireRequirementState`、`LlmWireRequirementResolver`、`LlmWirePreparedRequest` 和 `LlmWireMaterializedRequest`。
 

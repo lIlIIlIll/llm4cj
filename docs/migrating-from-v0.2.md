@@ -2,6 +2,17 @@
 
 v0.3.0 是有意的 breaking 变更。旧入口删除，没有兼容重载、旧快照读取或自动转换。
 
+`LlmWireJson.string` 和 `LlmWireJson.array` 现在返回 `LlmWireResult<LlmWireJson>`，与 `parse`、`number`、`object` 一致。调用方必须处理构造失败；不要在编码完整父值后才检查大小。例如：
+
+```cangjie
+let value = match (LlmWireJson.string("hello")) {
+    case LlmWireResult.Ok(item) => item
+    case LlmWireResult.Err(error) => throw error
+}
+```
+
+成功值满足完整编码后的 8 MiB 和 256 层限制，包括转义、对象 key 和组合标点。构造参数数组及读取返回的数组都不能修改已有值。
+
 | v0.2 输入 | v0.3 输入 |
 | --- | --- |
 | request 的 instructions/messages/tools | request 的单一 transcript |
