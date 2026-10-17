@@ -144,7 +144,7 @@ class TranscriptSnapshotTest {
                 LlmWireBlock.Refusal(LlmWireRefusalBlock("refusal", category: Some("category"), explanation: Some("explanation"), logprobs: [probability])),
                 LlmWireBlock.ToolCall(LlmWireToolCallBlock("complete", "lookup", LlmWireToolArguments.Complete(LlmWireJson.fromJsonNode(wireJsonObject([]))))),
                 LlmWireBlock.ToolCall(LlmWireToolCallBlock("invalid-json", "lookup", LlmWireToolArguments.InvalidJson("{"))),
-                LlmWireBlock.ToolCall(LlmWireToolCallBlock("invalid-shape", "lookup", LlmWireToolArguments.InvalidShape(LlmWireJson.string("raw")))),
+                LlmWireBlock.ToolCall(LlmWireToolCallBlock("invalid-shape", "lookup", LlmWireToolArguments.InvalidShape(jsonFactoryValue(LlmWireJson.string("raw"))))),
                 LlmWireBlock.ToolCall(LlmWireToolCallBlock("partial", "lookup", LlmWireToolArguments.Partial("{")))
             ])),
             LlmWireInputItem.Message(LlmWireMessage(LlmWireRole.User, [LlmWireBlock.ToolResult(LlmWireToolResultBlock("complete", [LlmWireToolResultContent.Text(text), LlmWireToolResultContent.Image(image)], isError: true))])),

@@ -55,17 +55,23 @@ internal class ToolInputViolation {
     }
 }
 
+internal func toolInputPath(base: String, component: String, prefix!: String = "/"): String {
+    let marker = "<path exceeds 128 bytes>"
+    if (base == marker || base.size + prefix.size + component.size > 128) { return marker }
+    base + prefix + component
+}
+
 // Evidence strings are bounded by replacing oversized payloads with a length
 // marker instead of slicing bytes, which keeps every diagnostic valid UTF-8.
 internal func toolInputValueRepr(value: JsonNode): String {
-    let text = value.stringify()
-    let size = text.toArray().size
-    if (size > 64) { return "<" + size.toString() + " bytes>" }
-    text
+    let output = WireJsonOutput(retainLimit: 64)
+    value.writeJson(output, options: JsonWriteOptions(maxOutputBytes: LLM_JSON_MAX_BYTES, maxDepth: LLM_JSON_MAX_DEPTH))
+    if (output.size > 64) { return "<" + output.size.toString() + " bytes>" }
+    output.text()
 }
 
 internal func toolInputTextRepr(value: String): String {
-    let size = value.toArray().size
+    let size = value.size
     if (size > 64) { return "<" + size.toString() + " bytes>" }
     value
 }
@@ -102,8 +108,7 @@ internal func toolInputTypeFormValid(value: JsonNode): Bool {
 }
 
 internal func toolInputNumberIsFractional(value: JsonNode): Bool {
-    let literal = value.numberText
-    literal.contains(".") || literal.contains("e") || literal.contains("E")
+    !wireJsonNumberIsInteger(value.numberText)
 }
 
 internal func toolInputTypeAccepts(name: String, value: JsonNode): Bool {
@@ -180,17 +185,19 @@ internal func checkToolInputValue(schema: JsonNode, value: JsonNode, schemaPath:
             if (toolInputTypeFormValid(typeValue)) {
                 if (typeValue.wireKind == WireJsonKind.Text) {
                     if (!toolInputTypeAccepts(typeValue.text, value)) {
-                        return ToolInputCheck.Violation(ToolInputViolation(ToolInputViolationKind.TypeMismatch, schemaPath + "/type", instancePath, expected: typeValue.text, actual: toolInputJsonKindName(value)))
+                        return ToolInputCheck.Violation(ToolInputViolation(ToolInputViolationKind.TypeMismatch, toolInputPath(schemaPath, "type"), instancePath, expected: typeValue.text, actual: toolInputJsonKindName(value)))
                     }
                 } else {
                     var expected = ""
                     var matched = false
                     for (entry in typeValue.items) {
-                        if (expected == "") { expected = entry.text } else { expected = expected + "|" + entry.text }
+                        if (expected == "") { expected = entry.text }
+                        else if (expected.size + entry.text.size + 1 <= 64) { expected = expected + "|" + entry.text }
+                        else { expected = "<multiple allowed types>" }
                         if (toolInputTypeAccepts(entry.text, value)) { matched = true }
                     }
                     if (!matched) {
-                        return ToolInputCheck.Violation(ToolInputViolation(ToolInputViolationKind.TypeMismatch, schemaPath + "/type", instancePath, expected: expected, actual: toolInputJsonKindName(value)))
+                        return ToolInputCheck.Violation(ToolInputViolation(ToolInputViolationKind.TypeMismatch, toolInputPath(schemaPath, "type"), instancePath, expected: expected, actual: toolInputJsonKindName(value)))
                     }
                 }
             }
@@ -199,11 +206,10 @@ internal func checkToolInputValue(schema: JsonNode, value: JsonNode, schemaPath:
     match (schema.field("enum")) {
         case Some(values) =>
             if (values.wireKind == WireJsonKind.List) {
-                let literal = value.stringify()
                 var found = false
-                for (entry in values.items where entry.stringify() == literal) { found = true }
+                for (entry in values.items where wireJsonEquivalent(entry, value)) { found = true }
                 if (!found) {
-                    return ToolInputCheck.Violation(ToolInputViolation(ToolInputViolationKind.EnumMismatch, schemaPath + "/enum", instancePath, expected: toolInputValueRepr(values), actual: toolInputValueRepr(value)))
+                    return ToolInputCheck.Violation(ToolInputViolation(ToolInputViolationKind.EnumMismatch, toolInputPath(schemaPath, "enum"), instancePath, expected: toolInputValueRepr(values), actual: toolInputValueRepr(value)))
                 }
             }
         case None => ()
@@ -217,7 +223,7 @@ internal func checkToolInputValue(schema: JsonNode, value: JsonNode, schemaPath:
             if (requiredFormValid && value.wireKind == WireJsonKind.Object) {
                 for (entry in values.items) {
                     if (value.field(entry.text).isNone()) {
-                        return ToolInputCheck.Violation(ToolInputViolation(ToolInputViolationKind.MissingRequired, schemaPath + "/required", instancePath + "/" + entry.text, expected: toolInputTextRepr(entry.text)))
+                        return ToolInputCheck.Violation(ToolInputViolation(ToolInputViolationKind.MissingRequired, toolInputPath(schemaPath, "required"), toolInputPath(instancePath, entry.text), expected: toolInputTextRepr(entry.text)))
                     }
                 }
             }
@@ -229,7 +235,7 @@ internal func checkToolInputValue(schema: JsonNode, value: JsonNode, schemaPath:
                 for (name in toolSchemaObjectNames(properties)) {
                     match (value.field(name)) {
                         case Some(child) =>
-                            match (checkToolInputValue(properties.field(name).getOrThrow(), child, schemaPath + "/properties/" + name, instancePath + "/" + name, strict)) {
+                            match (checkToolInputValue(properties.field(name).getOrThrow(), child, toolInputPath(schemaPath, name, prefix: "/properties/"), toolInputPath(instancePath, name), strict)) {
                                 case ToolInputCheck.Valid => ()
                                 case found => return found
                             }
@@ -248,7 +254,7 @@ internal func checkToolInputValue(schema: JsonNode, value: JsonNode, schemaPath:
                     var known = false
                     for (candidate in declared where candidate == name) { known = true }
                     if (!known) {
-                        return ToolInputCheck.Violation(ToolInputViolation(ToolInputViolationKind.AdditionalProperty, schemaPath + "/additionalProperties", instancePath + "/" + name, actual: toolInputTextRepr(name)))
+                        return ToolInputCheck.Violation(ToolInputViolation(ToolInputViolationKind.AdditionalProperty, toolInputPath(schemaPath, "additionalProperties"), toolInputPath(instancePath, name), actual: toolInputTextRepr(name)))
                     }
                 }
             }
@@ -258,7 +264,7 @@ internal func checkToolInputValue(schema: JsonNode, value: JsonNode, schemaPath:
         case Some(itemSchema) =>
             if (itemSchema.wireKind == WireJsonKind.Object && value.wireKind == WireJsonKind.List) {
                 for (index in 0..value.items.size) {
-                    match (checkToolInputValue(itemSchema, value.items[index], schemaPath + "/items", instancePath + "/" + index.toString(), strict)) {
+                    match (checkToolInputValue(itemSchema, value.items[index], toolInputPath(schemaPath, "items"), toolInputPath(instancePath, index.toString()), strict)) {
                         case ToolInputCheck.Valid => ()
                         case found => return found
                     }
@@ -281,7 +287,7 @@ internal func toolInputViolationError(call: LlmWireToolCallBlock, violation: Too
     LlmWireError(
         LlmWireErrorKind.InvalidWire, "llm.tool_arguments_schema_violation",
         "tool arguments do not satisfy the declared input schema at " + boundedTranscriptEvidence(violation.instancePath),
-        phase: Some(LlmTransportPhase.SemanticAssembly), toolCallId: boundedTranscriptEvidence(call.callId), toolName: call.name, diagnosticJson: Some(diagnostic.stringify())
+        phase: Some(LlmTransportPhase.SemanticAssembly), toolCallId: boundedTranscriptEvidence(call.callId), toolName: boundedTranscriptEvidence(call.name), diagnosticJson: Some(diagnostic.stringify())
     )
 }
 
@@ -293,7 +299,7 @@ internal func toolInputUnsupportedError(call: LlmWireToolCallBlock, feature: Str
     LlmWireError(
         LlmWireErrorKind.Unsupported, "llm.tool_schema_unsupported",
         "tool input schema uses features outside the supported validation subset: " + boundedTranscriptEvidence(feature),
-        phase: Some(LlmTransportPhase.SemanticAssembly), toolCallId: boundedTranscriptEvidence(call.callId), toolName: call.name, diagnosticJson: Some(diagnostic.stringify())
+        phase: Some(LlmTransportPhase.SemanticAssembly), toolCallId: boundedTranscriptEvidence(call.callId), toolName: boundedTranscriptEvidence(call.name), diagnosticJson: Some(diagnostic.stringify())
     )
 }
 

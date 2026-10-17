@@ -211,13 +211,13 @@ LlmWireJson member public func stringValue ( ) : ? String
 LlmWireJson member public func stringify ( ) : String
 LlmWireJson member public func values ( ) : Array < LlmWireJson >
 LlmWireJson member public prop kind : LlmWireJsonKind accessors get ( )
-LlmWireJson member public static func array ( values : Array < LlmWireJson > ) : LlmWireJson
+LlmWireJson member public static func array ( values : Array < LlmWireJson > ) : LlmWireResult < LlmWireJson >
 LlmWireJson member public static func boolean ( value : Bool ) : LlmWireJson
 LlmWireJson member public static func nullValue ( ) : LlmWireJson
 LlmWireJson member public static func number ( literal : String ) : LlmWireResult < LlmWireJson >
 LlmWireJson member public static func object ( fields : Array < LlmWireJsonField > ) : LlmWireResult < LlmWireJson >
 LlmWireJson member public static func parse ( source : String ) : LlmWireResult < LlmWireJson >
-LlmWireJson member public static func string ( value : String ) : LlmWireJson
+LlmWireJson member public static func string ( value : String ) : LlmWireResult < LlmWireJson >
 LlmWireJsonField member public init ( name : String , value : LlmWireJson )
 LlmWireJsonField member public let name : String
 LlmWireJsonField member public let value : LlmWireJson

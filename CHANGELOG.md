@@ -4,6 +4,9 @@ All notable changes are recorded here.
 
 ## [0.3.0] - Unreleased
 
+- Make JSON string/array factories return Result, enforce bounded construction before output allocation, and keep successful values readable and immutable.
+- Validate schema integer/enum by exact JSON value semantics while preserving original numeric literals.
+
 - Replace the separated request `instructions`, `messages`, and `tools` API with one immutable ordered transcript and its initial context. Remove the old request constructor and builder input setters without compatibility shims.
 - Preserve dynamic instruction, tool declaration, activation, and deactivation positions; derive the active tool view by replay and validate historical calls against the definitions active at each point.
 - Add versioned transcript snapshots, explicit tool definition identities, deterministic duplicate handling, bounded diagnostics, and endpoint/model/dialect-bound native update capability declarations.
