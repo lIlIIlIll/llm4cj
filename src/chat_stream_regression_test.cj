@@ -6,6 +6,134 @@ import std.unittest.testmacro.*
 @Test
 class ChatStreamRegressionTests {
     @TestCase
+    func chatResourceFailurePrecedesMalformedOrOverBudgetLogprobs() {
+        let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), provider: "openai")
+        let finalUsage = "{\"prompt_tokens\":5,\"completion_tokens\":3,\"total_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0}}"
+        for (payload in ["false", "{\"content\":[{\"token\":\"x\",\"logprob\":\"bad\"}]}", "{\"content\":[{\"token\":\"a long token whose metadata exceeds the configured retained state budget\",\"logprob\":-0.1,\"bytes\":[97]}]}"]) {
+            let fixed = match (streamRegressionValue(codec.decodeResponse(LlmWireHttpResponse(200, [], ("{\"choices\":[{\"index\":0,\"message\":{\"content\":\"discarded\"},\"finish_reason\":\"insufficient_system_resource\",\"logprobs\":" + payload + "}],\"usage\":" + finalUsage + "}").toArray())))) {
+                case LlmWireResponseState.Terminal(LlmWireTerminal.ProviderFailed(value)) => value
+                case _ => throw IllegalStateException("fixed resource outcome must be a provider failure")
+            }
+            for (width in [1, 13, 65536]) {
+                let decoder = codec.newStreamDecoder(limits: LlmWireStreamLimits(maxRetainedStateBytes: 32))
+                let first = streamRegressionPush(decoder, "{\"choices\":[{\"index\":0,\"delta\":{\"content\":\"before\"}}],\"usage\":{\"prompt_tokens\":5,\"prompt_tokens_details\":{\"cached_tokens\":0}}}")
+                var priorTextObserved = false
+                for (entry in first.events) { match (entry) { case LlmWireEvent.TextDelta(value, _) => @Expect(value, "before"); priorTextObserved = true; case _ => () } }
+                @Expect(priorTextObserved, true)
+                let source = ("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"discarded\"},\"finish_reason\":\"insufficient_system_resource\",\"logprobs\":" + payload + "}],\"usage\":{\"completion_tokens\":2}}\n\n").toArray()
+                var offset: Int64 = 0
+                while (offset < source.size) {
+                    let end = min(offset + width, source.size)
+                    let update = streamRegressionValue(decoder.push(source[offset..end]))
+                    @Expect(update.terminal.isNone(), true)
+                    for (entry in update.events) { match (entry) {
+                        case LlmWireEvent.TextDelta(_, _) | LlmWireEvent.ReasoningDelta(_, _) | LlmWireEvent.RefusalDelta(_, _) | LlmWireEvent.ToolCallStarted(_) | LlmWireEvent.ToolArgumentsDelta(_, _) => @Fail("resource failure packet must not emit semantic payload")
+                        case _ => ()
+                    } }
+                    offset = end
+                }
+                let _ = streamRegressionPush(decoder, "{\"choices\":[],\"usage\":{\"completion_tokens\":3,\"total_tokens\":8}}")
+                let observed = match (streamRegressionPush(decoder, "[DONE]").terminal.getOrThrow()) {
+                    case LlmWireTerminal.ProviderFailed(value) => value
+                    case _ => throw IllegalStateException("stream resource outcome must be a provider failure")
+                }
+                match ((observed.kind, fixed.kind)) { case (LlmWireFailureKind.InsufficientSystemResource, LlmWireFailureKind.InsufficientSystemResource) => (); case _ => @Fail("resource failure kind must match fixed decoding") }
+                @Expect(observed.message, fixed.message)
+                @Expect(observed.retryable, true); @Expect(observed.retryable, fixed.retryable)
+                @Expect(observed.provider, fixed.provider)
+                streamRegressionUsageEqual(observed.usage.getOrThrow(), fixed.usage.getOrThrow())
+                match (streamRegressionValue(decoder.finish()).terminal) { case Some(LlmWireTerminal.ProviderFailed(value)) => streamRegressionUsageEqual(value.usage.getOrThrow(), fixed.usage.getOrThrow()); case _ => @Fail("finish must retain provider failure") }
+            }
+        }
+    }
+
+    @TestCase
+    func chatResourceFailurePreflightsLaterChoicesBeforeSemanticPayload() {
+        let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), provider: "openai")
+        for (resourceIndex in [0, 1]) {
+            for ((payload, retainedLimit) in [
+                ("{\"content\":[{\"token\":\"x\",\"logprob\":0}]}", 256),
+                ("false", 256),
+                ("{\"content\":[{\"token\":\"x\",\"logprob\":\"bad\"}]}", 256),
+                ("{\"content\":[{\"token\":\"a long token whose metadata exceeds the configured retained state budget\",\"logprob\":-0.1,\"bytes\":[97]}]}", 32)
+            ]) {
+                let resource = "{\"index\":" + resourceIndex.toString() + ",\"delta\":{\"content\":\"discarded\"},\"finish_reason\":\"insufficient_system_resource\",\"logprobs\":" + payload + "}"
+                let ordinary = "{\"index\":" + (1 - resourceIndex).toString() + ",\"delta\":{\"content\":\"discarded\"},\"finish_reason\":\"stop\",\"logprobs\":" + payload + "}"
+                let ordered = if (resourceIndex == 0) { resource + "," + ordinary } else { ordinary + "," + resource }
+                let body = "{\"choices\":[" + ordered + "],\"usage\":{\"completion_tokens\":2}}"
+                let fixed = match (streamRegressionValue(codec.decodeResponse(LlmWireHttpResponse(200, [], body.replace("\"delta\":", "\"message\":").toArray())))) {
+                    case LlmWireResponseState.Terminal(LlmWireTerminal.ProviderFailed(value)) => value
+                    case _ => throw IllegalStateException("fixed resource preflight must precede every choice payload")
+                }
+                let decoder = codec.newStreamDecoder(limits: LlmWireStreamLimits(maxRetainedStateBytes: retainedLimit))
+                let update = streamRegressionPush(decoder, body)
+                for (entry in update.events) { match (entry) { case LlmWireEvent.TextDelta(_, _) => @Fail("resource preflight must precede earlier choice semantic payload"); case _ => () } }
+                match (streamRegressionPush(decoder, "[DONE]").terminal) {
+                    case Some(LlmWireTerminal.ProviderFailed(value)) =>
+                        match ((value.kind, fixed.kind)) { case (LlmWireFailureKind.InsufficientSystemResource, LlmWireFailureKind.InsufficientSystemResource) => (); case _ => @Fail("expected matching resource failures") }
+                        @Expect(value.message, fixed.message); @Expect(value.provider, fixed.provider)
+                        @Expect(value.retryable, true); @Expect(value.retryable, fixed.retryable)
+                        @Expect(value.usage.getOrThrow().outputTokens, Some(2))
+                        streamRegressionUsageEqual(value.usage.getOrThrow(), fixed.usage.getOrThrow())
+                    case _ => @Fail("a resource failure anywhere in the packet must fail the attempt")
+                }
+            }
+        }
+    }
+
+    @TestCase
+    func chatResourceFailureStillEnforcesTransportAndChoiceLifecycle() {
+        let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), provider: "openai")
+        let resource = "{\"choices\":[{\"index\":0,\"finish_reason\":\"insufficient_system_resource\",\"logprobs\":false}],\"usage\":{\"prompt_tokens\":5}}"
+        for (ending in ["eof", "cancel", "event-limit", "semantic-after-finish"]) {
+            let decoder = codec.newStreamDecoder(limits: LlmWireStreamLimits(maxRetainedStateBytes: 1, maxEvents: if (ending == "event-limit") { 1 } else { 8 }))
+            let _ = streamRegressionPush(decoder, resource)
+            match (ending) {
+                case "cancel" => match (streamRegressionValue(decoder.cancel())) {
+                    case LlmWireTerminal.Cancelled(value) => @Expect(value.usage.getOrThrow().inputTokens, Some(5))
+                    case _ => @Fail("cancellation before DONE must remain cancellation")
+                }
+                case _ =>
+                    let error = if (ending == "eof") { streamRegressionError(decoder.finish()) }
+                        else if (ending == "event-limit") { streamRegressionError(decoder.push("data: [DONE]\n\n".toArray())) }
+                        else { streamRegressionError(decoder.push("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"late\"}}]}\n\n".toArray())) }
+                    @Expect(error.code, if (ending == "eof") { "llm.stream_terminal_missing" } else if (ending == "event-limit") { "llm.stream_events_too_many" } else { "llm.chat_event_after_choice_finished" })
+                    @Expect(error.usage.getOrThrow().inputTokens, Some(5))
+            }
+        }
+        let finished = codec.newStreamDecoder()
+        let _ = streamRegressionPush(finished, "{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":5}}")
+        let duplicate = streamRegressionError(finished.push(("data: " + resource + "\n\n").toArray()))
+        @Expect(duplicate.code, "llm.chat_event_after_choice_finished")
+        @Expect(duplicate.usage.getOrThrow().inputTokens, Some(5))
+    }
+
+    @TestCase
+    func chatResourceFailureStillValidatesUsageAndEveryChoiceHeader() {
+        let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), provider: "openai")
+        let resource = "{\"index\":0,\"finish_reason\":\"insufficient_system_resource\",\"logprobs\":false}"
+        for ((choices, code) in [
+            ("[{\"index\":-1,\"finish_reason\":\"insufficient_system_resource\"}]", "llm.chat_choice_index_invalid"),
+            ("[{\"index\":\"bad\",\"finish_reason\":\"insufficient_system_resource\"}]", "llm.field_type_invalid"),
+            ("[" + resource + ",{\"index\":2,\"finish_reason\":\"stop\"}]", "llm.chat_choice_index_invalid"),
+            ("[" + resource + ",{\"index\":1,\"finish_reason\":1}]", "llm.field_type_invalid"),
+            ("[" + resource + ",false]", "llm.object_expected")
+        ]) {
+            let body = "{\"choices\":" + choices + ",\"usage\":{\"completion_tokens\":2}}"
+            let fixed = streamRegressionFixedError(codec, body)
+            let decoder = codec.newStreamDecoder()
+            let streamed = streamRegressionError(decoder.push(("data: " + body + "\n\n").toArray()))
+            @Expect(fixed.code, code); @Expect(streamed.code, code)
+            streamRegressionUsageEqual(streamed.usage.getOrThrow(), fixed.usage.getOrThrow())
+        }
+        let body = "{\"choices\":[" + resource + "],\"usage\":{\"completion_tokens\":-1}}"
+        let fixed = streamRegressionFixedError(codec, body)
+        let decoder = codec.newStreamDecoder()
+        let streamed = streamRegressionError(decoder.push(("data: " + body + "\n\n").toArray()))
+        @Expect(fixed.code, "llm.usage_negative"); @Expect(streamed.code, fixed.code)
+    }
+
+    @TestCase
     func chatTruncatedInvalidToolNameStaysDiagnosticButCannotContinue() {
         let codec = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect())
         let tooLong = "12345678901234567890123456789012345678901234567890123456789012345"

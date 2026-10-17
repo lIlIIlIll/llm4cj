@@ -746,6 +746,7 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
     private var responseId = ""
     private var model = ""
     private var started = false
+    private var resourceFailureObserved = false
     private let choices = ArrayList<ChatStreamChoice>()
     private let calls = ArrayList<StreamCall>()
     private var usage = LlmWireUsage()
@@ -776,6 +777,21 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
             case None => ()
         }
         let wireChoices = match (wireOptionalArray(root, "choices", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "Chat stream event is missing choices", provider: codec.provider) }
+        if (resourceFailureObserved) {
+            if (!wireChoices.isEmpty()) { invalidWire("llm.chat_event_after_choice_finished", "Chat content appeared after finish_reason", provider: codec.provider) }
+            return LlmWireStreamUpdate(events: events.toArray())
+        }
+        for (raw in wireChoices) {
+            let (choiceIndex, reason) = decodeChatChoiceHeader(codec, raw)
+            let state = chatChoice(choices, choiceIndex)
+            if (state.finishReason.isSome()) { invalidWire("llm.chat_event_after_choice_finished", "Chat content appeared after finish_reason", provider: codec.provider) }
+            if (reason == "insufficient_system_resource") {
+                state.finishReason = Some("insufficient_system_resource")
+                resourceFailureObserved = true
+                events.add(LlmWireEvent.ChoiceCompleted(choiceIndex, "insufficient_system_resource"))
+            }
+        }
+        if (resourceFailureObserved) { return LlmWireStreamUpdate(events: events.toArray()) }
         for (raw in wireChoices) {
             let choice = wireObject(raw, "Chat stream choice", provider: codec.provider)
             let choiceIndex = wireRequiredInt(choice, "index", provider: codec.provider)
@@ -816,13 +832,13 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
     }
 
     private func chatTerminal(): LlmWireTerminal {
+        if (resourceFailureObserved) {
+            return LlmWireTerminal.ProviderFailed(LlmWireFailure(LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true, usage: observedUsage()))
+        }
         if (choices.isEmpty()) { invalidWire("llm.chat_choice_terminal_missing", "Chat stream ended without any choices", provider: codec.provider) }
         let outputChoices = ArrayList<LlmWireChoice>()
         for (choice in choices) {
             let reason = match (choice.finishReason) { case Some(value) => value; case None => invalidWire("llm.chat_choice_terminal_missing", "Chat stream ended before every choice reported finish_reason", provider: codec.provider) }
-            if (reason == "insufficient_system_resource") {
-                return LlmWireTerminal.ProviderFailed(LlmWireFailure(LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true, usage: observedUsage()))
-            }
             outputChoices.add(materializeChatChoice(choice, reason))
         }
         LlmWireTerminal.Completed(LlmWireReply(

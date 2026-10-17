@@ -546,18 +546,23 @@ func decodeChatResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseSta
     let decodedChoices = ArrayList<LlmWireChoice>()
     try {
         var position = 0
+        var resourceFailureObserved = false
+        for (choiceNode in choices) {
+            let (index, reason) = decodeChatChoiceHeader(codec, choiceNode, requireFinishReason: true)
+            if (index != position) { invalidWire("llm.chat_choice_index_invalid", "Chat choices must use contiguous indexes in array order", provider: codec.provider) }
+            if (reason == "insufficient_system_resource") { resourceFailureObserved = true }
+            position++
+        }
+        if (resourceFailureObserved) {
+            return LlmWireResponseState.Terminal(LlmWireTerminal.ProviderFailed(LlmWireFailure(
+                LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true, usage: observedWireUsage(usage)
+            )))
+        }
         for (choiceNode in choices) {
             let choice = wireObject(choiceNode, "Chat choice", provider: codec.provider)
             let index = wireRequiredInt(choice, "index", provider: codec.provider)
-            if (index != position) { invalidWire("llm.chat_choice_index_invalid", "Chat choices must use contiguous indexes in array order", provider: codec.provider) }
-            if (wireRequiredString(choice, "finish_reason", provider: codec.provider) == "insufficient_system_resource") {
-                return LlmWireResponseState.Terminal(LlmWireTerminal.ProviderFailed(LlmWireFailure(
-                    LlmWireFailureKind.InsufficientSystemResource, "provider reported insufficient system resources", provider: codec.provider, retryable: true, usage: observedWireUsage(usage)
-                )))
-            }
             let decoded = decodeChatChoice(codec, root, choice, index)
             decodedChoices.add(decoded)
-            position++
         }
     } catch (error: LlmWireError) {
         throw withObservedUsage(error, observedWireUsage(usage))
@@ -569,6 +574,14 @@ func decodeChatResponse(codec: LlmWireCodec, root: JsonNode): LlmWireResponseSta
         choices: decodedChoices.toArray()
     )
     LlmWireResponseState.Terminal(LlmWireTerminal.Completed(reply))
+}
+
+func decodeChatChoiceHeader(codec: LlmWireCodec, raw: JsonNode, requireFinishReason!: Bool = false): (Int64, String) {
+    let choice = wireObject(raw, "Chat choice", provider: codec.provider)
+    let index = wireRequiredInt(choice, "index", provider: codec.provider)
+    let reason = if (requireFinishReason) { wireRequiredString(choice, "finish_reason", provider: codec.provider) }
+        else { optionalStringOrEmpty(choice, "finish_reason", codec.provider) }
+    (index, reason)
 }
 
 func decodeChatChoice(codec: LlmWireCodec, root: JsonNode, choice: JsonNode, index: Int64): LlmWireChoice {
