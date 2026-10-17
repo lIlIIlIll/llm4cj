@@ -1035,7 +1035,7 @@ class MessagesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
                 let events = ArrayList<LlmWireEvent>()
                 match (refusalUpdate) { case Some(value) => events.add(LlmWireEvent.RefusalObserved(value)); case None => () }
                 match (wireOptionalObject(root, "usage", provider: codec.provider)) {
-                    case Some(value) => usage = mergeWireUsage(usage, LlmWireUsage(outputTokens: wireOptionalUsageInt(value, "output_tokens", codec.provider), source: LlmWireUsageSource.ProviderReported(codec.provider, codec.dialect.compatibilityId)), codec.dialect.contract.usageMergeStyle); events.add(LlmWireEvent.UsageUpdated(usage))
+                    case Some(_) => usage = mergeWireUsage(usage, decodeMessagesUsage(codec, root), codec.dialect.contract.usageMergeStyle); events.add(LlmWireEvent.UsageUpdated(usage))
                     case None => ()
                 }
                 LlmWireStreamUpdate(events: events.toArray())
