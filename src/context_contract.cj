@@ -99,6 +99,7 @@ func validateContextUpdateContract(style: LlmWireRequestStyle, contract: LlmWire
     let valid = match ((style, contract.style)) {
         case (_, LlmWireContextUpdateStyle.Unsupported) |
              (LlmWireRequestStyle.OpenAiResponses, LlmWireContextUpdateStyle.ResponsesAdditionalTools) |
+             (LlmWireRequestStyle.OpenAiCodexResponses, LlmWireContextUpdateStyle.ResponsesAdditionalTools) |
              (LlmWireRequestStyle.AnthropicMessages, LlmWireContextUpdateStyle.AnthropicToolReferences) |
              (LlmWireRequestStyle.KimiChat, LlmWireContextUpdateStyle.KimiSystemTools) => true
         case _ => false

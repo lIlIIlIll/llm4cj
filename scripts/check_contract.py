@@ -241,22 +241,15 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"error-code inventory drifted; added={added}, removed={removed}")
 
     digest = hashlib.sha256()
-    fixtures = (
-        sorted((ROOT / "fixtures").glob("*.json"))
-        + sorted((ROOT / "fixtures/requests").glob("*.json"))
-        + sorted((ROOT / "fixtures/streams").glob("*.json"))
-        + sorted((ROOT / "fixtures/transcripts").glob("*.json"))
-    )
-    if len(fixtures) != 21:
-        raise SystemExit(f"expected six response, six request, six stream and three native transcript fixtures, found {len(fixtures)}")
+    from check_fixtures import fixture_inventory
+
+    fixtures = fixture_inventory()
     native_sources = {
         "openai-responses": ("developers.openai.com", "openai.responses.v1"),
         "anthropic-messages": ("platform.claude.com", "anthropic.messages.v1"),
         "kimi-chat": ("platform.kimi.ai", "kimi.chat.v1"),
     }
-    native_fixtures = sorted((ROOT / "fixtures/transcripts").glob("*.json"))
-    if {path.stem for path in native_fixtures} != set(native_sources):
-        raise SystemExit("native transcript fixture set is incomplete")
+    native_fixtures = [ROOT / "fixtures/transcripts" / (name + ".json") for name in sorted(native_sources)]
     for path in native_fixtures:
         record = json.loads(path.read_text())
         expected_host, expected_dialect = native_sources[path.stem]

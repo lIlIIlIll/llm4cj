@@ -35,6 +35,16 @@ func expectExperimentalError(code: String, body: () -> Unit): Unit {
 @Test
 class Llm4CjExperimentalTests {
     @TestCase
+    func customDialectCannotClaimCodexIdentity() {
+        expectExperimentalError("llm.dialect_identity_reserved", { =>
+            let _ = LlmWireStandardDialect(LlmWireDialectContract(
+                "openai.codex.responses.v1", LlmWireProtocol.Responses,
+                LlmWireRequestStyle.OpenAiCodexResponses, LlmWireOutputTokenField.MaxOutputTokens
+            ))
+        })
+    }
+
+    @TestCase
     func customDialectIsExplicitlyExperimental() {
         let dialect = LlmWireStandardDialect(LlmWireDialectContract(
             "example.chat.v1",

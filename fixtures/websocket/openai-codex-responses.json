@@ -1,0 +1,42 @@
+{
+  "source": "https://developers.openai.com/api/docs/guides/websocket-mode",
+  "checked_at": "2026-10-18",
+  "events": [
+    "{\"type\":\"response.created\",\"response\":{\"id\":\"resp_fixture\",\"model\":\"fixture-model\",\"status\":\"in_progress\",\"output\":[]},\"sequence_number\":0}",
+    "{\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"rs_fixture\",\"type\":\"reasoning\",\"summary\":[]},\"sequence_number\":1}",
+    "{\"type\":\"response.reasoning_summary_part.added\",\"item_id\":\"rs_fixture\",\"output_index\":0,\"summary_index\":0,\"part\":{\"type\":\"summary_text\",\"text\":\"\"},\"sequence_number\":2}",
+    "{\"type\":\"response.reasoning_summary_text.delta\",\"item_id\":\"rs_fixture\",\"output_index\":0,\"summary_index\":0,\"delta\":\"why\",\"sequence_number\":3}",
+    "{\"type\":\"response.reasoning_summary_text.done\",\"item_id\":\"rs_fixture\",\"output_index\":0,\"summary_index\":0,\"text\":\"why\",\"sequence_number\":4}",
+    "{\"type\":\"response.reasoning_summary_part.done\",\"item_id\":\"rs_fixture\",\"output_index\":0,\"summary_index\":0,\"part\":{\"type\":\"summary_text\",\"text\":\"why\"},\"sequence_number\":5}",
+    "{\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"rs_fixture\",\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"why\"}],\"encrypted_content\":\"encrypted-fixture\"},\"sequence_number\":6}",
+    "{\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"id\":\"msg_fixture\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"in_progress\",\"phase\":\"final_answer\",\"content\":[]},\"sequence_number\":7}",
+    "{\"type\":\"response.content_part.added\",\"item_id\":\"msg_fixture\",\"output_index\":1,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\"},\"sequence_number\":8}",
+    "{\"type\":\"response.output_text.delta\",\"item_id\":\"msg_fixture\",\"output_index\":1,\"content_index\":0,\"delta\":\"ok é\",\"sequence_number\":9}",
+    "{\"type\":\"response.output_text.done\",\"item_id\":\"msg_fixture\",\"output_index\":1,\"content_index\":0,\"text\":\"ok é\",\"sequence_number\":10}",
+    "{\"type\":\"response.content_part.done\",\"item_id\":\"msg_fixture\",\"output_index\":1,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"ok é\",\"annotations\":[],\"logprobs\":[]},\"sequence_number\":11}",
+    "{\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"id\":\"msg_fixture\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"phase\":\"final_answer\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok é\",\"annotations\":[],\"logprobs\":[]}]},\"sequence_number\":12}",
+    "{\"type\":\"response.completed\",\"response\":{\"id\":\"resp_fixture\",\"object\":\"response\",\"model\":\"fixture-model\",\"status\":\"completed\",\"output\":[{\"id\":\"rs_fixture\",\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"why\"}],\"encrypted_content\":\"encrypted-fixture\"},{\"id\":\"msg_fixture\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"phase\":\"final_answer\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok é\",\"annotations\":[],\"logprobs\":[]}]}],\"usage\":{\"input_tokens\":3,\"output_tokens\":2,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens_details\":{\"reasoning_tokens\":1},\"total_tokens\":5}},\"sequence_number\":13}"
+  ],
+  "next_request": {
+    "type": "response.create",
+    "stream_id": "main",
+    "model": "fixture-model",
+    "store": false,
+    "include": [
+      "reasoning.encrypted_content"
+    ],
+    "previous_response_id": "resp_fixture",
+    "input": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "next"
+          }
+        ],
+        "type": "message"
+      }
+    ]
+  }
+}

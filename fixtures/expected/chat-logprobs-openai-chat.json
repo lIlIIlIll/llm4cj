@@ -1,0 +1,415 @@
+{
+  "canonical": {
+    "state": {
+      "kind": "completed",
+      "reply": {
+        "response_id": "chat_fixture",
+        "model": "fixture-model",
+        "raw_stop_reason": "multiple",
+        "blocks": [
+          {
+            "kind": "text",
+            "value": {
+              "text": "ok é",
+              "phase": "unspecified",
+              "logprobs": [
+                {
+                  "token": "ok ",
+                  "bytes": [
+                    111,
+                    107,
+                    32
+                  ],
+                  "logprob": "-0.123456789012345678901",
+                  "top_logprobs": [
+                    {
+                      "token": "x",
+                      "bytes": [
+                        120
+                      ],
+                      "logprob": "-2.5"
+                    }
+                  ]
+                },
+                {
+                  "token": "é",
+                  "bytes": [
+                    195,
+                    169
+                  ],
+                  "logprob": "-0.100000000000000000001",
+                  "top_logprobs": []
+                }
+              ],
+              "citations": [],
+              "annotations": []
+            }
+          }
+        ],
+        "usage": {
+          "input_tokens": 3,
+          "output_tokens": 2,
+          "reasoning_tokens": null,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": null,
+          "total_tokens": 5,
+          "web_search_requests": null,
+          "web_fetch_requests": null,
+          "service_tier": null,
+          "source": {
+            "provider": "openai",
+            "dialect": "openai.chat.v1"
+          },
+          "cache_read_availability": "reported",
+          "cache_write_availability": "unknown"
+        },
+        "choices": [
+          {
+            "index": 0,
+            "raw_stop_reason": "stop",
+            "outcome": {
+              "kind": "completed"
+            },
+            "blocks": [
+              {
+                "kind": "text",
+                "value": {
+                  "text": "ok é",
+                  "phase": "unspecified",
+                  "logprobs": [
+                    {
+                      "token": "ok ",
+                      "bytes": [
+                        111,
+                        107,
+                        32
+                      ],
+                      "logprob": "-0.123456789012345678901",
+                      "top_logprobs": [
+                        {
+                          "token": "x",
+                          "bytes": [
+                            120
+                          ],
+                          "logprob": "-2.5"
+                        }
+                      ]
+                    },
+                    {
+                      "token": "é",
+                      "bytes": [
+                        195,
+                        169
+                      ],
+                      "logprob": "-0.100000000000000000001",
+                      "top_logprobs": []
+                    }
+                  ],
+                  "citations": [],
+                  "annotations": []
+                }
+              }
+            ],
+            "message_spans": []
+          },
+          {
+            "index": 1,
+            "raw_stop_reason": "stop",
+            "outcome": {
+              "kind": "refused",
+              "refusal": {
+                "text": "no é",
+                "category": null,
+                "explanation": null,
+                "logprobs": [
+                  {
+                    "token": "no ",
+                    "bytes": [
+                      110,
+                      111,
+                      32
+                    ],
+                    "logprob": "-0.123456789012345678901",
+                    "top_logprobs": [
+                      {
+                        "token": "x",
+                        "bytes": [
+                          120
+                        ],
+                        "logprob": "-2.5"
+                      }
+                    ]
+                  },
+                  {
+                    "token": "é",
+                    "bytes": [
+                      195,
+                      169
+                    ],
+                    "logprob": "-0.100000000000000000001",
+                    "top_logprobs": []
+                  }
+                ]
+              }
+            },
+            "blocks": [
+              {
+                "kind": "refusal",
+                "value": {
+                  "text": "no é",
+                  "category": null,
+                  "explanation": null,
+                  "logprobs": [
+                    {
+                      "token": "no ",
+                      "bytes": [
+                        110,
+                        111,
+                        32
+                      ],
+                      "logprob": "-0.123456789012345678901",
+                      "top_logprobs": [
+                        {
+                          "token": "x",
+                          "bytes": [
+                            120
+                          ],
+                          "logprob": "-2.5"
+                        }
+                      ]
+                    },
+                    {
+                      "token": "é",
+                      "bytes": [
+                        195,
+                        169
+                      ],
+                      "logprob": "-0.100000000000000000001",
+                      "top_logprobs": []
+                    }
+                  ]
+                }
+              }
+            ],
+            "message_spans": []
+          }
+        ]
+      }
+    },
+    "continuation": {
+      "default": {
+        "kind": "error",
+        "error": {
+          "kind": "invalid_state",
+          "code": "llm.continuation_choice_required",
+          "message": "multi-choice replies require an explicit choice",
+          "retryable": false,
+          "http_status": null,
+          "retry_after_millis": null,
+          "provider": "",
+          "provider_error_code": "",
+          "provider_error_type": "",
+          "diagnostic": null,
+          "phase": null,
+          "protocol": null,
+          "dialect": "",
+          "event_type": "",
+          "block_index": -1,
+          "tool_call_id": "",
+          "input_item_index": -1,
+          "tool_name": "",
+          "tool_version": "",
+          "missing_capability": "",
+          "profile_id": "",
+          "contract_version": 0,
+          "provider_request_id": "",
+          "usage": null
+        }
+      },
+      "choices": [
+        {
+          "index": 0,
+          "result": {
+            "kind": "ok",
+            "snapshot": {
+              "format": "llm4cj.transcript",
+              "version": 2,
+              "initial_context": {
+                "instructions": [],
+                "tools": []
+              },
+              "items": [
+                {
+                  "kind": "message",
+                  "value": {
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "kind": "text",
+                        "value": {
+                          "text": "ok é",
+                          "phase": "unspecified",
+                          "logprobs": [
+                            {
+                              "token": "ok ",
+                              "bytes": [
+                                111,
+                                107,
+                                32
+                              ],
+                              "logprob": -0.123456789012345678901,
+                              "top_logprobs": [
+                                {
+                                  "token": "x",
+                                  "bytes": [
+                                    120
+                                  ],
+                                  "logprob": -2.5
+                                }
+                              ]
+                            },
+                            {
+                              "token": "é",
+                              "bytes": [
+                                195,
+                                169
+                              ],
+                              "logprob": -0.100000000000000000001,
+                              "top_logprobs": []
+                            }
+                          ],
+                          "citations": [],
+                          "annotations": []
+                        }
+                      }
+                    ],
+                    "message_spans": []
+                  }
+                }
+              ]
+            },
+            "restored_snapshot": {
+              "format": "llm4cj.transcript",
+              "version": 2,
+              "initial_context": {
+                "instructions": [],
+                "tools": []
+              },
+              "items": [
+                {
+                  "kind": "message",
+                  "value": {
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "kind": "text",
+                        "value": {
+                          "text": "ok é",
+                          "phase": "unspecified",
+                          "logprobs": [
+                            {
+                              "token": "ok ",
+                              "bytes": [
+                                111,
+                                107,
+                                32
+                              ],
+                              "logprob": -0.123456789012345678901,
+                              "top_logprobs": [
+                                {
+                                  "token": "x",
+                                  "bytes": [
+                                    120
+                                  ],
+                                  "logprob": -2.5
+                                }
+                              ]
+                            },
+                            {
+                              "token": "é",
+                              "bytes": [
+                                195,
+                                169
+                              ],
+                              "logprob": -0.100000000000000000001,
+                              "top_logprobs": []
+                            }
+                          ],
+                          "citations": [],
+                          "annotations": []
+                        }
+                      }
+                    ],
+                    "message_spans": []
+                  }
+                }
+              ]
+            },
+            "encoded": {
+              "body": {
+                "model": "fixture-model",
+                "max_completion_tokens": 256,
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "hello"
+                  },
+                  {
+                    "role": "assistant",
+                    "content": "ok é"
+                  },
+                  {
+                    "role": "user",
+                    "content": "next"
+                  }
+                ]
+              },
+              "headers": [
+                {
+                  "name": "content-type",
+                  "value": "application/json"
+                },
+                {
+                  "name": "accept",
+                  "value": "application/json"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "index": 1,
+          "result": {
+            "kind": "error",
+            "error": {
+              "kind": "invalid_state",
+              "code": "llm.continuation_projection_lossy",
+              "message": "continuation projection would discard a semantic reply block",
+              "retryable": false,
+              "http_status": null,
+              "retry_after_millis": null,
+              "provider": "",
+              "provider_error_code": "",
+              "provider_error_type": "",
+              "diagnostic": null,
+              "phase": null,
+              "protocol": null,
+              "dialect": "",
+              "event_type": "",
+              "block_index": -1,
+              "tool_call_id": "",
+              "input_item_index": -1,
+              "tool_name": "",
+              "tool_version": "",
+              "missing_capability": "",
+              "profile_id": "",
+              "contract_version": 0,
+              "provider_request_id": "",
+              "usage": null
+            }
+          }
+        }
+      ]
+    }
+  }
+}

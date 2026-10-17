@@ -1,0 +1,412 @@
+{
+  "canonical": {
+    "state": {
+      "kind": "completed",
+      "reply": {
+        "response_id": "msg_fixture",
+        "model": "fixture-model",
+        "raw_stop_reason": "end_turn",
+        "blocks": [
+          {
+            "kind": "native_replay",
+            "value": {
+              "protocol": "messages",
+              "dialect_id": "anthropic.messages.v1",
+              "native_type": "thinking",
+              "schema_version": 1,
+              "scope": "assistant_turn",
+              "assistant_turn_index": 0,
+              "block_order": 0,
+              "complete": true,
+              "payload": {
+                "type": "thinking",
+                "thinking": "why",
+                "signature": "signature-fixture"
+              },
+              "model_constraint": "fixture-model",
+              "display_reasoning": "why"
+            }
+          },
+          {
+            "kind": "text",
+            "value": {
+              "text": "ok é",
+              "phase": "unspecified",
+              "logprobs": [],
+              "citations": [],
+              "annotations": []
+            }
+          }
+        ],
+        "usage": {
+          "input_tokens": 10,
+          "output_tokens": 2,
+          "reasoning_tokens": null,
+          "cache_read_tokens": 20,
+          "cache_write_tokens": 30,
+          "total_tokens": null,
+          "web_search_requests": 2,
+          "web_fetch_requests": 1,
+          "service_tier": "standard",
+          "source": {
+            "provider": "anthropic",
+            "dialect": "anthropic.messages.v1"
+          },
+          "cache_read_availability": "reported",
+          "cache_write_availability": "reported"
+        },
+        "choices": [
+          {
+            "index": 0,
+            "raw_stop_reason": "end_turn",
+            "outcome": {
+              "kind": "completed"
+            },
+            "blocks": [
+              {
+                "kind": "native_replay",
+                "value": {
+                  "protocol": "messages",
+                  "dialect_id": "anthropic.messages.v1",
+                  "native_type": "thinking",
+                  "schema_version": 1,
+                  "scope": "assistant_turn",
+                  "assistant_turn_index": 0,
+                  "block_order": 0,
+                  "complete": true,
+                  "payload": {
+                    "type": "thinking",
+                    "thinking": "why",
+                    "signature": "signature-fixture"
+                  },
+                  "model_constraint": "fixture-model",
+                  "display_reasoning": "why"
+                }
+              },
+              {
+                "kind": "text",
+                "value": {
+                  "text": "ok é",
+                  "phase": "unspecified",
+                  "logprobs": [],
+                  "citations": [],
+                  "annotations": []
+                }
+              }
+            ],
+            "message_spans": []
+          }
+        ]
+      }
+    },
+    "continuation": {
+      "default": {
+        "kind": "ok",
+        "snapshot": {
+          "format": "llm4cj.transcript",
+          "version": 2,
+          "initial_context": {
+            "instructions": [],
+            "tools": []
+          },
+          "items": [
+            {
+              "kind": "message",
+              "value": {
+                "role": "assistant",
+                "blocks": [
+                  {
+                    "kind": "native_replay",
+                    "value": {
+                      "protocol": "messages",
+                      "dialect_id": "anthropic.messages.v1",
+                      "native_type": "thinking",
+                      "schema_version": 1,
+                      "scope": "assistant_turn",
+                      "assistant_turn_index": 0,
+                      "block_order": 0,
+                      "complete": true,
+                      "payload": {
+                        "type": "thinking",
+                        "thinking": "why",
+                        "signature": "signature-fixture"
+                      },
+                      "model_constraint": "fixture-model",
+                      "display_reasoning": "why"
+                    }
+                  },
+                  {
+                    "kind": "text",
+                    "value": {
+                      "text": "ok é",
+                      "phase": "unspecified",
+                      "logprobs": [],
+                      "citations": [],
+                      "annotations": []
+                    }
+                  }
+                ],
+                "message_spans": []
+              }
+            }
+          ]
+        },
+        "restored_snapshot": {
+          "format": "llm4cj.transcript",
+          "version": 2,
+          "initial_context": {
+            "instructions": [],
+            "tools": []
+          },
+          "items": [
+            {
+              "kind": "message",
+              "value": {
+                "role": "assistant",
+                "blocks": [
+                  {
+                    "kind": "native_replay",
+                    "value": {
+                      "protocol": "messages",
+                      "dialect_id": "anthropic.messages.v1",
+                      "native_type": "thinking",
+                      "schema_version": 1,
+                      "scope": "assistant_turn",
+                      "assistant_turn_index": 0,
+                      "block_order": 0,
+                      "complete": true,
+                      "payload": {
+                        "type": "thinking",
+                        "thinking": "why",
+                        "signature": "signature-fixture"
+                      },
+                      "model_constraint": "fixture-model",
+                      "display_reasoning": "why"
+                    }
+                  },
+                  {
+                    "kind": "text",
+                    "value": {
+                      "text": "ok é",
+                      "phase": "unspecified",
+                      "logprobs": [],
+                      "citations": [],
+                      "annotations": []
+                    }
+                  }
+                ],
+                "message_spans": []
+              }
+            }
+          ]
+        },
+        "encoded": {
+          "body": {
+            "model": "fixture-model",
+            "max_tokens": 256,
+            "messages": [
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "hello"
+                  }
+                ]
+              },
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "thinking",
+                    "thinking": "why",
+                    "signature": "signature-fixture"
+                  },
+                  {
+                    "type": "text",
+                    "text": "ok é"
+                  }
+                ]
+              },
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "next"
+                  }
+                ]
+              }
+            ]
+          },
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "choices": [
+        {
+          "index": 0,
+          "result": {
+            "kind": "ok",
+            "snapshot": {
+              "format": "llm4cj.transcript",
+              "version": 2,
+              "initial_context": {
+                "instructions": [],
+                "tools": []
+              },
+              "items": [
+                {
+                  "kind": "message",
+                  "value": {
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "kind": "native_replay",
+                        "value": {
+                          "protocol": "messages",
+                          "dialect_id": "anthropic.messages.v1",
+                          "native_type": "thinking",
+                          "schema_version": 1,
+                          "scope": "assistant_turn",
+                          "assistant_turn_index": 0,
+                          "block_order": 0,
+                          "complete": true,
+                          "payload": {
+                            "type": "thinking",
+                            "thinking": "why",
+                            "signature": "signature-fixture"
+                          },
+                          "model_constraint": "fixture-model",
+                          "display_reasoning": "why"
+                        }
+                      },
+                      {
+                        "kind": "text",
+                        "value": {
+                          "text": "ok é",
+                          "phase": "unspecified",
+                          "logprobs": [],
+                          "citations": [],
+                          "annotations": []
+                        }
+                      }
+                    ],
+                    "message_spans": []
+                  }
+                }
+              ]
+            },
+            "restored_snapshot": {
+              "format": "llm4cj.transcript",
+              "version": 2,
+              "initial_context": {
+                "instructions": [],
+                "tools": []
+              },
+              "items": [
+                {
+                  "kind": "message",
+                  "value": {
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "kind": "native_replay",
+                        "value": {
+                          "protocol": "messages",
+                          "dialect_id": "anthropic.messages.v1",
+                          "native_type": "thinking",
+                          "schema_version": 1,
+                          "scope": "assistant_turn",
+                          "assistant_turn_index": 0,
+                          "block_order": 0,
+                          "complete": true,
+                          "payload": {
+                            "type": "thinking",
+                            "thinking": "why",
+                            "signature": "signature-fixture"
+                          },
+                          "model_constraint": "fixture-model",
+                          "display_reasoning": "why"
+                        }
+                      },
+                      {
+                        "kind": "text",
+                        "value": {
+                          "text": "ok é",
+                          "phase": "unspecified",
+                          "logprobs": [],
+                          "citations": [],
+                          "annotations": []
+                        }
+                      }
+                    ],
+                    "message_spans": []
+                  }
+                }
+              ]
+            },
+            "encoded": {
+              "body": {
+                "model": "fixture-model",
+                "max_tokens": 256,
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "hello"
+                      }
+                    ]
+                  },
+                  {
+                    "role": "assistant",
+                    "content": [
+                      {
+                        "type": "thinking",
+                        "thinking": "why",
+                        "signature": "signature-fixture"
+                      },
+                      {
+                        "type": "text",
+                        "text": "ok é"
+                      }
+                    ]
+                  },
+                  {
+                    "role": "user",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "next"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "headers": [
+                {
+                  "name": "content-type",
+                  "value": "application/json"
+                },
+                {
+                  "name": "accept",
+                  "value": "application/json"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

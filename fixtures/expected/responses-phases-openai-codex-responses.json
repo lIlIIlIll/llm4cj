@@ -1,0 +1,435 @@
+{
+  "canonical": {
+    "state": {
+      "kind": "completed",
+      "reply": {
+        "response_id": "resp_fixture",
+        "model": "fixture-model",
+        "raw_stop_reason": "completed",
+        "blocks": [
+          {
+            "kind": "text",
+            "value": {
+              "text": "working",
+              "phase": "commentary",
+              "logprobs": [],
+              "citations": [],
+              "annotations": []
+            }
+          },
+          {
+            "kind": "text",
+            "value": {
+              "text": "done",
+              "phase": "final",
+              "logprobs": [],
+              "citations": [],
+              "annotations": []
+            }
+          }
+        ],
+        "usage": {
+          "input_tokens": 3,
+          "output_tokens": 2,
+          "reasoning_tokens": 1,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": null,
+          "total_tokens": 5,
+          "web_search_requests": null,
+          "web_fetch_requests": null,
+          "service_tier": null,
+          "source": {
+            "provider": "openai-codex",
+            "dialect": "openai.codex.responses.v1"
+          },
+          "cache_read_availability": "reported",
+          "cache_write_availability": "unknown"
+        },
+        "choices": [
+          {
+            "index": 0,
+            "raw_stop_reason": "completed",
+            "outcome": {
+              "kind": "completed"
+            },
+            "blocks": [
+              {
+                "kind": "text",
+                "value": {
+                  "text": "working",
+                  "phase": "commentary",
+                  "logprobs": [],
+                  "citations": [],
+                  "annotations": []
+                }
+              },
+              {
+                "kind": "text",
+                "value": {
+                  "text": "done",
+                  "phase": "final",
+                  "logprobs": [],
+                  "citations": [],
+                  "annotations": []
+                }
+              }
+            ],
+            "message_spans": [
+              {
+                "block_start": 0,
+                "block_count": 1,
+                "phase": "commentary"
+              },
+              {
+                "block_start": 1,
+                "block_count": 1,
+                "phase": "final"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "continuation": {
+      "default": {
+        "kind": "ok",
+        "snapshot": {
+          "format": "llm4cj.transcript",
+          "version": 2,
+          "initial_context": {
+            "instructions": [],
+            "tools": []
+          },
+          "items": [
+            {
+              "kind": "message",
+              "value": {
+                "role": "assistant",
+                "blocks": [
+                  {
+                    "kind": "text",
+                    "value": {
+                      "text": "working",
+                      "phase": "commentary",
+                      "logprobs": [],
+                      "citations": [],
+                      "annotations": []
+                    }
+                  },
+                  {
+                    "kind": "text",
+                    "value": {
+                      "text": "done",
+                      "phase": "final",
+                      "logprobs": [],
+                      "citations": [],
+                      "annotations": []
+                    }
+                  }
+                ],
+                "message_spans": [
+                  {
+                    "block_start": 0,
+                    "block_count": 1,
+                    "phase": "commentary"
+                  },
+                  {
+                    "block_start": 1,
+                    "block_count": 1,
+                    "phase": "final"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "restored_snapshot": {
+          "format": "llm4cj.transcript",
+          "version": 2,
+          "initial_context": {
+            "instructions": [],
+            "tools": []
+          },
+          "items": [
+            {
+              "kind": "message",
+              "value": {
+                "role": "assistant",
+                "blocks": [
+                  {
+                    "kind": "text",
+                    "value": {
+                      "text": "working",
+                      "phase": "commentary",
+                      "logprobs": [],
+                      "citations": [],
+                      "annotations": []
+                    }
+                  },
+                  {
+                    "kind": "text",
+                    "value": {
+                      "text": "done",
+                      "phase": "final",
+                      "logprobs": [],
+                      "citations": [],
+                      "annotations": []
+                    }
+                  }
+                ],
+                "message_spans": [
+                  {
+                    "block_start": 0,
+                    "block_count": 1,
+                    "phase": "commentary"
+                  },
+                  {
+                    "block_start": 1,
+                    "block_count": 1,
+                    "phase": "final"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "encoded": {
+          "body": {
+            "model": "fixture-model",
+            "stream": true,
+            "store": false,
+            "include": [
+              "reasoning.encrypted_content"
+            ],
+            "input": [
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "input_text",
+                    "text": "hello"
+                  }
+                ],
+                "type": "message"
+              },
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "working"
+                  }
+                ],
+                "phase": "commentary",
+                "type": "message"
+              },
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "done"
+                  }
+                ],
+                "phase": "final_answer",
+                "type": "message"
+              },
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "input_text",
+                    "text": "next"
+                  }
+                ],
+                "type": "message"
+              }
+            ]
+          },
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "accept",
+              "value": "text/event-stream"
+            }
+          ]
+        }
+      },
+      "choices": [
+        {
+          "index": 0,
+          "result": {
+            "kind": "ok",
+            "snapshot": {
+              "format": "llm4cj.transcript",
+              "version": 2,
+              "initial_context": {
+                "instructions": [],
+                "tools": []
+              },
+              "items": [
+                {
+                  "kind": "message",
+                  "value": {
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "kind": "text",
+                        "value": {
+                          "text": "working",
+                          "phase": "commentary",
+                          "logprobs": [],
+                          "citations": [],
+                          "annotations": []
+                        }
+                      },
+                      {
+                        "kind": "text",
+                        "value": {
+                          "text": "done",
+                          "phase": "final",
+                          "logprobs": [],
+                          "citations": [],
+                          "annotations": []
+                        }
+                      }
+                    ],
+                    "message_spans": [
+                      {
+                        "block_start": 0,
+                        "block_count": 1,
+                        "phase": "commentary"
+                      },
+                      {
+                        "block_start": 1,
+                        "block_count": 1,
+                        "phase": "final"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "restored_snapshot": {
+              "format": "llm4cj.transcript",
+              "version": 2,
+              "initial_context": {
+                "instructions": [],
+                "tools": []
+              },
+              "items": [
+                {
+                  "kind": "message",
+                  "value": {
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "kind": "text",
+                        "value": {
+                          "text": "working",
+                          "phase": "commentary",
+                          "logprobs": [],
+                          "citations": [],
+                          "annotations": []
+                        }
+                      },
+                      {
+                        "kind": "text",
+                        "value": {
+                          "text": "done",
+                          "phase": "final",
+                          "logprobs": [],
+                          "citations": [],
+                          "annotations": []
+                        }
+                      }
+                    ],
+                    "message_spans": [
+                      {
+                        "block_start": 0,
+                        "block_count": 1,
+                        "phase": "commentary"
+                      },
+                      {
+                        "block_start": 1,
+                        "block_count": 1,
+                        "phase": "final"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "encoded": {
+              "body": {
+                "model": "fixture-model",
+                "stream": true,
+                "store": false,
+                "include": [
+                  "reasoning.encrypted_content"
+                ],
+                "input": [
+                  {
+                    "role": "user",
+                    "content": [
+                      {
+                        "type": "input_text",
+                        "text": "hello"
+                      }
+                    ],
+                    "type": "message"
+                  },
+                  {
+                    "role": "assistant",
+                    "content": [
+                      {
+                        "type": "output_text",
+                        "text": "working"
+                      }
+                    ],
+                    "phase": "commentary",
+                    "type": "message"
+                  },
+                  {
+                    "role": "assistant",
+                    "content": [
+                      {
+                        "type": "output_text",
+                        "text": "done"
+                      }
+                    ],
+                    "phase": "final_answer",
+                    "type": "message"
+                  },
+                  {
+                    "role": "user",
+                    "content": [
+                      {
+                        "type": "input_text",
+                        "text": "next"
+                      }
+                    ],
+                    "type": "message"
+                  }
+                ]
+              },
+              "headers": [
+                {
+                  "name": "content-type",
+                  "value": "application/json"
+                },
+                {
+                  "name": "accept",
+                  "value": "text/event-stream"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

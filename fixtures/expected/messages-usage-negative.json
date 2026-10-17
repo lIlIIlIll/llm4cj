@@ -1,0 +1,50 @@
+{
+  "stream": {
+    "state": {
+      "kind": "error",
+      "error": {
+        "kind": "invalid_wire",
+        "code": "llm.usage_negative",
+        "message": "cache_read_input_tokens must be non-negative",
+        "retryable": false,
+        "http_status": null,
+        "retry_after_millis": null,
+        "provider": "anthropic",
+        "provider_error_code": "",
+        "provider_error_type": "",
+        "diagnostic": null,
+        "phase": "wire_decode",
+        "protocol": "messages",
+        "dialect": "anthropic.messages.v1",
+        "event_type": "",
+        "block_index": -1,
+        "tool_call_id": "",
+        "input_item_index": -1,
+        "tool_name": "",
+        "tool_version": "",
+        "missing_capability": "",
+        "profile_id": "",
+        "contract_version": 1,
+        "provider_request_id": "",
+        "usage": {
+          "input_tokens": 10,
+          "output_tokens": 2,
+          "reasoning_tokens": null,
+          "cache_read_tokens": 20,
+          "cache_write_tokens": 30,
+          "total_tokens": null,
+          "web_search_requests": 2,
+          "web_fetch_requests": 1,
+          "service_tier": null,
+          "source": {
+            "provider": "anthropic",
+            "dialect": "anthropic.messages.v1"
+          },
+          "cache_read_availability": "reported",
+          "cache_write_availability": "reported"
+        }
+      }
+    },
+    "continuation": null
+  }
+}

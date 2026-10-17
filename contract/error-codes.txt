@@ -30,6 +30,12 @@ llm.chat_tool_call_name_mismatch
 llm.chat_tool_call_type_missing
 llm.chat_tool_type_unsupported
 llm.choice_index_invalid
+llm.codex_instruction_order_unsupported
+llm.codex_max_output_tokens_unsupported
+llm.codex_phase_role_unsupported
+llm.codex_request_too_large
+llm.codex_stream_required
+llm.codex_text_metadata_unsupported
 llm.context_contract_version_unsupported
 llm.context_update_position_invalid
 llm.context_update_unsupported
@@ -45,6 +51,7 @@ llm.endpoint_profile_capability_unsupported
 llm.endpoint_profile_invalid
 llm.endpoint_profile_mismatch
 llm.envelope_identity_mismatch
+llm.failure_diagnostic_too_large
 llm.feature_requirement_unresolved
 llm.feature_requirement_unsatisfied
 llm.field_missing
@@ -149,6 +156,7 @@ llm.responses_function_name_mismatch
 llm.responses_function_name_missing
 llm.responses_id_mismatch
 llm.responses_input_required
+llm.responses_message_spans_invalid
 llm.responses_message_status_invalid
 llm.responses_model_mismatch
 llm.responses_output_index_mismatch
@@ -156,6 +164,10 @@ llm.responses_output_item_done_duplicate
 llm.responses_output_item_incomplete
 llm.responses_output_item_mismatch
 llm.responses_output_item_order_invalid
+llm.responses_phase_mismatch
+llm.responses_phase_role_unsupported
+llm.responses_phase_unsupported
+llm.responses_reasoning_mismatch
 llm.responses_semantic_unsupported
 llm.responses_start_duplicate
 llm.responses_status_unsupported
@@ -234,3 +246,9 @@ llm.transcript_version_unsupported
 llm.usage_decreased
 llm.usage_negative
 llm.usage_overflow
+llm.websocket_dialect_unsupported
+llm.websocket_message_too_large
+llm.websocket_response_active
+llm.websocket_response_missing
+llm.websocket_retained_state_too_large
+llm.websocket_stream_id_mismatch

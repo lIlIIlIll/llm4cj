@@ -1,0 +1,43 @@
+{
+  "response": {
+    "id": "resp_fixture",
+    "object": "response",
+    "model": "fixture-model",
+    "status": "completed",
+    "output": [
+      {
+        "id": "msg_fixture",
+        "type": "message",
+        "role": "assistant",
+        "status": "completed",
+        "content": [
+          {
+            "type": "refusal",
+            "refusal": "no é"
+          }
+        ]
+      }
+    ],
+    "usage": {
+      "input_tokens": 3,
+      "output_tokens": 2,
+      "input_tokens_details": {
+        "cached_tokens": 0
+      },
+      "output_tokens_details": {
+        "reasoning_tokens": 1
+      },
+      "total_tokens": 5
+    }
+  },
+  "events": [
+    "{\"type\":\"response.created\",\"response\":{\"id\":\"resp_fixture\",\"model\":\"fixture-model\",\"status\":\"in_progress\",\"output\":[]},\"sequence_number\":0}",
+    "{\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"msg_fixture\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[]},\"sequence_number\":1}",
+    "{\"type\":\"response.content_part.added\",\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"refusal\",\"refusal\":\"\"},\"sequence_number\":2}",
+    "{\"type\":\"response.refusal.delta\",\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"delta\":\"no é\",\"sequence_number\":3}",
+    "{\"type\":\"response.refusal.done\",\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"refusal\":\"no é\",\"sequence_number\":4}",
+    "{\"type\":\"response.content_part.done\",\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"refusal\",\"refusal\":\"no é\"},\"sequence_number\":5}",
+    "{\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"msg_fixture\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"refusal\",\"refusal\":\"no é\"}]},\"sequence_number\":6}",
+    "{\"type\":\"response.completed\",\"response\":{\"id\":\"resp_fixture\",\"object\":\"response\",\"model\":\"fixture-model\",\"status\":\"completed\",\"output\":[{\"id\":\"msg_fixture\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"refusal\",\"refusal\":\"no é\"}]}],\"usage\":{\"input_tokens\":3,\"output_tokens\":2,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens_details\":{\"reasoning_tokens\":1},\"total_tokens\":5}},\"sequence_number\":7}"
+  ]
+}

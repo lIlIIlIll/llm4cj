@@ -15,15 +15,17 @@ public class LlmWireEventIdentity {
     public let contentIndex: ?Int64
     public let summaryIndex: ?Int64
     public let itemId: String
+    public let phase: LlmWireOutputPhase
     public init(
         blockIndex!: ?Int64 = None, choiceIndex!: ?Int64 = None,
         toolCallIndex!: ?Int64 = None, outputIndex!: ?Int64 = None,
         contentIndex!: ?Int64 = None, summaryIndex!: ?Int64 = None,
-        itemId!: String = ""
+        itemId!: String = "", phase!: LlmWireOutputPhase = LlmWireOutputPhase.Unspecified
     ) {
         this.blockIndex = blockIndex; this.choiceIndex = choiceIndex; this.toolCallIndex = toolCallIndex
         this.outputIndex = outputIndex; this.contentIndex = contentIndex; this.summaryIndex = summaryIndex
         this.itemId = itemId
+        this.phase = phase
     }
 }
 
@@ -362,9 +364,11 @@ class ResponseStreamItem {
     let outputIndex: Int64
     let itemId: String
     let nativeType: String
+    var phase: LlmWireOutputPhase
     let parts = ArrayList<ResponseStreamPart>()
     var completed = false
-    init(outputIndex: Int64, itemId: String, nativeType: String) { this.outputIndex = outputIndex; this.itemId = itemId; this.nativeType = nativeType }
+    var encryptedContent: ?String = None
+    init(outputIndex: Int64, itemId: String, nativeType: String, phase: LlmWireOutputPhase) { this.outputIndex = outputIndex; this.itemId = itemId; this.nativeType = nativeType; this.phase = phase }
 }
 class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
     private let codec: LlmWireCodec
@@ -379,10 +383,13 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
     private var usage = LlmWireUsage()
     init(codec: LlmWireCodec, limits: LlmWireStreamLimits) { this.codec = codec; this.budget = StreamBudget(limits) }
 
-    public func push(event: SseEvent): LlmWireStreamUpdate { guardedPush(codec, { => budget.inputEvent(); pushActive(event) }) }
-    private func pushActive(event: SseEvent): LlmWireStreamUpdate {
+    public func push(event: SseEvent): LlmWireStreamUpdate { guardedPush(codec, { =>
+        budget.inputEvent()
         if (!beforePush(event) || event.data == "") { return LlmWireStreamUpdate() }
-        let root = wireObject(parseWireJson(event.data), "Responses stream event", provider: codec.provider)
+        pushActive(wireObject(parseWireJson(event.data), "Responses stream event", provider: codec.provider))
+    }) }
+    func pushJson(root: JsonNode): LlmWireStreamUpdate { guardedPush(codec, { => budget.inputEvent(); pushActive(root) }) }
+    private func pushActive(root: JsonNode): LlmWireStreamUpdate {
         let kind = wireRequiredString(root, "type", provider: codec.provider)
         if (!started && kind != "response.created" && kind != "response.in_progress" && kind != "response.completed" && kind != "response.incomplete" && kind != "response.failed" && kind != "error") {
             invalidWire("llm.responses_event_before_start", "Responses semantic event appeared before response start", provider: codec.provider)
@@ -395,7 +402,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
                 LlmWireStreamUpdate(events: [LlmWireEvent.TextDelta(delta, LlmWireEventIdentity(
                     outputIndex: Some(requiredIndex(root, "output_index", codec.provider)),
                     contentIndex: Some(requiredIndex(root, "content_index", codec.provider)),
-                    itemId: wireRequiredString(root, "item_id", provider: codec.provider)
+                    itemId: wireRequiredString(root, "item_id", provider: codec.provider), phase: responseItemForEvent(codec, items, root).phase
                 ))])
             case "response.reasoning_summary_text.delta" =>
                 let delta = wireRequiredString(root, "delta", provider: codec.provider); budget.semantic(delta, "reasoning")
@@ -403,7 +410,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
                 LlmWireStreamUpdate(events: [LlmWireEvent.ReasoningDelta(delta, LlmWireEventIdentity(
                     outputIndex: Some(requiredIndex(root, "output_index", codec.provider)),
                     summaryIndex: Some(requiredIndex(root, "summary_index", codec.provider)),
-                    itemId: wireRequiredString(root, "item_id", provider: codec.provider)
+                    itemId: wireRequiredString(root, "item_id", provider: codec.provider), phase: responseItemForEvent(codec, items, root).phase
                 ))])
             case "response.reasoning_text.delta" =>
                 let delta = wireRequiredString(root, "delta", provider: codec.provider); budget.semantic(delta, "reasoning")
@@ -411,7 +418,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
                 LlmWireStreamUpdate(events: [LlmWireEvent.ReasoningDelta(delta, LlmWireEventIdentity(
                     outputIndex: Some(requiredIndex(root, "output_index", codec.provider)),
                     contentIndex: Some(requiredIndex(root, "content_index", codec.provider)),
-                    itemId: wireRequiredString(root, "item_id", provider: codec.provider)
+                    itemId: wireRequiredString(root, "item_id", provider: codec.provider), phase: responseItemForEvent(codec, items, root).phase
                 ))])
             case "response.refusal.delta" =>
                 let delta = wireRequiredString(root, "delta", provider: codec.provider); budget.semantic(delta, "text")
@@ -419,19 +426,20 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
                 LlmWireStreamUpdate(events: [LlmWireEvent.RefusalDelta(delta, LlmWireEventIdentity(
                     outputIndex: Some(requiredIndex(root, "output_index", codec.provider)),
                     contentIndex: Some(requiredIndex(root, "content_index", codec.provider)),
-                    itemId: wireRequiredString(root, "item_id", provider: codec.provider)
+                    itemId: wireRequiredString(root, "item_id", provider: codec.provider), phase: responseItemForEvent(codec, items, root).phase
                 ))])
             case "response.content_part.added" => startResponsesPart(root, false)
             case "response.content_part.done" => completeResponsesPart(root, false)
             case "response.output_item.added" =>
                 let item = wireObject(wireRequiredField(root, "item", provider: codec.provider), "Responses output item", provider: codec.provider)
                 let itemType = wireRequiredString(item, "type", provider: codec.provider)
+                if (itemType == "message") { validateOptionalIdentity(codec, item, "role", "assistant") }
                 let outputIndex = requiredIndex(root, "output_index", codec.provider)
                 rejectResponsesItemSemantic(codec, item, outputIndex)
                 let itemId = wireRequiredString(item, "id", provider: codec.provider)
                 if (outputIndex != items.size || findResponseItem(items, itemId).isSome() || findResponseItemAt(items, outputIndex).isSome()) { invalidWire("llm.responses_output_item_order_invalid", "Responses output item indexes must be contiguous and identities unique", provider: codec.provider) }
                 budget.retain(itemId); budget.retain(itemType)
-                items.add(ResponseStreamItem(outputIndex, itemId, itemType))
+                items.add(ResponseStreamItem(outputIndex, itemId, itemType, decodeResponsesPhase(codec, item, outputIndex)))
                 if (itemType == "function_call") {
                     budget.block(); budget.toolCall()
                     if (findResponseCall(calls, itemId).isSome()) { invalidWire("llm.responses_function_call_duplicate", "Responses function item was started twice", provider: codec.provider) }
@@ -455,7 +463,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
                 let terminalResponse = wireObject(wireRequiredField(root, "response", provider: codec.provider), "Responses terminal response", provider: codec.provider)
                 reconcileResponsesMetadata(terminalResponse)
                 usage = mergeWireUsage(usage, decodeResponsesUsage(codec, terminalResponse), codec.dialect.contract.usageMergeStyle)
-                let state = decodeResponsesResponse(codec, terminalResponse)
+                let state = decodeResponsesResponse(codec, terminalResponse, resolvedPhases: resolveResponsesTerminalPhases(codec, terminalResponse, items))
                 match (state) {
                     case LlmWireResponseState.Terminal(decodedTerminal) =>
                         let value = terminalWithObservedUsage(decodedTerminal, observedUsage())
@@ -484,7 +492,16 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
                         LlmWireStreamUpdate(events: finalEvents.toArray(), terminal: Some(value))
                     case _ => invalidWire("llm.responses_terminal_invalid", "terminal event contains a non-terminal response", provider: codec.provider)
                 }
-            case "error" => providerErrorUpdate(codec, match (root.field("error")) { case Some(value) => value; case None => root }, { value => terminal = Some(value) }, usage: observedUsage())
+            case "error" =>
+                let failure = providerFailure(codec, match (root.field("error")) { case Some(value) => value; case None => root }, usage: observedUsage())
+                let contextual = match (wireOptionalInt(root, "status", provider: codec.provider)) {
+                    case Some(status) =>
+                        if (status < 100 || status > 599) { invalidWire("llm.http_status_invalid", "WebSocket error status must be between 100 and 599", provider: codec.provider) }
+                        withHttpFailureContext(failure, status, None, "")
+                    case None => failure
+                }
+                let value = LlmWireTerminal.ProviderFailed(contextual); terminal = Some(value)
+                LlmWireStreamUpdate(events: [LlmWireEvent.ProviderFailure(contextual), LlmWireEvent.TerminalObserved(value)], terminal: Some(value))
             case "response.output_item.done" => completeResponsesItem(root)
             case "response.output_text.done" => completeResponsesText(root, "output_text", false)
             case "response.refusal.done" => completeResponsesText(root, "refusal", false)
@@ -542,7 +559,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
             if (nativeType == "output_text") { LlmWireStreamBlockKind.Text } else if (nativeType == "refusal") { LlmWireStreamBlockKind.Refusal } else { LlmWireStreamBlockKind.Reasoning },
             LlmWireEventIdentity(
                 outputIndex: Some(item.outputIndex), contentIndex: if (summary) { None } else { Some(index) },
-                summaryIndex: if (summary) { Some(index) } else { None }, itemId: item.itemId
+                summaryIndex: if (summary) { Some(index) } else { None }, itemId: item.itemId, phase: item.phase
             )
         )])
     }
@@ -557,7 +574,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
         let part = responsePartForEvent(codec, items, root, summary)
         if (part.nativeType != nativeType) { invalidWire("llm.responses_done_type_mismatch", "Responses done event does not match its content part", provider: codec.provider) }
         if (part.valueCompleted || part.completed) { invalidWire("llm.responses_value_done_duplicate", "Responses content value completed twice or after content_part.done", provider: codec.provider) }
-        let value = wireRequiredString(root, "text", provider: codec.provider)
+        let value = wireRequiredString(root, if (nativeType == "refusal") { "refusal" } else { "text" }, provider: codec.provider)
         if (part.text.toString() != value) { invalidWire("llm.responses_text_mismatch", "Responses done text does not match streamed deltas", provider: codec.provider) }
         part.valueCompleted = true
         LlmWireStreamUpdate()
@@ -571,6 +588,8 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
         let nativeType = wireRequiredString(payload, "type", provider: codec.provider)
         rejectResponsesContentSemantic(codec, payload, part.index, wireRequiredString(root, "type", provider: codec.provider))
         if (nativeType != part.nativeType) { invalidWire("llm.responses_done_type_mismatch", "Responses content part type changed at completion", provider: codec.provider) }
+        let value = wireRequiredString(payload, if (nativeType == "refusal") { "refusal" } else { "text" }, provider: codec.provider)
+        if (value != part.text.toString()) { invalidWire("llm.responses_text_mismatch", "Responses content part completion differs from streamed text", provider: codec.provider) }
         part.completed = true
         LlmWireStreamUpdate(events: [LlmWireEvent.ContentBlockCompleted(
             if (nativeType == "output_text") { LlmWireStreamBlockKind.Text } else if (nativeType == "refusal") { LlmWireStreamBlockKind.Refusal } else { LlmWireStreamBlockKind.Reasoning },
@@ -578,18 +597,39 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
                 outputIndex: Some(requiredIndex(root, "output_index", codec.provider)),
                 contentIndex: if (summary) { None } else { Some(part.index) },
                 summaryIndex: if (summary) { Some(part.index) } else { None },
-                itemId: wireRequiredString(root, "item_id", provider: codec.provider)
+                itemId: wireRequiredString(root, "item_id", provider: codec.provider), phase: responseItemForEvent(codec, items, root).phase
             )
         )])
     }
 
     private func completeResponsesItem(root: JsonNode): LlmWireStreamUpdate {
-        let item = responseItemForEvent(codec, items, root)
+        let payload = wireObject(wireRequiredField(root, "item", provider: codec.provider), "Responses output item", provider: codec.provider)
+        let itemId = wireRequiredString(payload, "id", provider: codec.provider)
+        let item = match (findResponseItem(items, itemId)) {
+            case Some(value) => value
+            case None => invalidWire("llm.responses_event_without_item", "Responses item completion references an unknown output item", provider: codec.provider)
+        }
+        if (requiredIndex(root, "output_index", codec.provider) != item.outputIndex) { invalidWire("llm.responses_output_index_mismatch", "Responses output index changed at item completion", provider: codec.provider) }
         if (item.completed) { invalidWire("llm.responses_output_item_done_duplicate", "Responses output item completed twice", provider: codec.provider) }
         for (part in item.parts where !part.completed) { invalidWire("llm.responses_content_part_incomplete", "Responses output item completed with an open content part", provider: codec.provider) }
         match (findResponseCall(calls, item.itemId)) { case Some(call) => if (!call.completed) { invalidWire("llm.responses_function_call_incomplete", "Responses function item completed before arguments", provider: codec.provider) }; case None => () }
-        let payload = wireObject(wireRequiredField(root, "item", provider: codec.provider), "Responses output item", provider: codec.provider)
-        if (wireRequiredString(payload, "id", provider: codec.provider) != item.itemId || wireRequiredString(payload, "type", provider: codec.provider) != item.nativeType) { invalidWire("llm.responses_output_item_mismatch", "Responses output item identity changed at completion", provider: codec.provider) }
+        if (wireRequiredString(payload, "type", provider: codec.provider) != item.nativeType) { invalidWire("llm.responses_output_item_mismatch", "Responses output item type changed at completion", provider: codec.provider) }
+        rejectResponsesItemSemantic(codec, payload, item.outputIndex)
+        item.phase = mergeResponsesPhase(codec, item.phase, decodeResponsesPhase(codec, payload, item.outputIndex))
+        if (item.nativeType == "message") {
+            validateOptionalIdentity(codec, payload, "role", "assistant")
+            let _ = match (wireOptionalArray(payload, "content", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "completed Responses message is missing content", provider: codec.provider) }
+        }
+        reconcileResponsesTerminalParts(codec, item, payload, false)
+        reconcileResponsesTerminalParts(codec, item, payload, true)
+        match (findResponseCall(calls, item.itemId)) {
+            case Some(call) => if (wireRequiredString(payload, "call_id", provider: codec.provider) != call.callId || wireRequiredString(payload, "name", provider: codec.provider) != call.name || wireRequiredString(payload, "arguments", provider: codec.provider) != call.arguments.toString()) { invalidWire("llm.responses_terminal_function_mismatch", "completed Responses function item differs from streamed call", provider: codec.provider) }
+            case None => ()
+        }
+        if (item.nativeType == "reasoning") {
+            item.encryptedContent = wireOptionalString(payload, "encrypted_content", provider: codec.provider)
+            match (item.encryptedContent) { case Some(value) => budget.retain(value); case None => () }
+        }
         item.completed = true
         LlmWireStreamUpdate()
     }
@@ -655,6 +695,22 @@ func validateResponsePartType(codec: LlmWireCodec, nativeType: String, summary: 
     if (!allowed) { unsupportedSemantic(codec, nativeType, payload, "llm.responses_stream_block_unsupported", blockIndex: indexOr(root, if (summary) { "summary_index" } else { "content_index" }, -1, codec.provider), eventType: wireRequiredString(root, "type", provider: codec.provider)) }
 }
 
+func resolveResponsesTerminalPhases(codec: LlmWireCodec, response: JsonNode, streamed: ArrayList<ResponseStreamItem>): Array<LlmWireOutputPhase> {
+    let phases = ArrayList<LlmWireOutputPhase>()
+    match (wireOptionalArray(response, "output", provider: codec.provider)) {
+        case Some(output) => for (index in 0..output.size) {
+            let actual = wireObject(output[index], "Responses terminal output item", provider: codec.provider)
+            let observed = decodeResponsesPhase(codec, actual, index)
+            phases.add(match (findResponseItemAt(streamed, index)) {
+                case Some(item) => mergeResponsesPhase(codec, item.phase, observed)
+                case None => observed
+            })
+        }
+        case None => ()
+    }
+    phases.toArray()
+}
+
 func reconcileResponsesTerminal(codec: LlmWireCodec, response: JsonNode, streamed: ArrayList<ResponseStreamItem>, calls: ArrayList<ResponseStreamCall>): Unit {
     if (streamed.isEmpty()) { return }
     let output = match (wireOptionalArray(response, "output", provider: codec.provider)) {
@@ -666,6 +722,8 @@ func reconcileResponsesTerminal(codec: LlmWireCodec, response: JsonNode, streame
         if (expected.outputIndex < 0 || expected.outputIndex >= output.size) { invalidWire("llm.responses_terminal_output_mismatch", "Responses terminal omitted a streamed output index", provider: codec.provider) }
         let actual = wireObject(output[expected.outputIndex], "Responses terminal output item", provider: codec.provider)
         if (wireRequiredString(actual, "type", provider: codec.provider) != expected.nativeType) { invalidWire("llm.responses_terminal_output_mismatch", "Responses terminal output type changed", provider: codec.provider) }
+        let _ = mergeResponsesPhase(codec, expected.phase, decodeResponsesPhase(codec, actual, expected.outputIndex))
+        match (expected.encryptedContent) { case Some(value) => if (wireOptionalString(actual, "encrypted_content", provider: codec.provider) != Some(value)) { invalidWire("llm.responses_reasoning_mismatch", "Responses terminal encrypted reasoning differs from completed item", provider: codec.provider) }; case None => () }
         match (wireOptionalString(actual, "id", provider: codec.provider)) { case Some(value) => if (value != expected.itemId) { invalidWire("llm.responses_terminal_output_mismatch", "Responses terminal output ID changed", provider: codec.provider) }; case None => () }
         match (findResponseCall(calls, expected.itemId)) {
             case Some(call) =>

@@ -139,6 +139,6 @@ private func validPrewarmReply(reply: LlmWireReply): Bool {
 }
 
 private func reservedCompatibilityId(value: String): Bool {
-    value == "openai.responses.v1" || value == "openai.chat.v1" || value == "anthropic.messages.v1" ||
+    value == "openai.responses.v1" || value == "openai.codex.responses.v1" || value == "openai.chat.v1" || value == "anthropic.messages.v1" ||
     value == "deepseek.responses.v1" || value == "deepseek.chat.v1" || value == "deepseek.messages.v1"
 }

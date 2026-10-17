@@ -4,7 +4,7 @@ import std.collection.*
 import std.deriving.Derive
 
 @Derive[Equatable]
-public enum LlmWireRequestStyle { OpenAiResponses | OpenAiChat | AnthropicMessages | DeepSeekResponses | DeepSeekChat | DeepSeekMessages | KimiChat }
+public enum LlmWireRequestStyle { OpenAiResponses | OpenAiCodexResponses | OpenAiChat | AnthropicMessages | DeepSeekResponses | DeepSeekChat | DeepSeekMessages | KimiChat }
 @Derive[Equatable]
 public enum LlmWireOutputTokenField { MaxOutputTokens | MaxCompletionTokens | MaxTokens }
 @Derive[Equatable]
@@ -306,7 +306,7 @@ func hasDuplicate<T>(values: Array<T>): Bool where T <: Equatable<T> {
 public interface LlmWireDialect { prop contract: LlmWireDialectContract; prop compatibilityId: String; prop protocol: LlmWireProtocol }
 
 @Derive[Equatable]
-public enum LlmWireBuiltinDialect { OpenAiResponses | OpenAiChat | AnthropicMessages | DeepSeekResponses | DeepSeekChat | DeepSeekMessages | KimiChat }
+public enum LlmWireBuiltinDialect { OpenAiResponses | OpenAiCodexResponses | OpenAiChat | AnthropicMessages | DeepSeekResponses | DeepSeekChat | DeepSeekMessages | KimiChat }
 
 func customDialectThinkingIsReplaySafe(contract: LlmWireDialectContract): Bool {
     if (!contract.reasoningEfforts.isEmpty()) { return false }
@@ -395,6 +395,9 @@ public class LlmWireCodec {
         limits!: LlmWireStreamLimits = LlmWireStreamLimits(),
         sseLimits!: LlmWireSseLimits = LlmWireSseLimits()
     ): LlmWireStreamDecoder { LlmWireStreamDecoder(this, 200, [], limits, sseLimits) }
+    public func newResponsesWebSocketSession(
+        limits!: LlmWireStreamLimits = LlmWireStreamLimits()
+    ): LlmWireResponsesWebSocketSession { LlmWireResponsesWebSocketSession(this, limits) }
     public func newHttpStreamDecoder(
         statusCode: Int64, headers!: Array<LlmWireHeader> = [],
         limits!: LlmWireStreamLimits = LlmWireStreamLimits(),
@@ -441,6 +444,9 @@ public class LlmWireModelProfile {
 public func openAiResponsesModelProfile(model: String, capabilities!: LlmWireCapabilities = LlmWireCapabilities(), endpoint!: String = "", endpointProfile!: ?LlmWireEndpointProfile = None): LlmWireModelProfile {
     LlmWireModelProfile(model, "openai.responses.v1", capabilities, endpoint: endpoint, endpointProfile: endpointProfile)
 }
+public func openAiCodexResponsesModelProfile(model: String, capabilities!: LlmWireCapabilities = LlmWireCapabilities(), endpoint!: String = "", endpointProfile!: ?LlmWireEndpointProfile = None): LlmWireModelProfile {
+    LlmWireModelProfile(model, "openai.codex.responses.v1", capabilities, endpoint: endpoint, endpointProfile: endpointProfile)
+}
 public func openAiChatModelProfile(model: String, capabilities!: LlmWireCapabilities = LlmWireCapabilities()): LlmWireModelProfile {
     LlmWireModelProfile(model, "openai.chat.v1", capabilities)
 }
@@ -467,6 +473,9 @@ public func kimiChatCodec(profile: LlmWireModelProfile, provider!: String = "kim
 
 public func openAiResponsesCodec(profile: LlmWireModelProfile, provider!: String = "openai"): LlmWireCodec {
     LlmWireCodec(LlmWireProtocol.Responses, openAiResponsesDialect(), capabilities: profile.capabilities, provider: provider, modelProfile: Some(profile))
+}
+public func openAiCodexResponsesCodec(profile: LlmWireModelProfile, provider!: String = "openai-codex"): LlmWireCodec {
+    LlmWireCodec(LlmWireProtocol.Responses, openAiCodexResponsesDialect(), capabilities: profile.capabilities, provider: provider, modelProfile: Some(profile))
 }
 public func openAiChatCodec(profile: LlmWireModelProfile, provider!: String = "openai"): LlmWireCodec {
     LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect(), capabilities: profile.capabilities, provider: provider, modelProfile: Some(profile))
@@ -525,7 +534,7 @@ func validateContractShape(
     cacheRoutingKey: Bool, toolErrorStyle: LlmWireToolErrorStyle
 ): Unit {
     let valid = match (style) {
-        case LlmWireRequestStyle.OpenAiResponses | LlmWireRequestStyle.DeepSeekResponses => protocol == LlmWireProtocol.Responses && tokenField == LlmWireOutputTokenField.MaxOutputTokens
+        case LlmWireRequestStyle.OpenAiResponses | LlmWireRequestStyle.OpenAiCodexResponses | LlmWireRequestStyle.DeepSeekResponses => protocol == LlmWireProtocol.Responses && tokenField == LlmWireOutputTokenField.MaxOutputTokens
         case LlmWireRequestStyle.OpenAiChat | LlmWireRequestStyle.KimiChat => protocol == LlmWireProtocol.ChatCompletions && tokenField == LlmWireOutputTokenField.MaxCompletionTokens
         case LlmWireRequestStyle.DeepSeekChat => protocol == LlmWireProtocol.ChatCompletions && tokenField == LlmWireOutputTokenField.MaxTokens
         case LlmWireRequestStyle.AnthropicMessages | LlmWireRequestStyle.DeepSeekMessages => protocol == LlmWireProtocol.Messages && tokenField == LlmWireOutputTokenField.MaxTokens
@@ -565,7 +574,7 @@ func validateContractShape(
         if (!representable) { throw IllegalArgumentException("prompt cache lifetime has no encoding for this cache style") }
     }
     if (cacheRoutingKey && style != LlmWireRequestStyle.OpenAiResponses && style != LlmWireRequestStyle.OpenAiChat) { throw IllegalArgumentException("prompt cache routing key has no encoding for this request style") }
-    if (!serviceTiers.isEmpty() && style != LlmWireRequestStyle.OpenAiResponses && style != LlmWireRequestStyle.OpenAiChat && style != LlmWireRequestStyle.AnthropicMessages) {
+    if (!serviceTiers.isEmpty() && style != LlmWireRequestStyle.OpenAiResponses && style != LlmWireRequestStyle.OpenAiCodexResponses && style != LlmWireRequestStyle.OpenAiChat && style != LlmWireRequestStyle.AnthropicMessages) {
         throw IllegalArgumentException("service tier has no encoding for this request style")
     }
     if (!generationSpeeds.isEmpty() && style != LlmWireRequestStyle.AnthropicMessages) {
@@ -573,7 +582,7 @@ func validateContractShape(
     }
     for (mode in structuredModes) {
         let representable = match ((style, mode)) {
-            case (LlmWireRequestStyle.OpenAiResponses, _) | (LlmWireRequestStyle.DeepSeekResponses, _) | (LlmWireRequestStyle.OpenAiChat, _) => true
+            case (LlmWireRequestStyle.OpenAiResponses, _) | (LlmWireRequestStyle.OpenAiCodexResponses, _) | (LlmWireRequestStyle.DeepSeekResponses, _) | (LlmWireRequestStyle.OpenAiChat, _) => true
             case (LlmWireRequestStyle.DeepSeekChat, LlmWireStructuredOutputMode.Text) |
                  (LlmWireRequestStyle.DeepSeekChat, LlmWireStructuredOutputMode.JsonObject) |
                  (LlmWireRequestStyle.AnthropicMessages, LlmWireStructuredOutputMode.JsonSchema) => true
@@ -609,6 +618,7 @@ func containsThinkingMode(values: Array<LlmWireThinkingMode>, target: LlmWireThi
 }
 
 public func openAiResponsesDialect(): LlmWireDialect { BuiltinWireDialect(builtinContract(LlmWireBuiltinDialect.OpenAiResponses)) }
+public func openAiCodexResponsesDialect(): LlmWireDialect { BuiltinWireDialect(builtinContract(LlmWireBuiltinDialect.OpenAiCodexResponses)) }
 public func openAiChatDialect(): LlmWireDialect { BuiltinWireDialect(builtinContract(LlmWireBuiltinDialect.OpenAiChat)) }
 public func anthropicMessagesDialect(): LlmWireDialect { BuiltinWireDialect(builtinContract(LlmWireBuiltinDialect.AnthropicMessages)) }
 public func deepSeekResponsesDialect(): LlmWireDialect { BuiltinWireDialect(builtinContract(LlmWireBuiltinDialect.DeepSeekResponses)) }
@@ -617,7 +627,7 @@ public func deepSeekMessagesDialect(): LlmWireDialect { BuiltinWireDialect(built
 public func kimiChatDialect(): LlmWireDialect { BuiltinWireDialect(builtinContract(LlmWireBuiltinDialect.KimiChat)) }
 
 func isBuiltinCompatibilityId(value: String): Bool {
-    value == "openai.responses.v1" || value == "openai.chat.v1" || value == "anthropic.messages.v1" ||
+    value == "openai.responses.v1" || value == "openai.codex.responses.v1" || value == "openai.chat.v1" || value == "anthropic.messages.v1" ||
     value == "deepseek.responses.v1" || value == "deepseek.chat.v1" || value == "deepseek.messages.v1" || value == "kimi.chat.v1"
 }
 
@@ -626,6 +636,15 @@ func builtinContract(value: LlmWireBuiltinDialect): LlmWireDialectContract {
     let anthropicLevels = [LlmWireReasoningEffort.Low, LlmWireReasoningEffort.Medium, LlmWireReasoningEffort.High, LlmWireReasoningEffort.XHigh, LlmWireReasoningEffort.Max]
     let deepSeekMessageLevels = [LlmWireReasoningEffort.Low, LlmWireReasoningEffort.Medium, LlmWireReasoningEffort.High, LlmWireReasoningEffort.XHigh, LlmWireReasoningEffort.Max]
     match (value) {
+        case LlmWireBuiltinDialect.OpenAiCodexResponses => LlmWireDialectContract(
+            "openai.codex.responses.v1", LlmWireProtocol.Responses, LlmWireRequestStyle.OpenAiCodexResponses,
+            LlmWireOutputTokenField.MaxOutputTokens,
+            reasoningEfforts: [LlmWireReasoningEffort.Minimal, LlmWireReasoningEffort.Low, LlmWireReasoningEffort.Medium, LlmWireReasoningEffort.High, LlmWireReasoningEffort.XHigh],
+            structuredOutputModes: [LlmWireStructuredOutputMode.Text, LlmWireStructuredOutputMode.JsonObject, LlmWireStructuredOutputMode.JsonSchema],
+            serviceTiers: [LlmWireServiceTier.Auto, LlmWireServiceTier.Default, LlmWireServiceTier.Flex, LlmWireServiceTier.Priority],
+            parallelToolStyle: LlmWireParallelToolStyle.OpenAiTopLevel,
+            contextUpdates: LlmWireContextUpdateContract(style: LlmWireContextUpdateStyle.ResponsesAdditionalTools)
+        )
         case LlmWireBuiltinDialect.OpenAiResponses => LlmWireDialectContract("openai.responses.v1", LlmWireProtocol.Responses, LlmWireRequestStyle.OpenAiResponses, LlmWireOutputTokenField.MaxOutputTokens, thinkingModes: [LlmWireThinkingMode.ProviderDefault], reasoningEfforts: levels, structuredOutputModes: [LlmWireStructuredOutputMode.Text, LlmWireStructuredOutputMode.JsonObject, LlmWireStructuredOutputMode.JsonSchema], serviceTiers: [LlmWireServiceTier.Auto, LlmWireServiceTier.Default, LlmWireServiceTier.Flex, LlmWireServiceTier.Priority, LlmWireServiceTier.Fast, LlmWireServiceTier.Ultrafast], promptCacheStyle: LlmWirePromptCacheStyle.OpenAi, promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.ThirtyMinutes], promptCacheRoutingKey: true, parallelToolStyle: LlmWireParallelToolStyle.OpenAiTopLevel, contextUpdates: LlmWireContextUpdateContract(style: LlmWireContextUpdateStyle.ResponsesAdditionalTools))
         case LlmWireBuiltinDialect.OpenAiChat => LlmWireDialectContract("openai.chat.v1", LlmWireProtocol.ChatCompletions, LlmWireRequestStyle.OpenAiChat, LlmWireOutputTokenField.MaxCompletionTokens, thinkingModes: [LlmWireThinkingMode.ProviderDefault, LlmWireThinkingMode.Disabled, LlmWireThinkingMode.Enabled], reasoningEfforts: levels, structuredOutputModes: [LlmWireStructuredOutputMode.Text, LlmWireStructuredOutputMode.JsonObject, LlmWireStructuredOutputMode.JsonSchema], serviceTiers: [LlmWireServiceTier.Auto, LlmWireServiceTier.Default, LlmWireServiceTier.Flex, LlmWireServiceTier.Priority, LlmWireServiceTier.Fast, LlmWireServiceTier.Ultrafast], promptCacheStyle: LlmWirePromptCacheStyle.OpenAi, promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.ThirtyMinutes], promptCacheRoutingKey: true, parallelToolStyle: LlmWireParallelToolStyle.OpenAiTopLevel)
         case LlmWireBuiltinDialect.AnthropicMessages => LlmWireDialectContract("anthropic.messages.v1", LlmWireProtocol.Messages, LlmWireRequestStyle.AnthropicMessages, LlmWireOutputTokenField.MaxTokens, requireMaxOutputTokens: true, thinkingModes: [LlmWireThinkingMode.ProviderDefault, LlmWireThinkingMode.Disabled, LlmWireThinkingMode.Budget(1024), LlmWireThinkingMode.Adaptive], reasoningEfforts: anthropicLevels, structuredOutputModes: [LlmWireStructuredOutputMode.JsonSchema], serviceTiers: [LlmWireServiceTier.Auto, LlmWireServiceTier.StandardOnly], generationSpeeds: [LlmWireGenerationSpeed.Standard, LlmWireGenerationSpeed.Fast], promptCacheStyle: LlmWirePromptCacheStyle.Anthropic, promptCacheLifetimes: [LlmWirePromptCacheLifetime.ProviderDefault, LlmWirePromptCacheLifetime.FiveMinutes, LlmWirePromptCacheLifetime.OneHour], parallelToolStyle: LlmWireParallelToolStyle.AnthropicToolChoice, usageMergeStyle: LlmWireUsageMergeStyle.Monotonic, toolErrorStyle: LlmWireToolErrorStyle.NativeField, contextUpdates: LlmWireContextUpdateContract(style: LlmWireContextUpdateStyle.AnthropicToolReferences))

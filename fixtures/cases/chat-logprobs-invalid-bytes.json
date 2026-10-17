@@ -1,0 +1,42 @@
+{
+  "response": {
+    "id": "chat_fixture",
+    "object": "chat.completion",
+    "model": "fixture-model",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "o"
+        },
+        "finish_reason": "stop",
+        "logprobs": {
+          "content": [
+            {
+              "token": "o",
+              "bytes": [
+                300
+              ],
+              "logprob": -0.1,
+              "top_logprobs": []
+            }
+          ],
+          "refusal": null
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 3,
+      "completion_tokens": 2,
+      "total_tokens": 5,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    }
+  },
+  "events": [
+    "{\"id\":\"chat_fixture\",\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"o\"},\"finish_reason\":\"stop\",\"logprobs\":{\"content\":[{\"token\":\"o\",\"bytes\":[300],\"logprob\":-0.1,\"top_logprobs\":[]}],\"refusal\":null}}]}",
+    "[DONE]"
+  ]
+}

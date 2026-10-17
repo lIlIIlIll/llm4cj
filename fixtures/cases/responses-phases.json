@@ -1,0 +1,67 @@
+{
+  "response": {
+    "id": "resp_fixture",
+    "object": "response",
+    "model": "fixture-model",
+    "status": "completed",
+    "output": [
+      {
+        "id": "msg_0",
+        "type": "message",
+        "role": "assistant",
+        "status": "completed",
+        "phase": "commentary",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "working",
+            "annotations": [],
+            "logprobs": []
+          }
+        ]
+      },
+      {
+        "id": "msg_1",
+        "type": "message",
+        "role": "assistant",
+        "status": "completed",
+        "phase": "final_answer",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "done",
+            "annotations": [],
+            "logprobs": []
+          }
+        ]
+      }
+    ],
+    "usage": {
+      "input_tokens": 3,
+      "output_tokens": 2,
+      "input_tokens_details": {
+        "cached_tokens": 0
+      },
+      "output_tokens_details": {
+        "reasoning_tokens": 1
+      },
+      "total_tokens": 5
+    }
+  },
+  "events": [
+    "{\"type\":\"response.created\",\"response\":{\"id\":\"resp_fixture\",\"model\":\"fixture-model\",\"status\":\"in_progress\",\"output\":[]},\"sequence_number\":0}",
+    "{\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"msg_0\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"in_progress\",\"phase\":\"commentary\",\"content\":[]},\"sequence_number\":1}",
+    "{\"type\":\"response.content_part.added\",\"item_id\":\"msg_0\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\"},\"sequence_number\":2}",
+    "{\"type\":\"response.output_text.delta\",\"item_id\":\"msg_0\",\"output_index\":0,\"content_index\":0,\"delta\":\"working\",\"sequence_number\":3}",
+    "{\"type\":\"response.output_text.done\",\"item_id\":\"msg_0\",\"output_index\":0,\"content_index\":0,\"text\":\"working\",\"sequence_number\":4}",
+    "{\"type\":\"response.content_part.done\",\"item_id\":\"msg_0\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"working\",\"annotations\":[],\"logprobs\":[]},\"sequence_number\":5}",
+    "{\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"msg_0\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"phase\":\"commentary\",\"content\":[{\"type\":\"output_text\",\"text\":\"working\",\"annotations\":[],\"logprobs\":[]}]},\"sequence_number\":6}",
+    "{\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"in_progress\",\"phase\":\"final_answer\",\"content\":[]},\"sequence_number\":7}",
+    "{\"type\":\"response.content_part.added\",\"item_id\":\"msg_1\",\"output_index\":1,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\"},\"sequence_number\":8}",
+    "{\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":1,\"content_index\":0,\"delta\":\"done\",\"sequence_number\":9}",
+    "{\"type\":\"response.output_text.done\",\"item_id\":\"msg_1\",\"output_index\":1,\"content_index\":0,\"text\":\"done\",\"sequence_number\":10}",
+    "{\"type\":\"response.content_part.done\",\"item_id\":\"msg_1\",\"output_index\":1,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"done\",\"annotations\":[],\"logprobs\":[]},\"sequence_number\":11}",
+    "{\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"phase\":\"final_answer\",\"content\":[{\"type\":\"output_text\",\"text\":\"done\",\"annotations\":[],\"logprobs\":[]}]},\"sequence_number\":12}",
+    "{\"type\":\"response.completed\",\"response\":{\"id\":\"resp_fixture\",\"object\":\"response\",\"model\":\"fixture-model\",\"status\":\"completed\",\"output\":[{\"id\":\"msg_0\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"phase\":\"commentary\",\"content\":[{\"type\":\"output_text\",\"text\":\"working\",\"annotations\":[],\"logprobs\":[]}]},{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"phase\":\"final_answer\",\"content\":[{\"type\":\"output_text\",\"text\":\"done\",\"annotations\":[],\"logprobs\":[]}]}],\"usage\":{\"input_tokens\":3,\"output_tokens\":2,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens_details\":{\"reasoning_tokens\":1},\"total_tokens\":5}},\"sequence_number\":13}"
+  ]
+}

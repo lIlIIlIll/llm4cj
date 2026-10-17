@@ -1,1 +1,28 @@
-{"fixture":"openai.chat.v1","source":"https://platform.openai.com/docs/api-reference/chat","captured":"2026-08-27","response":{"id":"chat_fixture","object":"chat.completion","created":1750000000,"model":"gpt-4.1-mini","choices":[{"index":0,"message":{"role":"assistant","content":"ok","refusal":null},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}}
+{
+  "fixture": "openai.chat.v1",
+  "source": "https://developers.openai.com/api/reference/resources/chat/completions/",
+  "checked_at": "2026-10-18",
+  "response": {
+    "id": "chat_fixture",
+    "object": "chat.completion",
+    "model": "fixture-model",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "ok é"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 3,
+      "completion_tokens": 2,
+      "total_tokens": 5,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    }
+  }
+}

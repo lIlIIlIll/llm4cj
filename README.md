@@ -14,7 +14,7 @@
 
 ## 快速开始
 
-本分支是 `v0.3.0` 候选源码，已提供[固定源码 commit](https://github.com/lIlIIlIll/llm4cj/commit/b8bd5b6fd41349900a3806212c63f62694379385)，尚未发布对应 tag；manifest 要求 Cangjie `>= 1.1.0`。从相邻 checkout 以固定本地路径验证：
+本分支是尚未发布 tag 的 `v0.3.0` 候选源码；manifest 要求 Cangjie `>= 1.1.0`。从相邻 checkout 以固定本地路径验证：
 
 ```toml
 [dependencies]
@@ -83,8 +83,10 @@ main(): Int64 {
 - tool arguments 区分完整对象、非法 JSON、非法 shape 与流式 partial；只有完整 JSON object 能进入成功终态或 continuation。严格校验还拒绝孤立、重复、未来匹配、不完整批次，以及 pending call 后的普通对话。
 - canonical message 不允许为空；工具结果 turn 必须先用 ToolResult 完整闭合当前 pending calls，随后可以添加普通内容；未闭合时混入内容或在普通内容后放结果会被拒绝。ToolResult content 是有序的 text 或 image 列表，Kimi 当前验证契约只允许一个 text part。ToolCall name 与工具定义使用同一语法。
 - Responses 流维护 `item_id` 到 `call_id`/name 的状态映射；DeepSeek Chat 与 Kimi 将 provider-native `reasoning_content` 与同一 assistant message 的 text/tool calls 一起回放。
+- Responses 的 `messageSpans` 保留相邻 assistant message 的边界和 phase，贯通 continuation 与 transcript snapshot。OpenAI wire phase 使用 `commentary`、`final_answer` 或缺失值。
+- `LlmWireJson.string/array` 与 parse/number/object 一样返回 `LlmWireResult`，构造过程受 8 MiB 与 256 层限制。工具 schema 的 integer 与 enum 使用精确 JSON 值语义。
 
-内置 dialect：`openai.responses.v1`、`openai.chat.v1`、`anthropic.messages.v1`、`deepseek.responses.v1`、`deepseek.chat.v1`、`deepseek.messages.v1` 与 `kimi.chat.v1`。稳定包通过对应的 model-profile/codec 工厂创建 codec。自定义声明式 dialect、cache pre-warm、custom tool 和 grammar 位于 `llm4cj.experimental`，不享有 v0.3.0 稳定兼容承诺。model 是否真正支持 thinking、tools 或 structured output，仍应由调用方提供 capability。
+内置八个 dialect：`openai.responses.v1`、`openai.codex.responses.v1`、`openai.chat.v1`、`anthropic.messages.v1`、`deepseek.responses.v1`、`deepseek.chat.v1`、`deepseek.messages.v1` 与 `kimi.chat.v1`。稳定包通过对应的 model-profile/codec 工厂创建 codec。Codex 订阅的 SIWC 登录、模型目录及 SSE/WS 连续对话见[原生示例](docs/codex-subscription.md)。自定义声明式 dialect、cache pre-warm、custom tool 和 grammar 位于 `llm4cj.experimental`，不享有 v0.3.0 稳定兼容承诺。model 是否真正支持 thinking、tools 或 structured output，仍应由调用方提供 capability。
 
 动态输入还需要绑定具体 model、endpoint、dialect 和契约版本的 endpoint profile。Responses 使用 `additional_tools`，Anthropic 使用预声明池的 `tool_addition`/`tool_removal` 引用，Kimi 使用 `system.tools`；缺少能力时编码前失败。库保证已有输入片段及顺序保持稳定；真实缓存命中和收益尚未验证，见[有序 transcript](docs/ordered-transcript.md)及[缓存实验](docs/cache-experiments.md)。
 
@@ -93,6 +95,7 @@ main(): Int64 {
 - [安装与首个程序](docs/getting-started.md)
 - [实验 API](docs/experimental.md)
 - [协议与 dialect](docs/choosing-a-protocol.md)
+- [接入 Codex 订阅](docs/codex-subscription.md)
 - [请求与响应](docs/requests-and-replies.md)
 - [有序 transcript 与动态上下文](docs/ordered-transcript.md)
 - [从 v0.2 迁移与 Axyndra 消费契约](docs/migrating-from-v0.2.md)

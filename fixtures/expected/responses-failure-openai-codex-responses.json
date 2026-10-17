@@ -1,0 +1,41 @@
+{
+  "canonical": {
+    "state": {
+      "kind": "provider_failed",
+      "failure": {
+        "kind": "provider_error",
+        "message": "fixture failure",
+        "provider": "openai-codex",
+        "provider_error_code": "fixture_error",
+        "provider_error_type": "server_error",
+        "retryable": false,
+        "http_status": null,
+        "retry_after_millis": null,
+        "provider_request_id": "",
+        "usage": {
+          "input_tokens": 3,
+          "output_tokens": 2,
+          "reasoning_tokens": 1,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": null,
+          "total_tokens": 5,
+          "web_search_requests": null,
+          "web_fetch_requests": null,
+          "service_tier": null,
+          "source": {
+            "provider": "openai-codex",
+            "dialect": "openai.codex.responses.v1"
+          },
+          "cache_read_availability": "reported",
+          "cache_write_availability": "unknown"
+        },
+        "diagnostic": {
+          "type": "server_error",
+          "code": "fixture_error",
+          "message": "fixture failure"
+        }
+      }
+    },
+    "continuation": null
+  }
+}

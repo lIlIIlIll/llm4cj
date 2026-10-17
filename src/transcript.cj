@@ -81,13 +81,15 @@ public class LlmWireTranscript {
 
 func copyTranscriptItems(items: Array<LlmWireInputItem>): Array<LlmWireInputItem> {
     let result = ArrayList<LlmWireInputItem>()
-    for (item in items) {
-        match (item) {
-            case LlmWireInputItem.Message(value) => result.add(LlmWireInputItem.Message(copyTranscriptMessage(value)))
-            case _ => result.add(item)
-        }
-    }
+    for (item in items) { result.add(copyTranscriptItem(item)) }
     result.toArray()
+}
+
+func copyTranscriptItem(item: LlmWireInputItem): LlmWireInputItem {
+    match (item) {
+        case LlmWireInputItem.Message(value) => LlmWireInputItem.Message(copyTranscriptMessage(value))
+        case _ => item
+    }
 }
 
 func copyTranscriptText(value: LlmWireTextBlock): LlmWireTextBlock {
@@ -127,5 +129,5 @@ func copyTranscriptMessage(message: LlmWireMessage): LlmWireMessage {
             case _ => blocks.add(block)
         }
     }
-    LlmWireMessage(message.role, blocks.toArray())
+    LlmWireMessage(message.role, blocks.toArray(), messageSpans: message.messageSpans)
 }

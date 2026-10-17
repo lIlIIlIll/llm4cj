@@ -1,1 +1,34 @@
-{"fixture":"deepseek.messages.v1","source":"https://api-docs.deepseek.com/guides/anthropic_api/","captured":"2026-08-27","response":{"id":"msg_fixture","type":"message","role":"assistant","model":"deepseek-v4-pro","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}}
+{
+  "fixture": "deepseek.messages.v1",
+  "source": "https://api-docs.deepseek.com/guides/anthropic_api/",
+  "checked_at": "2026-10-18",
+  "response": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "fixture-model",
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "why",
+        "signature": "signature-fixture"
+      },
+      {
+        "type": "text",
+        "text": "ok é"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 10,
+      "output_tokens": 2,
+      "cache_read_input_tokens": 20,
+      "cache_creation_input_tokens": 30,
+      "server_tool_use": {
+        "web_search_requests": 2,
+        "web_fetch_requests": 1
+      }
+    }
+  }
+}

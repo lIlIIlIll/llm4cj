@@ -26,3 +26,9 @@ __pycache__/
 !/fixtures/streams/*.json
 !/fixtures/transcripts/
 !/fixtures/transcripts/*.json
+!/fixtures/websocket/
+!/fixtures/websocket/*.json
+!/fixtures/cases/
+!/fixtures/cases/*.json
+!/fixtures/expected/
+!/fixtures/expected/*.json

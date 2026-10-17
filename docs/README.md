@@ -3,6 +3,7 @@
 从[安装与首个程序](getting-started.md)开始。新集成优先使用 Responses，并显式选择 dialect 与 model capability。
 
 - [协议与 dialect](choosing-a-protocol.md)
+- [接入 Codex 订阅](codex-subscription.md)
 - [请求与响应](requests-and-replies.md)
 - [有序 transcript 与动态上下文](ordered-transcript.md)
 - [从 v0.2 迁移与 Axyndra 消费契约](migrating-from-v0.2.md)

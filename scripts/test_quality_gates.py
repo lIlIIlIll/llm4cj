@@ -13,11 +13,13 @@ import sys
 import tempfile
 import tomllib
 import unittest
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
 import check_api_compat
 import check_contract
+import check_fixtures
 import check_patch_coverage
 import bootstrap_repository
 import consumer_compile
@@ -514,6 +516,211 @@ class ApiCompatibilityTests(unittest.TestCase):
     def test_stable_release_requires_major_bump(self) -> None:
         self.assertFalse(check_api_compat.permits_shape_change((1, 2, 0), (1, 3, 0)))
         self.assertTrue(check_api_compat.permits_shape_change((1, 2, 0), (2, 0, 0)))
+
+
+class FixtureOracleTests(unittest.TestCase):
+    @staticmethod
+    def source() -> dict:
+        return {
+            "url": "https://developers.openai.com/api/reference/responses/create",
+            "checked_at": "2026-01-01",
+            "revision": "validator-fixture-v1",
+            "kind": "schema_derived",
+            "notes": "Synthetic provenance record for validator tests.",
+        }
+
+    def manifest(self) -> tuple[Path, dict]:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        fixtures = root / "fixtures"
+        fixtures.mkdir()
+        manifest = {
+            "version": 1,
+            "live_provider": "not_run",
+            "dialects": [
+                {"id": dialect, "probe": probe,
+                 "protocol": "responses" if ".responses." in dialect else
+                             "chat_completions" if ".chat." in dialect else "messages"}
+                for dialect, probe in check_fixtures.DIALECTS.items()
+            ],
+            "cases": [],
+            "requests": [f"requests/{probe}.json" for probe in check_fixtures.DIALECTS.values()],
+            "transcripts": ["transcripts/openai-responses.json", "transcripts/anthropic-messages.json",
+                            "transcripts/kimi-chat.json"],
+        }
+        scenarios = ["text", "tool", "refusal", "usage", "provider-failure", "truncated",
+                     "continuation", "phase", "reasoning", "native-replay", "logprobs"]
+        for dialect, probe in check_fixtures.DIALECTS.items():
+            case = {
+                "id": probe, "dialect": dialect, "probe": probe, "scenario": scenarios[:],
+                "source": self.source(), "pair": False,
+                "expected": f"expected/{probe}.json", "wire": {"fixed": f"responses/{probe}.json"},
+            }
+            manifest["cases"].append(case)
+            for relative, value in [(case["expected"], {"canonical": {}}),
+                                    (case["wire"]["fixed"], {"response": {}})]:
+                path = fixtures / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(value))
+        for relative in manifest["requests"] + manifest["transcripts"]:
+            path = fixtures / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("{}\n")
+        self.write_manifest(fixtures, manifest)
+        for name, value in [("FIXTURES", fixtures), ("MANIFEST", fixtures / "manifest.json")]:
+            patcher = patch.object(check_fixtures, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        return fixtures, manifest
+
+    @staticmethod
+    def write_manifest(fixtures: Path, manifest: dict) -> None:
+        (fixtures / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    def test_oracle_rejects_type_coercion_missing_fields_and_reordered_blocks(self) -> None:
+        for actual, expected in [(True, 1), (False, 0), (None, 0), ({}, {"value": None}),
+                                 ({"usage": {}}, {"usage": {"outputTokens": 0}}),
+                                 ({"blocks": [{"kind": "text", "text": "answer"}]},
+                                  {"blocks": [{"kind": "text", "text": "answer", "phase": "final"}]}),
+                                 ([{"kind": "text"}, {"kind": "tool"}],
+                                  [{"kind": "tool"}, {"kind": "text"}])]:
+            with self.subTest(actual=actual, expected=expected), self.assertRaises(AssertionError):
+                check_fixtures.assert_equal(actual, expected, "oracle")
+        check_fixtures.assert_equal({"text": "answer", "usage": 1},
+                                    {"usage": Decimal("1.0"), "text": "answer"}, "oracle")
+
+    def test_oracle_compares_exact_numeric_and_logprob_values_without_float_rounding(self) -> None:
+        for actual, expected in [("9007199254740992", "9007199254740993"),
+                                 ("0.123456789012345678901", "0.123456789012345678902"),
+                                 ("-1e-1000", "-2e-1000")]:
+            with self.subTest(actual=actual), self.assertRaises(AssertionError):
+                check_fixtures.assert_equal(check_fixtures.parse_json(actual),
+                                            check_fixtures.parse_json(expected), "oracle.logprob")
+        text = '{"logprobs":[{"token":"x","logprob":-0.123456789012345678901,"top":[1e-1000]}]}'
+        value = check_fixtures.parse_json(text)
+        encoded = check_fixtures.dump_json(value)
+        self.assertIn("-0.123456789012345678901", encoded)
+        check_fixtures.assert_equal(check_fixtures.parse_json(encoded), value, "oracle")
+        self.assertIsInstance(value["logprobs"][0]["logprob"], Decimal)
+
+    def test_oracle_json_rejects_duplicate_keys_non_json_numbers_and_python_floats(self) -> None:
+        for text in ['{"value":1,"value":2}', "NaN", "Infinity", "-Infinity"]:
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                check_fixtures.parse_json(text)
+        for value in [0.1, {"logprob": 0.1}, {1, 2}]:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                check_fixtures.dump_json(value)
+
+    def test_source_validation_requires_primary_revision_kind_and_authorized_capture(self) -> None:
+        for change in [{"url": "http://developers.openai.com/api"},
+                       {"url": "https://example.test/protocol"},
+                       {"url": "https://user@developers.openai.com/api"},
+                       {"checked_at": "2026-02-30"}, {"revision": ""}, {"notes": ""},
+                       {"kind": "unattributed"}, {"kind": "authorized_capture"}]:
+            source = self.source() | change
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                check_fixtures.validate_source(source, "synthetic")
+        capture = self.source() | {
+            "kind": "authorized_capture", "authorization": "Fixture owner approved this synthetic capture.",
+            "captured_at": "2026-01-01", "sanitization": "No credentials or identifying data.",
+        }
+        check_fixtures.validate_source(capture, "synthetic")
+        for field in ["authorization", "captured_at", "sanitization"]:
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                check_fixtures.validate_source(capture | {field: ""}, "synthetic")
+
+    def test_manifest_inventory_is_exact_and_does_not_adopt_unlisted_files(self) -> None:
+        fixtures, manifest = self.manifest()
+        validated = check_fixtures.validate_manifest()
+        expected = {"manifest.json", *manifest["requests"], *manifest["transcripts"]}
+        for case in manifest["cases"]:
+            expected.add(case["expected"])
+            expected.update(case["wire"].values())
+        (fixtures / "unlisted.json").write_text("{}\n")
+        inventory = check_fixtures.fixture_inventory(validated)
+        self.assertEqual([path.relative_to(fixtures).as_posix() for path in inventory], sorted(expected))
+        self.assertEqual(len(inventory), len(expected))
+
+    def test_manifest_rejects_changed_evidence_boundary_and_incomplete_dialect_set(self) -> None:
+        fixtures, manifest = self.manifest()
+        for change in [{"version": 2}, {"live_provider": "verified"},
+                       {"dialects": manifest["dialects"][:-1]},
+                       {"dialects": manifest["dialects"] + manifest["dialects"][:1]}]:
+            self.write_manifest(fixtures, manifest | change)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                check_fixtures.validate_manifest()
+
+    def test_manifest_requires_continuation_and_logprob_semantic_coverage(self) -> None:
+        fixtures, manifest = self.manifest()
+        for dialect, scenario in [("openai.responses.v1", "continuation"),
+                                  ("openai.responses.v1", "phase"),
+                                  ("openai.chat.v1", "logprobs"),
+                                  ("kimi.chat.v1", "native-replay")]:
+            modified = json.loads(json.dumps(manifest))
+            case = next(case for case in modified["cases"] if case["dialect"] == dialect)
+            case["scenario"].remove(scenario)
+            self.write_manifest(fixtures, modified)
+            with self.subTest(dialect=dialect, scenario=scenario), self.assertRaisesRegex(ValueError, "missing semantic coverage"):
+                check_fixtures.validate_manifest()
+
+    def test_manifest_rejects_incorrect_protocol_pair_policy_and_cancel_flags(self) -> None:
+        fixtures, manifest = self.manifest()
+        modified = json.loads(json.dumps(manifest))
+        modified["dialects"][0]["protocol"] = "messages"
+        self.write_manifest(fixtures, modified)
+        with self.assertRaisesRegex(ValueError, "dialect and protocol disagree"):
+            check_fixtures.validate_manifest()
+        for case_change in [{"pair": "unknown"}, {"pair": 1},
+                            {"wire": manifest["cases"][0]["wire"] | {"cancel": True}},
+                            {"wire": {"stream": manifest["cases"][0]["wire"]["fixed"], "cancel": 1}}]:
+            modified = json.loads(json.dumps(manifest))
+            modified["cases"][0].update(case_change)
+            self.write_manifest(fixtures, modified)
+            with self.subTest(change=case_change), self.assertRaises(ValueError):
+                check_fixtures.validate_manifest()
+
+    def test_manifest_rejects_duplicate_scenarios_missing_provenance_or_missing_mode_oracle(self) -> None:
+        fixtures, manifest = self.manifest()
+        mutations = [lambda value: value["cases"].append(value["cases"][0]),
+                     lambda value: value["cases"][0].update(source={}),
+                     lambda value: value["cases"][0].update(probe="wrong-codec"),
+                     lambda value: value["cases"][0].update(pair=True)]
+        for mutate in mutations:
+            modified = json.loads(json.dumps(manifest))
+            mutate(modified)
+            self.write_manifest(fixtures, modified)
+            with self.subTest(mutation=mutations.index(mutate)), self.assertRaises(ValueError):
+                check_fixtures.validate_manifest()
+        self.write_manifest(fixtures, manifest)
+        (fixtures / manifest["cases"][0]["expected"]).write_text('{"stream":{}}')
+        with self.assertRaisesRegex(ValueError, "missing independent fixed oracle"):
+            check_fixtures.validate_manifest()
+
+    def test_manifest_rejects_missing_request_transcript_and_referenced_files(self) -> None:
+        fixtures, manifest = self.manifest()
+        for change in [{"requests": manifest["requests"][:-1]},
+                       {"transcripts": manifest["transcripts"][:-1]},
+                       {"requests": manifest["requests"] + manifest["requests"][:1]},
+                       {"transcripts": manifest["transcripts"] + manifest["transcripts"][:1]}]:
+            self.write_manifest(fixtures, manifest | change)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                check_fixtures.validate_manifest()
+        self.write_manifest(fixtures, manifest)
+        (fixtures / manifest["cases"][0]["wire"]["fixed"]).unlink()
+        with self.assertRaisesRegex(ValueError, "invalid fixture reference"):
+            check_fixtures.validate_manifest()
+
+    def test_inventory_rejects_path_traversal_absolute_paths_and_escaping_symlinks(self) -> None:
+        fixtures, manifest = self.manifest()
+        outside = fixtures.parent / "outside.json"
+        outside.write_text("{}\n")
+        (fixtures / "escape.json").symlink_to(outside)
+        for relative in ["../outside.json", str(outside), "escape.json", "missing.json"]:
+            modified = json.loads(json.dumps(manifest))
+            modified["cases"][0]["expected"] = relative
+            with self.subTest(relative=relative), self.assertRaises(ValueError):
+                check_fixtures.fixture_inventory(modified)
 
 
 class RepositoryBootstrapTests(unittest.TestCase):

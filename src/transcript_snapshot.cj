@@ -48,8 +48,8 @@ func readTranscriptSnapshot(source: String): JsonNode {
     }
 }
 
-// This is the first transcript format. It deliberately does not read legacy
-// separated requests or infer a version from fields that happen to be present.
+// Version 2 adds assistant message boundaries. Version 1 remains readable but
+// cannot recover boundaries that its writer did not retain.
 func encodeTranscriptSnapshot(transcript: LlmWireTranscript): JsonNode {
     let instructions = ArrayList<JsonNode>()
     let tools = ArrayList<JsonNode>()
@@ -59,7 +59,7 @@ func encodeTranscriptSnapshot(transcript: LlmWireTranscript): JsonNode {
     for (item in transcript.items) { items.add(snapshotItem(item)) }
     wireJsonObject([
         WireJsonField("format", wireJsonString("llm4cj.transcript")),
-        WireJsonField("version", wireJsonNumber("1")),
+        WireJsonField("version", wireJsonNumber("2")),
         WireJsonField("initial_context", wireJsonObject([
             WireJsonField("instructions", wireJsonArray(instructions.toArray())),
             WireJsonField("tools", wireJsonArray(tools.toArray()))
@@ -71,8 +71,8 @@ func encodeTranscriptSnapshot(transcript: LlmWireTranscript): JsonNode {
 func decodeTranscriptSnapshot(value: JsonNode): LlmWireTranscript {
     let root = wireObject(value, "transcript snapshot")
     let version = wireOptionalInt(root, "version")
-    if (version != Some(1)) {
-        throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.transcript_version_unsupported", "only transcript snapshot version 1 is supported")
+    if (version != Some(1) && version != Some(2)) {
+        throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.transcript_version_unsupported", "only transcript snapshot versions 1 and 2 are supported")
     }
     if (wireOptionalString(root, "format") != Some("llm4cj.transcript")) {
         throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.transcript_snapshot_invalid", "unknown transcript snapshot format")
@@ -85,7 +85,7 @@ func decodeTranscriptSnapshot(value: JsonNode): LlmWireTranscript {
     let items = ArrayList<LlmWireInputItem>()
     for (entry in snapshotArray(context, "instructions")) { instructions.add(restoreInstruction(entry)) }
     for (entry in snapshotArray(context, "tools")) { tools.add(restoreDeclaration(entry)) }
-    for (entry in snapshotArray(root, "items")) { items.add(restoreItem(entry)) }
+    for (entry in snapshotArray(root, "items")) { items.add(restoreItem(entry, version: version.getOrThrow())) }
     LlmWireTranscript(LlmWireInitialContext(instructions: instructions.toArray(), tools: tools.toArray()), items: items.toArray())
 }
 
@@ -166,11 +166,11 @@ func snapshotItem(item: LlmWireInputItem): JsonNode {
     wireJsonObject([WireJsonField("kind", wireJsonString(kind)), WireJsonField("value", value)])
 }
 
-func restoreItem(item: JsonNode): LlmWireInputItem {
+func restoreItem(item: JsonNode, version!: Int64 = 2): LlmWireInputItem {
     snapshotFields(item, ["kind", "value"])
     let value = wireRequiredField(item, "value")
     match (wireRequiredString(item, "kind")) {
-        case "message" => LlmWireInputItem.Message(restoreMessage(value))
+        case "message" => LlmWireInputItem.Message(restoreMessage(value, version: version))
         case "instruction_update" => LlmWireInputItem.InstructionUpdate(restoreInstruction(value))
         case "tool_declaration" => LlmWireInputItem.ToolDeclaration(restoreDeclaration(value))
         case "tool_activation" => LlmWireInputItem.ToolActivation(restoreDefinitionIdentity(value))
@@ -180,16 +180,22 @@ func restoreItem(item: JsonNode): LlmWireInputItem {
 }
 
 func snapshotMessage(value: LlmWireMessage): JsonNode {
+    validateSnapshotMessageSpans(value.role, value.blocks, value.messageSpans)
     let blocks = ArrayList<JsonNode>()
     for (block in value.blocks) { blocks.add(snapshotBlock(block)) }
+    let spans = ArrayList<JsonNode>()
+    for (span in value.messageSpans) {
+        spans.add(wireJsonObject([WireJsonField("block_start", wireJsonNumber(span.blockStart.toString())),
+            WireJsonField("block_count", wireJsonNumber(span.blockCount.toString())), WireJsonField("phase", wireJsonString(snapshotPhaseName(span.phase)))]))
+    }
     wireJsonObject([
         WireJsonField("role", wireJsonString(if (value.role == LlmWireRole.User) { "user" } else { "assistant" })),
-        WireJsonField("blocks", wireJsonArray(blocks.toArray()))
+        WireJsonField("blocks", wireJsonArray(blocks.toArray())), WireJsonField("message_spans", wireJsonArray(spans.toArray()))
     ])
 }
 
-func restoreMessage(value: JsonNode): LlmWireMessage {
-    snapshotFields(value, ["role", "blocks"])
+func restoreMessage(value: JsonNode, version!: Int64 = 2): LlmWireMessage {
+    snapshotFields(value, if (version == 1) { ["role", "blocks"] } else { ["role", "blocks", "message_spans"] })
     let role = match (wireRequiredString(value, "role")) {
         case "user" => LlmWireRole.User
         case "assistant" => LlmWireRole.Assistant
@@ -197,7 +203,39 @@ func restoreMessage(value: JsonNode): LlmWireMessage {
     }
     let blocks = ArrayList<LlmWireBlock>()
     for (block in snapshotArray(value, "blocks")) { blocks.add(restoreBlock(block)) }
-    LlmWireMessage(role, blocks.toArray())
+    let spans = ArrayList<LlmWireAssistantMessageSpan>()
+    if (version == 2) { for (span in snapshotArray(value, "message_spans")) {
+        snapshotFields(span, ["block_start", "block_count", "phase"])
+        spans.add(LlmWireAssistantMessageSpan(wireRequiredInt(span, "block_start"), wireRequiredInt(span, "block_count"), phase: restoreSnapshotPhase(wireRequiredString(span, "phase"))))
+    } }
+    let content = blocks.toArray(); let metadata = spans.toArray()
+    validateSnapshotMessageSpans(role, content, metadata)
+    LlmWireMessage(role, content, messageSpans: metadata)
+}
+
+func validateSnapshotMessageSpans(role: LlmWireRole, content: Array<LlmWireBlock>, metadata: Array<LlmWireAssistantMessageSpan>): Unit {
+    if (!metadata.isEmpty() && role != LlmWireRole.Assistant) { snapshotInvalid("assistant message spans cannot be attached to user messages") }
+    try { validateMessageSpanLayout(metadata, content.size, { index => isResponsesMessageContent(content[index]) }) }
+    catch (_: LlmWireError) { snapshotInvalid("invalid assistant message span layout") }
+    for (span in metadata) { for (index in span.blockStart..span.blockStart + span.blockCount) { match (content[index]) {
+        case LlmWireBlock.Text(text) => if (text.phase != LlmWireOutputPhase.Unspecified && text.phase != span.phase) { snapshotInvalid("text phase conflicts with assistant message span") }
+        case _ => ()
+    } } }
+}
+
+func snapshotPhaseName(value: LlmWireOutputPhase): String {
+    match (value) {
+        case LlmWireOutputPhase.Unspecified => "unspecified"; case LlmWireOutputPhase.Analysis => "analysis"
+        case LlmWireOutputPhase.Commentary => "commentary"; case LlmWireOutputPhase.Final => "final"
+    }
+}
+
+func restoreSnapshotPhase(value: String): LlmWireOutputPhase {
+    match (value) {
+        case "unspecified" => LlmWireOutputPhase.Unspecified; case "analysis" => LlmWireOutputPhase.Analysis
+        case "commentary" => LlmWireOutputPhase.Commentary; case "final" => LlmWireOutputPhase.Final
+        case _ => snapshotInvalid("unknown phase in transcript snapshot")
+    }
 }
 
 func snapshotBlock(block: LlmWireBlock): JsonNode {
@@ -337,10 +375,7 @@ func snapshotText(value: LlmWireTextBlock): JsonNode {
         }
         annotations.add(wireJsonObject([WireJsonField("kind", wireJsonString(kind)), WireJsonField("citation", snapshotCitation(citation))]))
     }
-    let phase = match (value.phase) {
-        case LlmWireOutputPhase.Unspecified => "unspecified"; case LlmWireOutputPhase.Analysis => "analysis"
-        case LlmWireOutputPhase.Commentary => "commentary"; case LlmWireOutputPhase.Final => "final"
-    }
+    let phase = snapshotPhaseName(value.phase)
     wireJsonObject([WireJsonField("text", wireJsonString(value.text)), WireJsonField("citations", wireJsonArray(citations.toArray())),
         WireJsonField("annotations", wireJsonArray(annotations.toArray())), WireJsonField("logprobs", snapshotLogprobs(value.logprobs)), WireJsonField("phase", wireJsonString(phase))])
 }
@@ -359,11 +394,7 @@ func restoreText(value: JsonNode): LlmWireTextBlock {
             case _ => snapshotInvalid("unknown annotation kind in transcript snapshot")
         }
     }
-    let phase = match (wireRequiredString(value, "phase")) {
-        case "unspecified" => LlmWireOutputPhase.Unspecified; case "analysis" => LlmWireOutputPhase.Analysis
-        case "commentary" => LlmWireOutputPhase.Commentary; case "final" => LlmWireOutputPhase.Final
-        case _ => snapshotInvalid("unknown text phase in transcript snapshot")
-    }
+    let phase = restoreSnapshotPhase(wireRequiredString(value, "phase"))
     LlmWireTextBlock(wireRequiredString(value, "text"), citations: citations.toArray(), annotations: annotations.toArray(),
         logprobs: restoreLogprobs(wireRequiredField(value, "logprobs")), phase: phase)
 }

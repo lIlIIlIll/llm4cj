@@ -1,0 +1,1573 @@
+{
+  "version": 1,
+  "live_provider": "not_run",
+  "dialects": [
+    {
+      "id": "openai.responses.v1",
+      "protocol": "responses",
+      "probe": "openai-responses"
+    },
+    {
+      "id": "openai.codex.responses.v1",
+      "protocol": "responses",
+      "probe": "openai-codex-responses"
+    },
+    {
+      "id": "deepseek.responses.v1",
+      "protocol": "responses",
+      "probe": "deepseek-responses"
+    },
+    {
+      "id": "openai.chat.v1",
+      "protocol": "chat_completions",
+      "probe": "openai-chat"
+    },
+    {
+      "id": "deepseek.chat.v1",
+      "protocol": "chat_completions",
+      "probe": "deepseek-chat"
+    },
+    {
+      "id": "kimi.chat.v1",
+      "protocol": "chat_completions",
+      "probe": "kimi-chat"
+    },
+    {
+      "id": "anthropic.messages.v1",
+      "protocol": "messages",
+      "probe": "anthropic-messages"
+    },
+    {
+      "id": "deepseek.messages.v1",
+      "protocol": "messages",
+      "probe": "deepseek-messages"
+    }
+  ],
+  "cases": [
+    {
+      "id": "baseline-openai-responses",
+      "dialect": "openai.responses.v1",
+      "probe": "openai-responses",
+      "scenario": [
+        "text",
+        "reasoning",
+        "usage",
+        "phase",
+        "native-replay",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/responses/streaming-events",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "openai-responses.json",
+        "stream": "streams/openai-responses.json"
+      },
+      "expected": "expected/baseline-openai-responses.json",
+      "pair": true
+    },
+    {
+      "id": "baseline-openai-codex-responses",
+      "dialect": "openai.codex.responses.v1",
+      "probe": "openai-codex-responses",
+      "scenario": [
+        "text",
+        "reasoning",
+        "usage",
+        "phase",
+        "native-replay",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Responses schema: https://developers.openai.com/api/reference/resources/responses/streaming-events . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "openai-codex-responses.json",
+        "stream": "streams/openai-codex-responses.json",
+        "websocket": "websocket/openai-codex-responses.json"
+      },
+      "expected": "expected/baseline-openai-codex-responses.json",
+      "pair": true
+    },
+    {
+      "id": "baseline-deepseek-responses",
+      "dialect": "deepseek.responses.v1",
+      "probe": "deepseek-responses",
+      "scenario": [
+        "text",
+        "reasoning",
+        "usage",
+        "phase",
+        "native-replay",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/api/create-response/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Responses schema: https://developers.openai.com/api/reference/resources/responses/streaming-events . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "deepseek-responses.json",
+        "stream": "streams/deepseek-responses.json"
+      },
+      "expected": "expected/baseline-deepseek-responses.json",
+      "pair": true
+    },
+    {
+      "id": "baseline-openai-chat",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "text",
+        "usage",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "openai-chat.json",
+        "stream": "streams/openai-chat.json"
+      },
+      "expected": "expected/baseline-openai-chat.json",
+      "pair": true
+    },
+    {
+      "id": "baseline-deepseek-chat",
+      "dialect": "deepseek.chat.v1",
+      "probe": "deepseek-chat",
+      "scenario": [
+        "text",
+        "usage",
+        "reasoning",
+        "native-replay",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Chat schema: https://developers.openai.com/api/reference/resources/chat/completions/ . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "deepseek-chat.json",
+        "stream": "streams/deepseek-chat.json"
+      },
+      "expected": "expected/baseline-deepseek-chat.json",
+      "pair": true
+    },
+    {
+      "id": "baseline-kimi-chat",
+      "dialect": "kimi.chat.v1",
+      "probe": "kimi-chat",
+      "scenario": [
+        "text",
+        "usage",
+        "reasoning",
+        "native-replay",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.kimi.ai/docs/api/chat",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Chat schema: https://developers.openai.com/api/reference/resources/chat/completions/ . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "kimi-chat.json",
+        "stream": "streams/kimi-chat.json"
+      },
+      "expected": "expected/baseline-kimi-chat.json",
+      "pair": true
+    },
+    {
+      "id": "baseline-anthropic-messages",
+      "dialect": "anthropic.messages.v1",
+      "probe": "anthropic-messages",
+      "scenario": [
+        "text",
+        "reasoning",
+        "usage",
+        "usage-service-tier",
+        "delta-cache-usage",
+        "native-replay",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.claude.com/docs/en/build-with-claude/streaming",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. Primary service tier schema: https://platform.claude.com/docs/en/api/service-tiers . The usage.service_tier value is reported by message_start and retained across message_delta events, which do not add this field. No live capture."
+      },
+      "wire": {
+        "fixed": "anthropic-messages.json",
+        "stream": "streams/anthropic-messages.json"
+      },
+      "expected": "expected/baseline-anthropic-messages.json",
+      "pair": true
+    },
+    {
+      "id": "baseline-deepseek-messages",
+      "dialect": "deepseek.messages.v1",
+      "probe": "deepseek-messages",
+      "scenario": [
+        "text",
+        "reasoning",
+        "usage",
+        "delta-cache-usage",
+        "native-replay",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/guides/anthropic_api/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Messages schema: https://platform.claude.com/docs/en/build-with-claude/streaming . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "deepseek-messages.json",
+        "stream": "streams/deepseek-messages.json"
+      },
+      "expected": "expected/baseline-deepseek-messages.json",
+      "pair": true
+    },
+    {
+      "id": "responses-refusal-openai-responses",
+      "dialect": "openai.responses.v1",
+      "probe": "openai-responses",
+      "scenario": [
+        "refusal",
+        "issue-30"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/responses/streaming-events",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-refusal.json",
+        "stream": "cases/responses-refusal.json"
+      },
+      "expected": "expected/responses-refusal-openai-responses.json",
+      "pair": true
+    },
+    {
+      "id": "responses-tool-openai-responses",
+      "dialect": "openai.responses.v1",
+      "probe": "openai-responses",
+      "scenario": [
+        "tool",
+        "issue-30",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/responses/streaming-events",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-tool.json",
+        "stream": "cases/responses-tool.json"
+      },
+      "expected": "expected/responses-tool-openai-responses.json",
+      "pair": true
+    },
+    {
+      "id": "responses-phases-openai-responses",
+      "dialect": "openai.responses.v1",
+      "probe": "openai-responses",
+      "scenario": [
+        "phase",
+        "message-order",
+        "issue-31",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/responses/streaming-events",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-phases.json",
+        "stream": "cases/responses-phases.json"
+      },
+      "expected": "expected/responses-phases-openai-responses.json",
+      "pair": true
+    },
+    {
+      "id": "responses-incomplete-openai-responses",
+      "dialect": "openai.responses.v1",
+      "probe": "openai-responses",
+      "scenario": [
+        "incomplete"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/responses/streaming-events",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-incomplete.json",
+        "stream": "cases/responses-incomplete.json"
+      },
+      "expected": "expected/responses-incomplete-openai-responses.json",
+      "pair": true
+    },
+    {
+      "id": "responses-truncated-openai-responses",
+      "dialect": "openai.responses.v1",
+      "probe": "openai-responses",
+      "scenario": [
+        "truncated"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/responses/streaming-events",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "stream": "cases/responses-truncated.json"
+      },
+      "expected": "expected/responses-truncated-openai-responses.json",
+      "pair": false
+    },
+    {
+      "id": "responses-failure-openai-responses",
+      "dialect": "openai.responses.v1",
+      "probe": "openai-responses",
+      "scenario": [
+        "provider-failure",
+        "usage"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/responses/streaming-events",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-failure.json",
+        "stream": "cases/responses-failure.json"
+      },
+      "expected": "expected/responses-failure-openai-responses.json",
+      "pair": true
+    },
+    {
+      "id": "responses-refusal-openai-codex-responses",
+      "dialect": "openai.codex.responses.v1",
+      "probe": "openai-codex-responses",
+      "scenario": [
+        "refusal",
+        "issue-30"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Responses schema: https://developers.openai.com/api/reference/resources/responses/streaming-events . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-refusal.json",
+        "stream": "cases/responses-refusal.json"
+      },
+      "expected": "expected/responses-refusal-openai-codex-responses.json",
+      "pair": true
+    },
+    {
+      "id": "responses-tool-openai-codex-responses",
+      "dialect": "openai.codex.responses.v1",
+      "probe": "openai-codex-responses",
+      "scenario": [
+        "tool",
+        "issue-30",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Responses schema: https://developers.openai.com/api/reference/resources/responses/streaming-events . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-tool.json",
+        "stream": "cases/responses-tool.json"
+      },
+      "expected": "expected/responses-tool-openai-codex-responses.json",
+      "pair": true
+    },
+    {
+      "id": "responses-phases-openai-codex-responses",
+      "dialect": "openai.codex.responses.v1",
+      "probe": "openai-codex-responses",
+      "scenario": [
+        "phase",
+        "message-order",
+        "issue-31",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Responses schema: https://developers.openai.com/api/reference/resources/responses/streaming-events . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-phases.json",
+        "stream": "cases/responses-phases.json"
+      },
+      "expected": "expected/responses-phases-openai-codex-responses.json",
+      "pair": true
+    },
+    {
+      "id": "responses-incomplete-openai-codex-responses",
+      "dialect": "openai.codex.responses.v1",
+      "probe": "openai-codex-responses",
+      "scenario": [
+        "incomplete"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Responses schema: https://developers.openai.com/api/reference/resources/responses/streaming-events . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-incomplete.json",
+        "stream": "cases/responses-incomplete.json"
+      },
+      "expected": "expected/responses-incomplete-openai-codex-responses.json",
+      "pair": true
+    },
+    {
+      "id": "responses-truncated-openai-codex-responses",
+      "dialect": "openai.codex.responses.v1",
+      "probe": "openai-codex-responses",
+      "scenario": [
+        "truncated"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Responses schema: https://developers.openai.com/api/reference/resources/responses/streaming-events . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "stream": "cases/responses-truncated.json"
+      },
+      "expected": "expected/responses-truncated-openai-codex-responses.json",
+      "pair": false
+    },
+    {
+      "id": "responses-failure-openai-codex-responses",
+      "dialect": "openai.codex.responses.v1",
+      "probe": "openai-codex-responses",
+      "scenario": [
+        "provider-failure",
+        "usage"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Responses schema: https://developers.openai.com/api/reference/resources/responses/streaming-events . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-failure.json",
+        "stream": "cases/responses-failure.json"
+      },
+      "expected": "expected/responses-failure-openai-codex-responses.json",
+      "pair": true
+    },
+    {
+      "id": "responses-refusal-deepseek-responses",
+      "dialect": "deepseek.responses.v1",
+      "probe": "deepseek-responses",
+      "scenario": [
+        "refusal",
+        "issue-30"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/api/create-response/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Responses schema: https://developers.openai.com/api/reference/resources/responses/streaming-events . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-refusal.json",
+        "stream": "cases/responses-refusal.json"
+      },
+      "expected": "expected/responses-refusal-deepseek-responses.json",
+      "pair": true
+    },
+    {
+      "id": "responses-tool-deepseek-responses",
+      "dialect": "deepseek.responses.v1",
+      "probe": "deepseek-responses",
+      "scenario": [
+        "tool",
+        "issue-30",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/api/create-response/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Responses schema: https://developers.openai.com/api/reference/resources/responses/streaming-events . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-tool.json",
+        "stream": "cases/responses-tool.json"
+      },
+      "expected": "expected/responses-tool-deepseek-responses.json",
+      "pair": true
+    },
+    {
+      "id": "responses-phases-deepseek-responses",
+      "dialect": "deepseek.responses.v1",
+      "probe": "deepseek-responses",
+      "scenario": [
+        "phase",
+        "message-order",
+        "issue-31",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/api/create-response/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Responses schema: https://developers.openai.com/api/reference/resources/responses/streaming-events . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-phases.json",
+        "stream": "cases/responses-phases.json"
+      },
+      "expected": "expected/responses-phases-deepseek-responses.json",
+      "pair": true
+    },
+    {
+      "id": "responses-incomplete-deepseek-responses",
+      "dialect": "deepseek.responses.v1",
+      "probe": "deepseek-responses",
+      "scenario": [
+        "incomplete"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/api/create-response/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Responses schema: https://developers.openai.com/api/reference/resources/responses/streaming-events . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-incomplete.json",
+        "stream": "cases/responses-incomplete.json"
+      },
+      "expected": "expected/responses-incomplete-deepseek-responses.json",
+      "pair": true
+    },
+    {
+      "id": "responses-truncated-deepseek-responses",
+      "dialect": "deepseek.responses.v1",
+      "probe": "deepseek-responses",
+      "scenario": [
+        "truncated"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/api/create-response/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Responses schema: https://developers.openai.com/api/reference/resources/responses/streaming-events . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "stream": "cases/responses-truncated.json"
+      },
+      "expected": "expected/responses-truncated-deepseek-responses.json",
+      "pair": false
+    },
+    {
+      "id": "responses-failure-deepseek-responses",
+      "dialect": "deepseek.responses.v1",
+      "probe": "deepseek-responses",
+      "scenario": [
+        "provider-failure",
+        "usage"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/api/create-response/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Responses schema: https://developers.openai.com/api/reference/resources/responses/streaming-events . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/responses-failure.json",
+        "stream": "cases/responses-failure.json"
+      },
+      "expected": "expected/responses-failure-deepseek-responses.json",
+      "pair": true
+    },
+    {
+      "id": "chat-refusal-openai-chat",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "refusal"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-refusal.json",
+        "stream": "cases/chat-refusal.json"
+      },
+      "expected": "expected/chat-refusal-openai-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-tool-openai-chat",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "tool",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-tool.json",
+        "stream": "cases/chat-tool.json"
+      },
+      "expected": "expected/chat-tool-openai-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-length-object-openai-chat",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "tool",
+        "incomplete",
+        "issue-34"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-length-object.json",
+        "stream": "cases/chat-length-object.json"
+      },
+      "expected": "expected/chat-length-object-openai-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-length-json-openai-chat",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "tool",
+        "incomplete",
+        "issue-34"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-length-json.json",
+        "stream": "cases/chat-length-json.json"
+      },
+      "expected": "expected/chat-length-json-openai-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-length-shape-openai-chat",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "tool",
+        "incomplete",
+        "issue-34"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-length-shape.json",
+        "stream": "cases/chat-length-shape.json"
+      },
+      "expected": "expected/chat-length-shape-openai-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-length-identity-openai-chat",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "tool",
+        "incomplete",
+        "issue-34"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-length-identity.json",
+        "stream": "cases/chat-length-identity.json"
+      },
+      "expected": "expected/chat-length-identity-openai-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-content_filter-object-openai-chat",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "tool",
+        "incomplete",
+        "issue-34"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-content_filter-object.json",
+        "stream": "cases/chat-content_filter-object.json"
+      },
+      "expected": "expected/chat-content_filter-object-openai-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-content_filter-json-openai-chat",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "tool",
+        "incomplete",
+        "issue-34"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-content_filter-json.json",
+        "stream": "cases/chat-content_filter-json.json"
+      },
+      "expected": "expected/chat-content_filter-json-openai-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-content_filter-shape-openai-chat",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "tool",
+        "incomplete",
+        "issue-34"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-content_filter-shape.json",
+        "stream": "cases/chat-content_filter-shape.json"
+      },
+      "expected": "expected/chat-content_filter-shape-openai-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-content_filter-identity-openai-chat",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "tool",
+        "incomplete",
+        "issue-34"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-content_filter-identity.json",
+        "stream": "cases/chat-content_filter-identity.json"
+      },
+      "expected": "expected/chat-content_filter-identity-openai-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-truncated-openai-chat",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "truncated",
+        "usage"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "stream": "cases/chat-truncated.json"
+      },
+      "expected": "expected/chat-truncated-openai-chat.json",
+      "pair": false
+    },
+    {
+      "id": "chat-failure-openai-chat",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "provider-failure",
+        "usage"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-failure.json",
+        "stream": "cases/chat-failure.json"
+      },
+      "expected": "expected/chat-failure-openai-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-refusal-deepseek-chat",
+      "dialect": "deepseek.chat.v1",
+      "probe": "deepseek-chat",
+      "scenario": [
+        "refusal"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Chat schema: https://developers.openai.com/api/reference/resources/chat/completions/ . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-refusal.json",
+        "stream": "cases/chat-refusal.json"
+      },
+      "expected": "expected/chat-refusal-deepseek-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-tool-deepseek-chat",
+      "dialect": "deepseek.chat.v1",
+      "probe": "deepseek-chat",
+      "scenario": [
+        "tool",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Chat schema: https://developers.openai.com/api/reference/resources/chat/completions/ . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-tool.json",
+        "stream": "cases/chat-tool.json"
+      },
+      "expected": "expected/chat-tool-deepseek-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-length-object-deepseek-chat",
+      "dialect": "deepseek.chat.v1",
+      "probe": "deepseek-chat",
+      "scenario": [
+        "tool",
+        "incomplete",
+        "issue-34"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Chat schema: https://developers.openai.com/api/reference/resources/chat/completions/ . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-length-object.json",
+        "stream": "cases/chat-length-object.json"
+      },
+      "expected": "expected/chat-length-object-deepseek-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-truncated-deepseek-chat",
+      "dialect": "deepseek.chat.v1",
+      "probe": "deepseek-chat",
+      "scenario": [
+        "truncated",
+        "usage"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Chat schema: https://developers.openai.com/api/reference/resources/chat/completions/ . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "stream": "cases/chat-truncated.json"
+      },
+      "expected": "expected/chat-truncated-deepseek-chat.json",
+      "pair": false
+    },
+    {
+      "id": "chat-failure-deepseek-chat",
+      "dialect": "deepseek.chat.v1",
+      "probe": "deepseek-chat",
+      "scenario": [
+        "provider-failure",
+        "usage"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Chat schema: https://developers.openai.com/api/reference/resources/chat/completions/ . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-failure.json",
+        "stream": "cases/chat-failure.json"
+      },
+      "expected": "expected/chat-failure-deepseek-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-refusal-kimi-chat",
+      "dialect": "kimi.chat.v1",
+      "probe": "kimi-chat",
+      "scenario": [
+        "refusal"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.kimi.ai/docs/api/chat",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Chat schema: https://developers.openai.com/api/reference/resources/chat/completions/ . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-refusal.json",
+        "stream": "cases/chat-refusal.json"
+      },
+      "expected": "expected/chat-refusal-kimi-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-tool-kimi-chat",
+      "dialect": "kimi.chat.v1",
+      "probe": "kimi-chat",
+      "scenario": [
+        "tool",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.kimi.ai/docs/api/chat",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Chat schema: https://developers.openai.com/api/reference/resources/chat/completions/ . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-tool.json",
+        "stream": "cases/chat-tool.json"
+      },
+      "expected": "expected/chat-tool-kimi-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-length-object-kimi-chat",
+      "dialect": "kimi.chat.v1",
+      "probe": "kimi-chat",
+      "scenario": [
+        "tool",
+        "incomplete",
+        "issue-34"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.kimi.ai/docs/api/chat",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Chat schema: https://developers.openai.com/api/reference/resources/chat/completions/ . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-length-object.json",
+        "stream": "cases/chat-length-object.json"
+      },
+      "expected": "expected/chat-length-object-kimi-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-truncated-kimi-chat",
+      "dialect": "kimi.chat.v1",
+      "probe": "kimi-chat",
+      "scenario": [
+        "truncated",
+        "usage"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.kimi.ai/docs/api/chat",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Chat schema: https://developers.openai.com/api/reference/resources/chat/completions/ . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "stream": "cases/chat-truncated.json"
+      },
+      "expected": "expected/chat-truncated-kimi-chat.json",
+      "pair": false
+    },
+    {
+      "id": "chat-failure-kimi-chat",
+      "dialect": "kimi.chat.v1",
+      "probe": "kimi-chat",
+      "scenario": [
+        "provider-failure",
+        "usage"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.kimi.ai/docs/api/chat",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Chat schema: https://developers.openai.com/api/reference/resources/chat/completions/ . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-failure.json",
+        "stream": "cases/chat-failure.json"
+      },
+      "expected": "expected/chat-failure-kimi-chat.json",
+      "pair": true
+    },
+    {
+      "id": "messages-tool-anthropic-messages",
+      "dialect": "anthropic.messages.v1",
+      "probe": "anthropic-messages",
+      "scenario": [
+        "tool",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.claude.com/docs/en/build-with-claude/streaming",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/messages-tool.json",
+        "stream": "cases/messages-tool.json"
+      },
+      "expected": "expected/messages-tool-anthropic-messages.json",
+      "pair": true
+    },
+    {
+      "id": "messages-refusal-anthropic-messages",
+      "dialect": "anthropic.messages.v1",
+      "probe": "anthropic-messages",
+      "scenario": [
+        "refusal"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.claude.com/docs/en/build-with-claude/streaming",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/messages-refusal.json",
+        "stream": "cases/messages-refusal.json"
+      },
+      "expected": "expected/messages-refusal-anthropic-messages.json",
+      "pair": true
+    },
+    {
+      "id": "messages-truncated-anthropic-messages",
+      "dialect": "anthropic.messages.v1",
+      "probe": "anthropic-messages",
+      "scenario": [
+        "truncated",
+        "usage",
+        "issue-33"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.claude.com/docs/en/build-with-claude/streaming",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "stream": "cases/messages-truncated.json"
+      },
+      "expected": "expected/messages-truncated-anthropic-messages.json",
+      "pair": false
+    },
+    {
+      "id": "messages-cancel-anthropic-messages",
+      "dialect": "anthropic.messages.v1",
+      "probe": "anthropic-messages",
+      "scenario": [
+        "cancelled",
+        "usage",
+        "issue-33"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.claude.com/docs/en/build-with-claude/streaming",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "stream": "cases/messages-cancel.json",
+        "cancel": true
+      },
+      "expected": "expected/messages-cancel-anthropic-messages.json",
+      "pair": false
+    },
+    {
+      "id": "messages-failure-anthropic-messages",
+      "dialect": "anthropic.messages.v1",
+      "probe": "anthropic-messages",
+      "scenario": [
+        "provider-failure",
+        "usage",
+        "issue-33"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.claude.com/docs/en/build-with-claude/streaming",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/messages-failure.json",
+        "stream": "cases/messages-failure.json"
+      },
+      "expected": "expected/messages-failure-anthropic-messages.json",
+      "pair": true
+    },
+    {
+      "id": "messages-tool-deepseek-messages",
+      "dialect": "deepseek.messages.v1",
+      "probe": "deepseek-messages",
+      "scenario": [
+        "tool",
+        "continuation"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/guides/anthropic_api/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Messages schema: https://platform.claude.com/docs/en/build-with-claude/streaming . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/messages-tool.json",
+        "stream": "cases/messages-tool.json"
+      },
+      "expected": "expected/messages-tool-deepseek-messages.json",
+      "pair": true
+    },
+    {
+      "id": "messages-refusal-deepseek-messages",
+      "dialect": "deepseek.messages.v1",
+      "probe": "deepseek-messages",
+      "scenario": [
+        "refusal"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/guides/anthropic_api/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Messages schema: https://platform.claude.com/docs/en/build-with-claude/streaming . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/messages-refusal.json",
+        "stream": "cases/messages-refusal.json"
+      },
+      "expected": "expected/messages-refusal-deepseek-messages.json",
+      "pair": true
+    },
+    {
+      "id": "messages-truncated-deepseek-messages",
+      "dialect": "deepseek.messages.v1",
+      "probe": "deepseek-messages",
+      "scenario": [
+        "truncated",
+        "usage",
+        "issue-33"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/guides/anthropic_api/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Messages schema: https://platform.claude.com/docs/en/build-with-claude/streaming . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "stream": "cases/messages-truncated.json"
+      },
+      "expected": "expected/messages-truncated-deepseek-messages.json",
+      "pair": false
+    },
+    {
+      "id": "messages-cancel-deepseek-messages",
+      "dialect": "deepseek.messages.v1",
+      "probe": "deepseek-messages",
+      "scenario": [
+        "cancelled",
+        "usage",
+        "issue-33"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/guides/anthropic_api/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Messages schema: https://platform.claude.com/docs/en/build-with-claude/streaming . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "stream": "cases/messages-cancel.json",
+        "cancel": true
+      },
+      "expected": "expected/messages-cancel-deepseek-messages.json",
+      "pair": false
+    },
+    {
+      "id": "messages-failure-deepseek-messages",
+      "dialect": "deepseek.messages.v1",
+      "probe": "deepseek-messages",
+      "scenario": [
+        "provider-failure",
+        "usage",
+        "issue-33"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/guides/anthropic_api/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Messages schema: https://platform.claude.com/docs/en/build-with-claude/streaming . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/messages-failure.json",
+        "stream": "cases/messages-failure.json"
+      },
+      "expected": "expected/messages-failure-deepseek-messages.json",
+      "pair": true
+    },
+    {
+      "id": "chat-logprobs-openai-chat",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "text",
+        "refusal",
+        "logprobs",
+        "multi-choice",
+        "issue-32"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-logprobs.json",
+        "stream": "cases/chat-logprobs.json"
+      },
+      "expected": "expected/chat-logprobs-openai-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-logprobs-deepseek-chat",
+      "dialect": "deepseek.chat.v1",
+      "probe": "deepseek-chat",
+      "scenario": [
+        "text",
+        "refusal",
+        "logprobs",
+        "multi-choice",
+        "issue-32"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Chat schema: https://developers.openai.com/api/reference/resources/chat/completions/ . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-logprobs.json",
+        "stream": "cases/chat-logprobs.json"
+      },
+      "expected": "expected/chat-logprobs-deepseek-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-logprobs-kimi-chat",
+      "dialect": "kimi.chat.v1",
+      "probe": "kimi-chat",
+      "scenario": [
+        "text",
+        "refusal",
+        "logprobs",
+        "multi-choice",
+        "issue-32"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.kimi.ai/docs/api/chat",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture.",
+        "protocol_reuse": "Shared Chat schema: https://developers.openai.com/api/reference/resources/chat/completions/ . The dialect document above supplies the compatibility/replay binding; named codecs are checked independently. This is offline shared-protocol evidence, not a provider capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-logprobs.json",
+        "stream": "cases/chat-logprobs.json"
+      },
+      "expected": "expected/chat-logprobs-kimi-chat.json",
+      "pair": true
+    },
+    {
+      "id": "chat-logprobs-invalid-bytes",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "malformed",
+        "logprobs",
+        "issue-32"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-logprobs-invalid-bytes.json",
+        "stream": "cases/chat-logprobs-invalid-bytes.json"
+      },
+      "expected": "expected/chat-logprobs-invalid-bytes.json",
+      "pair": "error_kind_code"
+    },
+    {
+      "id": "chat-logprobs-invalid-number",
+      "dialect": "openai.chat.v1",
+      "probe": "openai-chat",
+      "scenario": [
+        "malformed",
+        "logprobs",
+        "issue-32"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/chat-logprobs-invalid-number.json",
+        "stream": "cases/chat-logprobs-invalid-number.json"
+      },
+      "expected": "expected/chat-logprobs-invalid-number.json",
+      "pair": "error_kind_code"
+    },
+    {
+      "id": "messages-usage-negative",
+      "dialect": "anthropic.messages.v1",
+      "probe": "anthropic-messages",
+      "scenario": [
+        "malformed",
+        "usage",
+        "issue-33"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.claude.com/docs/en/build-with-claude/streaming",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "stream": "cases/messages-usage-negative.json"
+      },
+      "expected": "expected/messages-usage-negative.json",
+      "pair": false
+    },
+    {
+      "id": "messages-usage-decreased",
+      "dialect": "anthropic.messages.v1",
+      "probe": "anthropic-messages",
+      "scenario": [
+        "malformed",
+        "usage",
+        "issue-33"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.claude.com/docs/en/build-with-claude/streaming",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+      },
+      "wire": {
+        "stream": "cases/messages-usage-decreased.json"
+      },
+      "expected": "expected/messages-usage-decreased.json",
+      "pair": false
+    }
+  ],
+  "requests": [
+    "requests/openai-responses.json",
+    "requests/openai-codex-responses.json",
+    "requests/deepseek-responses.json",
+    "requests/openai-chat.json",
+    "requests/deepseek-chat.json",
+    "requests/kimi-chat.json",
+    "requests/anthropic-messages.json",
+    "requests/deepseek-messages.json"
+  ],
+  "transcripts": [
+    "transcripts/openai-responses.json",
+    "transcripts/anthropic-messages.json",
+    "transcripts/kimi-chat.json"
+  ]
+}

@@ -1,0 +1,340 @@
+{
+  "canonical": {
+    "state": {
+      "kind": "completed",
+      "reply": {
+        "response_id": "msg_fixture",
+        "model": "fixture-model",
+        "raw_stop_reason": "tool_use",
+        "blocks": [
+          {
+            "kind": "tool_call",
+            "value": {
+              "call_id": "call_fixture",
+              "name": "f",
+              "arguments": {
+                "kind": "complete",
+                "value": {}
+              }
+            }
+          }
+        ],
+        "usage": {
+          "input_tokens": 10,
+          "output_tokens": 2,
+          "reasoning_tokens": null,
+          "cache_read_tokens": 20,
+          "cache_write_tokens": 30,
+          "total_tokens": null,
+          "web_search_requests": 2,
+          "web_fetch_requests": 1,
+          "service_tier": null,
+          "source": {
+            "provider": "deepseek",
+            "dialect": "deepseek.messages.v1"
+          },
+          "cache_read_availability": "reported",
+          "cache_write_availability": "reported"
+        },
+        "choices": [
+          {
+            "index": 0,
+            "raw_stop_reason": "tool_use",
+            "outcome": {
+              "kind": "completed"
+            },
+            "blocks": [
+              {
+                "kind": "tool_call",
+                "value": {
+                  "call_id": "call_fixture",
+                  "name": "f",
+                  "arguments": {
+                    "kind": "complete",
+                    "value": {}
+                  }
+                }
+              }
+            ],
+            "message_spans": []
+          }
+        ]
+      }
+    },
+    "continuation": {
+      "default": {
+        "kind": "ok",
+        "snapshot": {
+          "format": "llm4cj.transcript",
+          "version": 2,
+          "initial_context": {
+            "instructions": [],
+            "tools": []
+          },
+          "items": [
+            {
+              "kind": "message",
+              "value": {
+                "role": "assistant",
+                "blocks": [
+                  {
+                    "kind": "tool_call",
+                    "value": {
+                      "call_id": "call_fixture",
+                      "name": "f",
+                      "arguments": {
+                        "kind": "complete",
+                        "value": {}
+                      }
+                    }
+                  }
+                ],
+                "message_spans": []
+              }
+            }
+          ]
+        },
+        "restored_snapshot": {
+          "format": "llm4cj.transcript",
+          "version": 2,
+          "initial_context": {
+            "instructions": [],
+            "tools": []
+          },
+          "items": [
+            {
+              "kind": "message",
+              "value": {
+                "role": "assistant",
+                "blocks": [
+                  {
+                    "kind": "tool_call",
+                    "value": {
+                      "call_id": "call_fixture",
+                      "name": "f",
+                      "arguments": {
+                        "kind": "complete",
+                        "value": {}
+                      }
+                    }
+                  }
+                ],
+                "message_spans": []
+              }
+            }
+          ]
+        },
+        "encoded": {
+          "body": {
+            "model": "fixture-model",
+            "max_tokens": 256,
+            "messages": [
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "hello"
+                  }
+                ]
+              },
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "tool_use",
+                    "id": "call_fixture",
+                    "name": "f",
+                    "input": {}
+                  }
+                ]
+              },
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "tool_result",
+                    "tool_use_id": "call_fixture",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "done"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "next"
+                  }
+                ]
+              }
+            ],
+            "tools": [
+              {
+                "name": "f",
+                "description": "fixture tool",
+                "input_schema": {
+                  "type": "object"
+                }
+              }
+            ]
+          },
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "choices": [
+        {
+          "index": 0,
+          "result": {
+            "kind": "ok",
+            "snapshot": {
+              "format": "llm4cj.transcript",
+              "version": 2,
+              "initial_context": {
+                "instructions": [],
+                "tools": []
+              },
+              "items": [
+                {
+                  "kind": "message",
+                  "value": {
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "kind": "tool_call",
+                        "value": {
+                          "call_id": "call_fixture",
+                          "name": "f",
+                          "arguments": {
+                            "kind": "complete",
+                            "value": {}
+                          }
+                        }
+                      }
+                    ],
+                    "message_spans": []
+                  }
+                }
+              ]
+            },
+            "restored_snapshot": {
+              "format": "llm4cj.transcript",
+              "version": 2,
+              "initial_context": {
+                "instructions": [],
+                "tools": []
+              },
+              "items": [
+                {
+                  "kind": "message",
+                  "value": {
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "kind": "tool_call",
+                        "value": {
+                          "call_id": "call_fixture",
+                          "name": "f",
+                          "arguments": {
+                            "kind": "complete",
+                            "value": {}
+                          }
+                        }
+                      }
+                    ],
+                    "message_spans": []
+                  }
+                }
+              ]
+            },
+            "encoded": {
+              "body": {
+                "model": "fixture-model",
+                "max_tokens": 256,
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "hello"
+                      }
+                    ]
+                  },
+                  {
+                    "role": "assistant",
+                    "content": [
+                      {
+                        "type": "tool_use",
+                        "id": "call_fixture",
+                        "name": "f",
+                        "input": {}
+                      }
+                    ]
+                  },
+                  {
+                    "role": "user",
+                    "content": [
+                      {
+                        "type": "tool_result",
+                        "tool_use_id": "call_fixture",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "done"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "role": "user",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "next"
+                      }
+                    ]
+                  }
+                ],
+                "tools": [
+                  {
+                    "name": "f",
+                    "description": "fixture tool",
+                    "input_schema": {
+                      "type": "object"
+                    }
+                  }
+                ]
+              },
+              "headers": [
+                {
+                  "name": "content-type",
+                  "value": "application/json"
+                },
+                {
+                  "name": "accept",
+                  "value": "application/json"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

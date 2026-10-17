@@ -13,9 +13,11 @@
 
 provider 的合法错误响应属于 wire outcome，不会伪装成 JSON 或 transport exception。格式错误、错误字段类型和溢出才抛出 `LlmWireError`。
 
-固定响应会保留 Responses 的 URL/file annotations、output phase 和 token logprobs，也会保留 Messages citations、结构化 refusal details、service tier 与 server-tool usage。已知类型缺少必需字段属于 `InvalidWire`；仍未建模的合法 annotation、citation 或 streamed metadata 返回 `Unsupported`，不会删掉字段后返回 `Succeeded`。Chat tool call 只接受明确的 `type: "function"`；其他合法 tool 类型返回 `Unsupported`，缺失 discriminator 属于 `InvalidWire`。
+固定响应会保留 Responses 的 URL/file annotations、output phase 和 token logprobs，也会保留 Chat 的 text/refusal logprobs，以及 Messages citations、结构化 refusal details、service tier 与 server-tool usage。已知类型缺少必需字段属于 `InvalidWire`；仍未建模的合法 annotation、citation 或 streamed metadata 返回 `Unsupported`，不会删掉字段后返回 `Succeeded`。Chat tool call 只接受明确的 `type: "function"`；其他合法 tool 类型返回 `Unsupported`，缺失 discriminator 属于 `InvalidWire`。
 
-tool arguments 不再被压成一个字符串状态：`Complete` 只保存 canonical `LlmWireJson` 对象，`InvalidJson` 保存非法文本，`InvalidShape` 保存非对象 JSON，`Partial` 只用于尚未完成或 incomplete 的流。成功终态要求 tool arguments 是完整 JSON object；encoder 从 canonical JSON 生成 wire text，不存在可与对象内容冲突的第二份 raw truth。
+Responses 的 `LlmWireChoice.messageSpans` 保存每条 assistant message 的 block 范围和 phase。OpenAI 与 Codex wire 的 `commentary`、`final_answer` 分别映射为 `Commentary`、`Final`，缺失或 null 为 `Unspecified`。同 phase 的相邻 message 仍保留边界，包括空 content message；`toContinuationInput` 将这些 span 带入 `LlmWireMessage`，encoder 按 span 回放。不要通过拼接 blocks 丢弃该信息。
+
+tool arguments 不再被压成一个字符串状态：`Complete` 只保存 canonical `LlmWireJson` 对象，`InvalidJson` 保存非法文本，`InvalidShape` 保存非对象 JSON，`Partial` 用于尚未完成的增量观察。截断终态也按最终参数值分类：完整对象为 `Complete`，合法非对象为 `InvalidShape`，坏 JSON 或未闭合文本为 `InvalidJson`；choice 继续标记 `Incomplete`。completed choice 要求完整对象；有有效 identity 的 `Complete` 参数可进入 continuation。encoder 从 canonical JSON 生成 wire text，不存在可与对象内容冲突的第二份 raw truth。
 
 usage counter 使用 `Option<Int64>`。`None` 表示 provider 没有返回该字段，`Some(0)` 才表示 provider 明确报告零。
 
