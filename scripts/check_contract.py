@@ -7,6 +7,8 @@ import hashlib
 import datetime
 import json
 import re
+import argparse
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -15,146 +17,199 @@ production_sources = [path for path in sorted((ROOT / "src").glob("*.cj")) if no
 source = "\n".join(path.read_text(encoding="utf-8") for path in production_sources)
 
 
-def normalize_declaration(value: str) -> str:
-    return re.sub(r"\s+", " ", value).strip()
+# This is a lexical contract, not a compiler AST. Keep its verified boundary visible.
+API_SHAPE_COVERAGE = {
+    "covered": (
+        "public class/struct/enum/interface headers and declaration annotations",
+        "enum cases with associated types; explicit public fields and constructors",
+        "public methods/operators/properties, including interface implicit visibility",
+        "modifiers, generics/where bounds, parameter names/types/named markers/defaults, returns",
+        "property get/set signatures; implementation bodies and comments excluded",
+        "escaped, triple-quoted and hash-delimited literals; nested block comments and delimiters",
+    ),
+    "unverified": (
+        "macro-expanded declarations and conditional compilation semantics",
+        "extend/type aliases, primary constructors and implicit generated members",
+        "modal/local declarations, FFI-specific syntax and interpolated-expression parsing",
+    ),
+}
+MODIFIERS = frozenset(
+    "public private internal protected static override redef abstract sealed open foreign "
+    "unsafe operator const mut common specific required".split()
+)
+TYPE_KINDS = frozenset({"class", "enum", "interface", "struct"})
+MEMBER_KINDS = frozenset({"let", "var", "prop", "init", "func"})
+LITERAL_RE = re.compile(r'(\#*)("""|\'\'\'|"|\')')
+IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|`[^`\n]+`")
 
 
-def mask_non_code(value: str) -> str:
-    """Preserve offsets while hiding comments and literals from brace matching."""
-    output = list(value)
-    index = 0
-    state = "code"
+@dataclass(frozen=True)
+class ApiToken:
+    value: str
+    line: int
+
+
+def api_tokens(value: str) -> list[ApiToken]:
+    """Tokenize declaration text without interpreting literals as Cangjie code."""
+    tokens: list[ApiToken] = []
+    index, line = 0, 1
     while index < len(value):
-        current = value[index]
-        following = value[index + 1] if index + 1 < len(value) else ""
-        if state == "code" and current == "/" and following == "/":
-            output[index] = output[index + 1] = " "
-            index += 2
-            state = "line"
-            continue
-        if state == "code" and current == "/" and following == "*":
-            output[index] = output[index + 1] = " "
-            index += 2
-            state = "block"
-            continue
-        if state == "code" and current in {'"', "'"}:
-            output[index] = " "
-            index += 1
-            state = "string" if current == '"' else "character"
-            continue
-        if state == "line":
-            if current == "\n":
-                state = "code"
-            else:
-                output[index] = " "
+        start, token_line = index, line
+        if value[index].isspace():
+            line += value[index] == "\n"
             index += 1
             continue
-        if state == "block":
-            if current == "*" and following == "/":
-                output[index] = output[index + 1] = " "
-                index += 2
-                state = "code"
-            else:
-                if current != "\n":
-                    output[index] = " "
-                index += 1
+        if value.startswith("//", index):
+            end = value.find("\n", index)
+            index = len(value) if end < 0 else end
             continue
-        if state in {"string", "character"}:
-            quote = '"' if state == "string" else "'"
-            if current == "\\":
-                output[index] = " "
-                if index + 1 < len(value):
-                    output[index + 1] = " "
-                index += 2
-            elif current == quote:
-                output[index] = " "
-                index += 1
-                state = "code"
-            else:
-                if current != "\n":
-                    output[index] = " "
-                index += 1
+        if value.startswith("/*", index):
+            depth = 1
+            index += 2
+            while depth and index < len(value):
+                if value.startswith("/*", index):
+                    depth += 1
+                    index += 2
+                elif value.startswith("*/", index):
+                    depth -= 1
+                    index += 2
+                else:
+                    line += value[index] == "\n"
+                    index += 1
+            if depth:
+                raise SystemExit("unterminated comment while building API shape")
             continue
-        index += 1
-    return "".join(output)
-
-
-def matching_brace(masked: str, opening: int) -> int:
-    depth = 0
-    for index in range(opening, len(masked)):
-        if masked[index] == "{":
-            depth += 1
-        elif masked[index] == "}":
-            depth -= 1
-            if depth == 0:
-                return index
-    raise SystemExit("unbalanced public declaration while building API shape")
+        literal = LITERAL_RE.match(value, index)
+        if literal:
+            hashes, quote = literal.groups()
+            terminator = quote + hashes
+            index += len(literal.group())
+            while index < len(value):
+                if value.startswith(terminator, index):
+                    index += len(terminator)
+                    break
+                if not hashes and value[index] == "\\":
+                    line += value[index:index + 2].count("\n")
+                    index += 2
+                else:
+                    line += value[index] == "\n"
+                    index += 1
+            else:
+                raise SystemExit("unterminated literal while building API shape")
+        else:
+            identifier = IDENTIFIER_RE.match(value, index)
+            index += len(identifier.group()) if identifier else 1
+        tokens.append(ApiToken(value[start:index], token_line))
+    return tokens
 
 
 def public_api_shape(value: str) -> list[str]:
-    """Capture exported type shapes, enum cases, members, and callable signatures."""
-    masked = mask_non_code(value)
-    depth_at = [0] * (len(masked) + 1)
-    depth = 0
-    for index, character in enumerate(masked):
-        depth_at[index] = depth
-        if character == "{":
-            depth += 1
-        elif character == "}":
-            depth -= 1
+    """Extract the lexical API subset listed in API_SHAPE_COVERAGE."""
+    tokens = api_tokens(value)
+    pairs: dict[int, int] = {}
+    depths: list[int] = []
+    stack: list[int] = []
+    for index, token in enumerate(tokens):
+        depths.append(len(stack))
+        if token.value in {"(", "[", "{"}:
+            stack.append(index)
+        elif token.value in {")", "]", "}"}:
+            if not stack or tokens[stack[-1]].value != {")": "(", "]": "[", "}": "{"}[token.value]:
+                raise SystemExit("unbalanced declaration while building API shape")
+            opening = stack.pop()
+            pairs[opening], pairs[index] = index, opening
+    if stack:
+        raise SystemExit("unbalanced declaration while building API shape")
+
+    def text(start: int, end: int) -> str:
+        return " ".join(token.value.replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n")
+                        for token in tokens[start:end])
+
+    def prefix(index: int) -> int:
+        while index and tokens[index - 1].value in MODIFIERS:
+            index -= 1
+        while index:
+            end = index - 1
+            beginning = pairs[end] if tokens[end].value in {"]", ")"} else end + 1
+            name = beginning - 1
+            if name >= 1 and tokens[name - 1].value == "@":
+                index = name - 1
+            elif end >= 1 and tokens[end - 1].value == "@":
+                index = end - 1
+            else:
+                break
+        return index
+
+    def starts_declaration(index: int) -> bool:
+        while index < len(tokens) and tokens[index].value in MODIFIERS:
+            index += 1
+        return index < len(tokens) and tokens[index].value in TYPE_KINDS | MEMBER_KINDS
+
+    def signature_end(index: int, limit: int, field: bool = False) -> int:
+        cursor = index + 1
+        while cursor < limit:
+            current = tokens[cursor].value
+            if current in {"{", ";", "}"} or field and current == "=":
+                return cursor
+            if (tokens[cursor].line > tokens[cursor - 1].line and
+                    starts_declaration(cursor)):
+                return cursor
+            if current in {"(", "["}:
+                cursor = pairs[cursor] + 1
+            else:
+                cursor += 1
+        return cursor
+
     declarations: list[str] = []
-    type_pattern = re.compile(r"^public\s+(class|enum|interface|struct)\s+([A-Za-z][A-Za-z0-9_]*)", re.MULTILINE)
-    member_pattern = re.compile(r"^[ \t]*public\s+(?:let|var|prop|init|(?:static\s+)?func|operator\s+func)\b", re.MULTILINE)
-
-    for found in type_pattern.finditer(masked):
-        if depth_at[found.start()] != 0:
+    for index, token in enumerate(tokens):
+        if depths[index] != 0 or token.value not in TYPE_KINDS | {"func"}:
             continue
-        kind = found.group(1)
-        name = found.group(2)
-        opening = masked.find("{", found.start())
-        closing = matching_brace(masked, opening)
-        header = normalize_declaration(value[found.start():opening])
-        previous_line_start = value.rfind("\n", 0, found.start() - 1) + 1
-        previous = value[previous_line_start:found.start()].strip()
-        if previous.startswith("@Derive["):
-            header = normalize_declaration(previous) + " " + header
-        declarations.append(header)
-
-        if kind == "enum":
-            body_mask = masked[opening + 1:closing]
-            member = member_pattern.search(body_mask)
-            end = member.start() if member else len(body_mask)
-            variants = normalize_declaration(value[opening + 1:opening + 1 + end])
-            if variants:
-                declarations.append(name + " cases " + variants)
-        elif kind == "interface":
-            body = normalize_declaration(value[opening + 1:closing])
-            if body:
-                declarations.append(name + " members " + body)
-        else:
-            body_mask = masked[opening + 1:closing]
-            for member in member_pattern.finditer(body_mask):
-                absolute = opening + 1 + member.start()
-                if depth_at[absolute] != 1:
-                    continue
-                line_end = masked.find("\n", absolute)
-                brace = masked.find("{", absolute)
-                keyword = member.group(0).strip().split()[1]
-                if keyword in {"let", "var"} or brace < 0 or (line_end >= 0 and line_end < brace and "(" not in masked[absolute:line_end]):
-                    end = line_end if line_end >= 0 else closing
-                else:
-                    end = brace
-                declarations.append(name + " member " + normalize_declaration(value[absolute:end]))
-
-    function_pattern = re.compile(r"^public\s+func\s+[A-Za-z]", re.MULTILINE)
-    for found in function_pattern.finditer(masked):
-        if depth_at[found.start()] != 0:
+        start = prefix(index)
+        if "public" not in [item.value for item in tokens[start:index]]:
             continue
-        opening = masked.find("{", found.start())
-        declarations.append(normalize_declaration(value[found.start():opening]))
+        opening = signature_end(index, len(tokens))
+        declarations.append(text(start, opening))
+        if token.value == "func":
+            continue
+        if opening == len(tokens) or tokens[opening].value != "{":
+            raise SystemExit("public type has no body while building API shape")
+        closing, name = pairs[opening], tokens[index + 1].value
+        members = [member for member in range(opening + 1, closing)
+                   if depths[member] == 1 and tokens[member].value in MEMBER_KINDS]
+        if token.value == "enum":
+            end = prefix(members[0]) if members else closing
+            if end > opening + 1:
+                declarations.append(name + " cases " + text(opening + 1, end).rstrip(" ;"))
+        for member in members:
+            start = prefix(member)
+            modifiers = {item.value for item in tokens[start:member]}
+            if "public" not in modifiers and not (
+                    token.value == "interface" and not modifiers.intersection({"private", "internal", "protected"})):
+                continue
+            end = signature_end(member, closing, tokens[member].value in {"let", "var"})
+            declaration = name + " member " + text(start, end)
+            if tokens[member].value == "prop" and tokens[end].value == "{":
+                accessors: list[str] = []
+                for accessor in range(end + 1, pairs[end]):
+                    if depths[accessor] == 2 and tokens[accessor].value in {"get", "set"}:
+                        accessors.append(text(prefix(accessor), signature_end(accessor, pairs[end])))
+                declaration += " accessors " + " ; ".join(accessors)
+            declarations.append(declaration)
     return sorted(declarations)
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--write-api-shape", action="store_true",
+                        help="regenerate only the readable API shape snapshot and its SHA-256")
+    args = parser.parse_args(argv)
+    api_shape = public_api_shape(source)
+    api_shape_text = "\n".join(api_shape) + "\n"
+    api_shape_digest = hashlib.sha256(api_shape_text.encode("utf-8")).hexdigest()
+    if args.write_api_shape:
+        (ROOT / "contract/public-api-shape.txt").write_text(api_shape_text, encoding="utf-8")
+        (ROOT / "contract/public-api-shape.sha256").write_text(api_shape_digest + "\n", encoding="utf-8")
+        print(f"wrote {len(api_shape)} public API shapes and SHA-256")
+        return 0
     api = sorted(
         f"{kind} {name}"
         for kind, name in re.findall(
@@ -169,8 +224,11 @@ def main() -> int:
         removed = sorted(set(expected_api) - set(api))
         raise SystemExit(f"public API snapshot drifted; added={added}, removed={removed}")
 
-    api_shape = public_api_shape(source)
-    api_shape_digest = hashlib.sha256(("\n".join(api_shape) + "\n").encode("utf-8")).hexdigest()
+    expected_api_shape = (ROOT / "contract/public-api-shape.txt").read_text(encoding="utf-8").splitlines()
+    if api_shape != expected_api_shape:
+        added = sorted(set(api_shape) - set(expected_api_shape))
+        removed = sorted(set(expected_api_shape) - set(api_shape))
+        raise SystemExit(f"public API shape snapshot drifted; added={added}, removed={removed}")
     expected_api_shape_digest = (ROOT / "contract/public-api-shape.sha256").read_text(encoding="utf-8").strip()
     if api_shape_digest != expected_api_shape_digest:
         raise SystemExit(f"public API shape drifted: {api_shape_digest}")

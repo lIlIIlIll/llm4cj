@@ -1,5 +1,14 @@
 # 测试与发布
 
+公共 API shape 保存为可审查的 `contract/public-api-shape.txt` 和对应 SHA-256。词法提取覆盖 public 类型头、enum cases、显式 public 成员及接口隐式公开成员，保留修饰符、泛型/where、参数名/类型/命名标记/默认值、返回类型和 property get/set；实现体与注释不参与比较。macro 展开、条件编译语义、extend、type alias、主构造器、隐式成员、modal/FFI 特殊语法及插值表达式解析尚未验证，该门禁不代表完整 AST 或 ABI 检查。
+
+```sh
+python3 scripts/check_contract.py --write-api-shape
+python3 scripts/check_contract.py
+```
+
+API 兼容基线为数值最高的规范稳定 `vX.Y.Z` 标签。只有根包生产源码和 manifest 与 HEAD 字节一致时，才排除指向当前 candidate 的标签；脏工作树的同版本修改仍与已发布版本比较。基线标签必须匹配其 manifest，无历史基线则失败。报告在失败时仍记录 baseline/candidate commit、candidate tag 及源码是否变化；预发布与非规范标签不参与选择。
+
 本地完整门禁：
 
 ```sh
