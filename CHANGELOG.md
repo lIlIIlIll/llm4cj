@@ -4,6 +4,8 @@ All notable changes are recorded here.
 
 ## [0.3.0] - Unreleased
 
+- Validate all retry decimal digits after saturation so overflow cannot hide an invalid suffix.
+
 - Merge all observed Messages delta usage counters and retain the latest accepted usage across terminal and error paths.
 
 - Preserve streamed Chat content/refusal logprobs and make truncated tool argument classification and continuation match fixed responses.
