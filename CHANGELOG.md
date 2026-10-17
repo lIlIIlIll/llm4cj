@@ -4,6 +4,8 @@ All notable changes are recorded here.
 
 ## [0.3.0] - Unreleased
 
+- Buffer builder appends without copying earlier items, retaining immutable built snapshots and full validation at build time.
+
 - Add the Codex Responses dialect, bounded WebSocket sessions, and an application-owned subscription example with offline OAuth and transport tests.
 - Preserve official Responses message identity, refusal completion, assistant message boundaries and phase through continuation and version 2 snapshots; continue reading version 1 without inventing lost metadata.
 - Verify eight dialects against independently reviewed complete fixture oracles, including request, fixed, streamed, WebSocket and replay semantics.

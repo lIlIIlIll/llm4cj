@@ -1,0 +1,10 @@
+[package]
+cjc-version = "1.1.0"
+name = "llm4cj_builder_benchmark"
+organization = ""
+description = "Request builder append, snapshot, and encode measurements"
+version = "0.3.0"
+output-type = "executable"
+
+[dependencies]
+llm4cj = { path = "../.." }
