@@ -364,6 +364,10 @@ LlmWireStreamUpdate member public let events : Array < LlmWireEvent >
 LlmWireStreamUpdate member public let terminal : ? LlmWireTerminal
 LlmWireStructuredOutput cases ProviderDefault | Text | JsonObject | JsonSchema ( LlmWireJsonSchema ) | JsonSchemaDocument ( LlmWireJson )
 LlmWireStructuredOutputMode cases Text | JsonObject | JsonSchema
+LlmWireStructuredOutputOutcome cases Valid ( LlmWireJson ) | InvalidJson ( LlmWireError ) | SchemaViolation ( LlmWireError ) | UnsupportedSchema ( LlmWireError ) | Incomplete ( LlmWireIncompleteReason ) | Refused ( LlmWireRefusalBlock )
+LlmWireStructuredOutputResult member public let choiceIndex : Int64
+LlmWireStructuredOutputResult member public let outcome : LlmWireStructuredOutputOutcome
+LlmWireStructuredOutputResult member public let rawText : ? String
 LlmWireTerminal cases Completed ( LlmWireReply ) | ProviderFailed ( LlmWireFailure ) | Cancelled ( LlmWireFailure )
 LlmWireTextBlock member public init ( text : String , citations ! : Array < LlmWireCitation > = [ ] , annotations ! : Array < LlmWireAnnotation > = [ ] , logprobs ! : Array < LlmWireTokenLogprob > = [ ] , phase ! : LlmWireOutputPhase = LlmWireOutputPhase . Unspecified )
 LlmWireTextBlock member public let annotations : Array < LlmWireAnnotation >
@@ -491,6 +495,7 @@ public class LlmWireSseLimits
 public class LlmWireStreamDecoder
 public class LlmWireStreamLimits
 public class LlmWireStreamUpdate
+public class LlmWireStructuredOutputResult
 public class LlmWireTextBlock
 public class LlmWireThinkingCapabilities
 public class LlmWireTokenLogprob
@@ -518,6 +523,7 @@ public enum LlmWirePromptCache
 public enum LlmWireResponseState
 public enum LlmWireResult < T >
 public enum LlmWireStructuredOutput
+public enum LlmWireStructuredOutputOutcome
 public enum LlmWireTerminal
 public enum LlmWireToolArguments
 public enum LlmWireToolResultContent
@@ -534,6 +540,7 @@ public func deepSeekResponsesCodec ( profile : LlmWireModelProfile , provider ! 
 public func deepSeekResponsesDialect ( ) : LlmWireDialect
 public func deepSeekResponsesModelProfile ( model : String , capabilities ! : LlmWireCapabilities = LlmWireCapabilities ( ) ) : LlmWireModelProfile
 public func extractRetryAfterMillis ( headers : String , nowEpochMillis : Int64 ) : ? Int64
+public func extractStructuredOutput ( reply : LlmWireReply , request : LlmWireRequest , choiceIndex ! : ? Int64 = None , mode ! : LlmWireToolInputValidationMode = LlmWireToolInputValidationMode . Strict , limits ! : LlmWireSchemaValidationLimits = LlmWireSchemaValidationLimits ( ) , maxTextBytes ! : Int64 = 8 3 8 8 6 0 8 ) : LlmWireResult < LlmWireStructuredOutputResult >
 public func kimiChatCodec ( profile : LlmWireModelProfile , provider ! : String = "kimi" ) : LlmWireCodec
 public func kimiChatDialect ( ) : LlmWireDialect
 public func kimiChatModelProfile ( model : String , capabilities ! : LlmWireCapabilities = LlmWireCapabilities ( ) , endpoint ! : String = "" , endpointProfile ! : ? LlmWireEndpointProfile = None ) : LlmWireModelProfile

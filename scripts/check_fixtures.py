@@ -191,7 +191,7 @@ def validate_manifest() -> dict:
         if not re.fullmatch(r"[a-z0-9_-]+", identifier) or identifier in identifiers:
             raise ValueError("duplicate or invalid public fixture check")
         identifiers.add(identifier)
-        if check["command"] not in {"check-schema"}:
+        if check["command"] not in {"check-schema", "check-structured"}:
             raise ValueError("unknown public fixture check command")
         fixture_path(check["fixture"])
         validate_source(check["source"], identifier)

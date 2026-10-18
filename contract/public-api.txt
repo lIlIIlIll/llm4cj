@@ -40,6 +40,7 @@ class LlmWireSseLimits
 class LlmWireStreamDecoder
 class LlmWireStreamLimits
 class LlmWireStreamUpdate
+class LlmWireStructuredOutputResult
 class LlmWireTextBlock
 class LlmWireThinkingCapabilities
 class LlmWireTokenLogprob
@@ -95,6 +96,7 @@ enum LlmWireServiceTier
 enum LlmWireStreamBlockKind
 enum LlmWireStructuredOutput
 enum LlmWireStructuredOutputMode
+enum LlmWireStructuredOutputOutcome
 enum LlmWireTerminal
 enum LlmWireThinkingMode
 enum LlmWireToolArguments
@@ -118,6 +120,7 @@ func deepSeekResponsesCodec
 func deepSeekResponsesDialect
 func deepSeekResponsesModelProfile
 func extractRetryAfterMillis
+func extractStructuredOutput
 func kimiChatCodec
 func kimiChatDialect
 func kimiChatModelProfile

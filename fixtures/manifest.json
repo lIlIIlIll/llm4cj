@@ -3,6 +3,18 @@
   "live_provider": "not_run",
   "public_checks": [
     {
+      "id": "structured-output",
+      "fixture": "structured-output.json",
+      "command": "check-structured",
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/responses/streaming-events",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Hand-authored fixed and streamed wire plus extraction expectations across the eight named dialects. Offline shared protocol evidence, not a live capture."
+      }
+    },
+    {
       "id": "schema-validation",
       "fixture": "schema-validation.json",
       "command": "check-schema",
