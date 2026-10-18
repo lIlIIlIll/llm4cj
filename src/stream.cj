@@ -115,6 +115,16 @@ class StreamBudget {
         }
     }
     func retain(value: String): Unit { retainBytes(Int64(value.toArray().size)) }
+    func replaceRetainedString(previous: ?String, next: String): Unit {
+        if (previous == Some(next)) { return }
+        let previousBytes = match (previous) { case Some(value) => Int64(value.size); case None => 0 }
+        let nextBytes = Int64(next.size)
+        if (nextBytes > previousBytes) {
+            retainBytes(nextBytes - previousBytes)
+            return
+        }
+        retainedBytes -= previousBytes - nextBytes
+    }
     private func retainBytes(size: Int64): Unit {
         if (size > limits.maxRetainedStateBytes - retainedBytes) { limit("llm.stream_retained_state_too_large", "stream retained state exceeds configured limit") }
         retainedBytes += size
@@ -1000,11 +1010,12 @@ class MessagesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
         let kind = wireRequiredString(root, "type", provider: codec.provider)
         match (kind) {
             case "message_start" =>
+                rejectMessagesUsageFieldPlacement(codec, root)
                 match (phase) { case MessagesStreamPhase.AwaitingMessageStart => phase = MessagesStreamPhase.AcceptingBlocks; case _ => invalidWire("llm.messages_start_duplicate", "Messages stream started more than once", provider: codec.provider) }
                 let message = wireObject(wireRequiredField(root, "message", provider: codec.provider), "Messages start message", provider: codec.provider)
                 responseId = optionalStringOrEmpty(message, "id", codec.provider); model = optionalStringOrEmpty(message, "model", codec.provider)
                 budget.retain(responseId); budget.retain(model)
-                usage = mergeWireUsage(usage, decodeMessagesUsage(codec, message), codec.dialect.contract.usageMergeStyle)
+                mergeMessagesUsage(message)
                 LlmWireStreamUpdate(events: [LlmWireEvent.StreamStarted(responseId, model)])
             case "content_block_start" => startMessagesBlock(root)
             case "content_block_delta" => updateMessagesBlock(root)
@@ -1034,8 +1045,9 @@ class MessagesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
                 phase = MessagesStreamPhase.AcceptingMessageDeltas
                 let events = ArrayList<LlmWireEvent>()
                 match (refusalUpdate) { case Some(value) => events.add(LlmWireEvent.RefusalObserved(value)); case None => () }
+                mergeMessagesUsage(root)
                 match (wireOptionalObject(root, "usage", provider: codec.provider)) {
-                    case Some(_) => usage = mergeWireUsage(usage, decodeMessagesUsage(codec, root), codec.dialect.contract.usageMergeStyle); events.add(LlmWireEvent.UsageUpdated(usage))
+                    case Some(_) => events.add(LlmWireEvent.UsageUpdated(usage))
                     case None => ()
                 }
                 LlmWireStreamUpdate(events: events.toArray())
@@ -1049,6 +1061,15 @@ class MessagesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
             case "ping" => LlmWireStreamUpdate()
             case _ => unsupportedSemantic(codec, kind, root, "llm.messages_stream_event_unsupported", eventType: kind)
         }
+    }
+
+    private func mergeMessagesUsage(root: JsonNode): Unit {
+        let next = mergeWireUsage(usage, decodeMessagesUsage(codec, root), codec.dialect.contract.usageMergeStyle)
+        match (next.serviceTier) {
+            case Some(value) => budget.replaceRetainedString(usage.serviceTier, value)
+            case None => ()
+        }
+        usage = next
     }
 
     private func startMessagesBlock(root: JsonNode): LlmWireStreamUpdate {

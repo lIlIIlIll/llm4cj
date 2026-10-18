@@ -95,6 +95,7 @@ llm.messages_stream_block_unsupported
 llm.messages_stream_event_unsupported
 llm.messages_tool_call_incomplete
 llm.messages_tool_input_start_nonempty
+llm.messages_usage_field_unsupported
 llm.model_missing
 llm.model_profile_dialect_mismatch
 llm.model_profile_mismatch
