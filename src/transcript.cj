@@ -54,22 +54,28 @@ public enum LlmWireInputItem {
 public class LlmWireTranscript {
     public let initialContext: LlmWireInitialContext
     private let itemsValue: Array<LlmWireInputItem>
-    public init(initialContext: LlmWireInitialContext, items!: Array<LlmWireInputItem> = []) {
+    private let cacheBreakpointsValue: Array<LlmWireCacheBreakpoint>
+    public init(initialContext: LlmWireInitialContext, items!: Array<LlmWireInputItem> = [], cacheBreakpoints!: Array<LlmWireCacheBreakpoint> = []) {
+        validateCacheBreakpointStructure(initialContext, items, cacheBreakpoints)
         this.initialContext = LlmWireInitialContext(instructions: initialContext.instructions, tools: initialContext.tools)
         this.itemsValue = copyTranscriptItems(items)
+        this.cacheBreakpointsValue = copyValues(cacheBreakpoints)
     }
-    public init(items!: Array<LlmWireInputItem> = []) {
+    public init(items!: Array<LlmWireInputItem> = [], cacheBreakpoints!: Array<LlmWireCacheBreakpoint> = []) {
+        validateCacheBreakpointStructure(LlmWireInitialContext(), items, cacheBreakpoints)
         this.initialContext = LlmWireInitialContext()
         this.itemsValue = copyTranscriptItems(items)
+        this.cacheBreakpointsValue = copyValues(cacheBreakpoints)
     }
     public prop items: Array<LlmWireInputItem> { get() { copyTranscriptItems(itemsValue) } }
+    public prop cacheBreakpoints: Array<LlmWireCacheBreakpoint> { get() { copyValues(cacheBreakpointsValue) } }
     func itemCount(): Int64 { itemsValue.size }
     public prop effectiveTools: Array<LlmWireToolDefinition> { get() { replayTranscript(this).activeTools } }
     public func append(item: LlmWireInputItem): LlmWireTranscript {
         let result = ArrayList<LlmWireInputItem>()
         for (value in itemsValue) { result.add(value) }
         result.add(item)
-        LlmWireTranscript(initialContext, items: result.toArray())
+        LlmWireTranscript(initialContext, items: result.toArray(), cacheBreakpoints: cacheBreakpointsValue)
     }
     public func snapshot(): LlmWireResult<String> {
         try { LlmWireResult.Ok(writeTranscriptSnapshot(this)) }

@@ -1,5 +1,6 @@
 @ Derive [ Equatable ] public enum LlmTransportPhase
 @ Derive [ Equatable ] public enum LlmWireBuiltinDialect
+@ Derive [ Equatable ] public enum LlmWireCachePosition
 @ Derive [ Equatable ] public enum LlmWireCapabilityEvidence
 @ Derive [ Equatable ] public enum LlmWireCitationKind
 @ Derive [ Equatable ] public enum LlmWireContextUpdateStyle
@@ -44,8 +45,13 @@ LlmWireAssistantMessageSpan member public let blockStart : Int64
 LlmWireAssistantMessageSpan member public let phase : LlmWireOutputPhase
 LlmWireBlock cases Text ( LlmWireTextBlock ) | Image ( LlmWireImageBlock ) | Reasoning ( LlmWireReasoningBlock ) | ToolCall ( LlmWireToolCallBlock ) | ToolResult ( LlmWireToolResultBlock ) | Refusal ( LlmWireRefusalBlock ) | NativeReplay ( LlmWireNativeReplayBlock ) | Opaque ( LlmWireOpaqueBlock )
 LlmWireBuiltinDialect cases OpenAiResponses | OpenAiCodexResponses | OpenAiChat | AnthropicMessages | DeepSeekResponses | DeepSeekChat | DeepSeekMessages | KimiChat
-LlmWireCacheCapabilities member public init ( lifetimes ! : Array < LlmWirePromptCacheLifetime > = [ ] )
+LlmWireCacheBreakpoint member public init ( position : LlmWireCachePosition , lifetime ! : LlmWirePromptCacheLifetime = LlmWirePromptCacheLifetime . FiveMinutes )
+LlmWireCacheBreakpoint member public let lifetime : LlmWirePromptCacheLifetime
+LlmWireCacheBreakpoint member public let position : LlmWireCachePosition
+LlmWireCacheCapabilities member public init ( lifetimes ! : Array < LlmWirePromptCacheLifetime > = [ ] , explicitBreakpoints ! : Bool = false )
+LlmWireCacheCapabilities member public let explicitBreakpoints : Bool
 LlmWireCacheCapabilities member public prop lifetimes : Array < LlmWirePromptCacheLifetime > accessors get ( )
+LlmWireCachePosition cases InitialTool ( Int64 ) | InitialInstruction ( Int64 ) | MessageBlock ( Int64 , Int64 ) | Item ( Int64 )
 LlmWireCapabilities member public init ( input ! : LlmWireInputCapabilities = LlmWireInputCapabilities ( ) , thinking ! : LlmWireThinkingCapabilities = LlmWireThinkingCapabilities ( ) , tools ! : LlmWireToolCapabilities = LlmWireToolCapabilities ( ) , output ! : LlmWireOutputCapabilities = LlmWireOutputCapabilities ( ) , cache ! : LlmWireCacheCapabilities = LlmWireCacheCapabilities ( ) )
 LlmWireCapabilities member public let cache : LlmWireCacheCapabilities
 LlmWireCapabilities member public let input : LlmWireInputCapabilities
@@ -328,6 +334,7 @@ LlmWireRequestBuilder member public func append ( item : LlmWireInputItem ) : Un
 LlmWireRequestBuilder member public func appendMessage ( message : LlmWireMessage ) : Unit
 LlmWireRequestBuilder member public func build ( ) : LlmWireResult < LlmWireRequest >
 LlmWireRequestBuilder member public func reset ( ) : Unit
+LlmWireRequestBuilder member public func setCacheBreakpoints ( values : Array < LlmWireCacheBreakpoint > ) : Unit
 LlmWireRequestBuilder member public func setGenerationSpeed ( value : LlmWireGenerationSpeed ) : Unit
 LlmWireRequestBuilder member public func setInitialContext ( context : LlmWireInitialContext ) : Unit
 LlmWireRequestBuilder member public func setMaxOutputTokens ( value : ? Int64 ) : Unit
@@ -447,9 +454,10 @@ LlmWireToolResultBlock member public let kind : LlmWireToolKind
 LlmWireToolResultContent cases Text ( LlmWireTextBlock ) | Image ( LlmWireImageBlock )
 LlmWireTranscript member public func append ( item : LlmWireInputItem ) : LlmWireTranscript
 LlmWireTranscript member public func snapshot ( ) : LlmWireResult < String >
-LlmWireTranscript member public init ( initialContext : LlmWireInitialContext , items ! : Array < LlmWireInputItem > = [ ] )
-LlmWireTranscript member public init ( items ! : Array < LlmWireInputItem > = [ ] )
+LlmWireTranscript member public init ( initialContext : LlmWireInitialContext , items ! : Array < LlmWireInputItem > = [ ] , cacheBreakpoints ! : Array < LlmWireCacheBreakpoint > = [ ] )
+LlmWireTranscript member public init ( items ! : Array < LlmWireInputItem > = [ ] , cacheBreakpoints ! : Array < LlmWireCacheBreakpoint > = [ ] )
 LlmWireTranscript member public let initialContext : LlmWireInitialContext
+LlmWireTranscript member public prop cacheBreakpoints : Array < LlmWireCacheBreakpoint > accessors get ( )
 LlmWireTranscript member public prop effectiveTools : Array < LlmWireToolDefinition > accessors get ( )
 LlmWireTranscript member public prop items : Array < LlmWireInputItem > accessors get ( )
 LlmWireTranscript member public static func restore ( snapshot : String ) : LlmWireResult < LlmWireTranscript >
@@ -479,6 +487,7 @@ SseEvent member public let event : String
 SseEvent member public let id : String
 SseEvent member public let retryMillis : ? Int64
 public class LlmWireAssistantMessageSpan
+public class LlmWireCacheBreakpoint
 public class LlmWireCacheCapabilities
 public class LlmWireCapabilities
 public class LlmWireChoice

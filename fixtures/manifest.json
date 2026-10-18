@@ -25,6 +25,18 @@
         "checked_at": "2026-10-18",
         "notes": "Hand-reviewed exact-value and validation oracles. Unknown-rule precedence follows the documented llm4cj fail-closed subset policy. No live capture."
       }
+    },
+    {
+      "id": "cache-breakpoints",
+      "fixture": "cache-requests.json",
+      "command": "check-cache",
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Hand-authored request and error oracles for typed Anthropic cache positions and TTLs. Offline direct, restored and builder comparison, not a provider capture."
+      }
     }
   ],
   "dialects": [

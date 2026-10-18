@@ -162,18 +162,28 @@ func anthropicToolReference(operation: String, identity: LlmWireToolDefinitionId
     ]))])
 }
 
-func encodeMessagesTranscript(codec: LlmWireCodec, transcript: LlmWireTranscript, headers: ArrayList<LlmWireHeader>): JsonNode {
+func encodeMessagesTranscript(codec: LlmWireCodec, transcript: LlmWireTranscript, headers: ArrayList<LlmWireHeader>, cachePlan!: ResolvedCachePlan = ResolvedCachePlan()): JsonNode {
     let messages = wireJsonArray([])
     let declaredNames = transcriptDeclaredNames(transcript)
     var needsToolBeta = false
     for (declaration in transcript.initialContext.tools where declaration.deferred) { needsToolBeta = true }
-    for (item in transcript.items) { match (item) {
+    let items = transcript.items
+    for (itemIndex in 0..items.size) { match (items[itemIndex]) {
         case LlmWireInputItem.Message(message) =>
-            let content = wireJsonArray([]); for (block in message.blocks) { content.add(encodeMessagesContent(codec, block)) }
+            let content = wireJsonArray([])
+            for (index in 0..message.blocks.size) { content.add(cachePlan.decorate(LlmWireCachePosition.MessageBlock(itemIndex, index), encodeMessagesContent(codec, message.blocks[index]))) }
             messages.add(wireJsonObject([WireJsonField("role", wireJsonString(roleName(message.role))), WireJsonField("content", content)]))
-        case LlmWireInputItem.InstructionUpdate(value) => messages.add(wireJsonObject([WireJsonField("role", wireJsonString("system")), WireJsonField("content", wireJsonArray([wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(value.text))])]))]))
-        case LlmWireInputItem.ToolActivation(identity) => needsToolBeta = true; messages.add(anthropicToolReference("tool_addition", identity))
-        case LlmWireInputItem.ToolDeactivation(identity) => needsToolBeta = true; messages.add(anthropicToolReference("tool_removal", identity))
+        case LlmWireInputItem.InstructionUpdate(value) => messages.add(wireJsonObject([WireJsonField("role", wireJsonString("system")), WireJsonField("content", wireJsonArray([cachePlan.decorate(LlmWireCachePosition.Item(itemIndex), wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(value.text))]))]))]))
+        case LlmWireInputItem.ToolActivation(identity) =>
+            needsToolBeta = true
+            let message = anthropicToolReference("tool_addition", identity)
+            let _ = cachePlan.decorate(LlmWireCachePosition.Item(itemIndex), message["content"].items[0])
+            messages.add(message)
+        case LlmWireInputItem.ToolDeactivation(identity) =>
+            needsToolBeta = true
+            let message = anthropicToolReference("tool_removal", identity)
+            let _ = cachePlan.decorate(LlmWireCachePosition.Item(itemIndex), message["content"].items[0])
+            messages.add(message)
         case LlmWireInputItem.ToolDeclaration(value) =>
             if (declaredNames.add(value.tool.name)) { unsupportedRequest("llm.context_update_unsupported", "Messages reference contract cannot declare a new tool schema mid-conversation") }
     } }
@@ -181,14 +191,16 @@ func encodeMessagesTranscript(codec: LlmWireCodec, transcript: LlmWireTranscript
     messages
 }
 
-func addMessagesInitialTools(root: JsonNode, transcript: LlmWireTranscript): Unit {
+func addMessagesInitialTools(root: JsonNode, transcript: LlmWireTranscript, cachePlan!: ResolvedCachePlan = ResolvedCachePlan()): Unit {
     let tools = wireJsonArray([]); let seen = HashSet<String>()
-    for (declaration in transcript.initialContext.tools) {
+    let declarations = transcript.initialContext.tools
+    for (index in 0..declarations.size) {
+        let declaration = declarations[index]
         if (!seen.add(declaration.tool.name)) { continue }
         let tool = requireFunctionTool(declaration.tool)
         let value = wireJsonObject([WireJsonField("name", wireJsonString(tool.name)), WireJsonField("description", wireJsonString(tool.description)), WireJsonField("input_schema", tool.inputSchema.jsonNode())])
         if (declaration.deferred) { value.put("defer_loading", wireJsonBool(true)) }
-        tools.add(value)
+        tools.add(cachePlan.decorate(LlmWireCachePosition.InitialTool(index), value))
     }
     if (!tools.items.isEmpty()) { root.put("tools", tools) }
 }

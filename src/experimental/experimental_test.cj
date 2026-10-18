@@ -108,6 +108,31 @@ class Llm4CjExperimentalTests {
     }
 
     @TestCase
+    func cachePrewarmAcceptsAnExplicitStablePrefix() {
+        let codec = anthropicMessagesCodec(anthropicMessagesModelProfile("claude-test", capabilities:
+            LlmWireCapabilities(cache: LlmWireCacheCapabilities(lifetimes: [LlmWirePromptCacheLifetime.OneHour], explicitBreakpoints: true))))
+        let transcript = LlmWireTranscript(LlmWireInitialContext(instructions: [LlmWireInstruction(LlmWireInstructionRole.System, "stable prefix")]),
+            items: messageItems([LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("warm"))])]),
+            cacheBreakpoints: [LlmWireCacheBreakpoint(LlmWireCachePosition.InitialInstruction(0), lifetime: LlmWirePromptCacheLifetime.OneHour)])
+        let exchange = match (prepareAnthropicCachePrewarm(codec, LlmWireRequest("claude-test", transcript, maxOutputTokens: Some(0)))) {
+            case LlmWireResult.Ok(value) => value
+            case LlmWireResult.Err(error) => throw error
+        }
+        let materialized = match (exchange.request.materialize()) {
+            case LlmWireResult.Ok(value) => value
+            case LlmWireResult.Err(error) => throw error
+        }
+        let body = match (LlmWireJson.parse(String.fromUtf8(materialized.body))) {
+            case LlmWireResult.Ok(value) => value
+            case LlmWireResult.Err(error) => throw error
+        }
+        @Expect(body.field("max_tokens").getOrThrow().numberLiteral(), Some("0"))
+        @Expect(body.field("cache_control").isNone(), true)
+        @Expect(body.field("system").getOrThrow().values()[0].field("cache_control").getOrThrow().field("ttl").getOrThrow().stringValue(), Some("1h"))
+        @Expect(body.field("messages").getOrThrow().values()[0].field("content").getOrThrow().values()[0].field("cache_control").isNone(), true)
+    }
+
+    @TestCase
     func cachePrewarmRejectsGenerationFeatures() {
         match (prepareAnthropicCachePrewarm(prewarmCodec(), prewarmRequest(thinkingMode: LlmWireThinkingMode.Budget(1024)))) {
             case LlmWireResult.Err(error) => @Expect(error.code, "llm.cache_prewarm_thinking_unsupported")

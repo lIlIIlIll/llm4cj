@@ -1,0 +1,135 @@
+{
+  "source": {
+    "kind": "schema_derived",
+    "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+    "revision": "rolling reference",
+    "checked_at": "2026-10-18",
+    "notes": "Independent synthetic requests, tool definitions, identifiers and image bytes. Cache positions and TTLs follow the primary schema; no provider capture. Deferred restriction: https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool . Context operations: https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages ."
+  },
+  "live_provider": "not_run",
+  "request_defaults": {
+    "kind": "request",
+    "headers": [{"name": "content-type", "value": "application/json"}, {"name": "accept", "value": "application/json"}],
+    "snapshot_version": 3
+  },
+  "error_defaults": {
+    "retryable": false, "http_status": null, "retry_after_millis": null, "provider": "",
+    "provider_error_code": "", "provider_error_type": "", "diagnostic": null, "phase": "encode",
+    "protocol": null, "dialect": "", "event_type": "", "block_index": -1, "tool_call_id": "",
+    "input_item_index": -1, "tool_name": "", "tool_version": "", "missing_capability": "",
+    "profile_id": "", "contract_version": 0, "provider_request_id": "", "usage": null
+  },
+  "cases": [
+    {
+      "id": "no-markers",
+      "expected": {
+        "body": {"model":"fixture-model","max_tokens":32,"messages":[{"role":"user","content":[{"type":"text","text":"one"},{"type":"text","text":"two"},{"type":"text","text":"three"},{"type":"text","text":"four"}]}]},
+        "snapshot_version": 2, "cache_breakpoints": []
+      }
+    },
+    {
+      "id": "marker-five",
+      "expected": {
+        "body": {"model":"fixture-model","max_tokens":32,"messages":[{"role":"user","content":[{"type":"text","text":"one","cache_control":{"type":"ephemeral","ttl":"5m"}},{"type":"text","text":"two"},{"type":"text","text":"three"},{"type":"text","text":"four"}]}]},
+        "cache_breakpoints": [{"position":{"kind":"message_block","item_index":0,"block_index":0},"lifetime":"5m"}]
+      }
+    },
+    {
+      "id": "marker-hour",
+      "expected": {
+        "body": {"model":"fixture-model","max_tokens":32,"messages":[{"role":"user","content":[{"type":"text","text":"one","cache_control":{"type":"ephemeral","ttl":"1h"}},{"type":"text","text":"two"},{"type":"text","text":"three"},{"type":"text","text":"four"}]}]},
+        "cache_breakpoints": [{"position":{"kind":"message_block","item_index":0,"block_index":0},"lifetime":"1h"}]
+      }
+    },
+    {
+      "id": "marker-moved",
+      "expected": {
+        "body": {"model":"fixture-model","max_tokens":32,"messages":[{"role":"user","content":[{"type":"text","text":"one"},{"type":"text","text":"two","cache_control":{"type":"ephemeral","ttl":"5m"}},{"type":"text","text":"three"},{"type":"text","text":"four"}]}]},
+        "cache_breakpoints": [{"position":{"kind":"message_block","item_index":0,"block_index":1},"lifetime":"5m"}]
+      }
+    },
+    {
+      "id": "second-tool-target",
+      "expected": {
+        "body": {
+          "model":"fixture-model","max_tokens":32,
+          "tools":[{"name":"A","description":"Tool A","input_schema":{"type":"object","properties":{}}},{"name":"B","description":"Tool B","input_schema":{"type":"object","properties":{}},"cache_control":{"type":"ephemeral","ttl":"5m"}}],
+          "messages":[{"role":"user","content":[{"type":"text","text":"one"},{"type":"text","text":"two"},{"type":"text","text":"three"},{"type":"text","text":"four"}]}]
+        },
+        "cache_breakpoints": [{"position":{"kind":"initial_tool","index":1},"lifetime":"5m"}]
+      }
+    },
+    {"id":"custom-target-rejected","error":{"kind":"unsupported","code":"llm.custom_tool_format_unsupported","message":"custom tool format requires explicit dialect and model support","provider":"anthropic","protocol":"messages","dialect":"anthropic.messages.v1","tool_name":"emit","profile_id":"fixture.cache","contract_version":1}},
+    {"id":"custom-neighbor-rejected","error":{"kind":"unsupported","code":"llm.custom_tool_format_unsupported","message":"custom tool format requires explicit dialect and model support","provider":"anthropic","protocol":"messages","dialect":"anthropic.messages.v1","tool_name":"emit","profile_id":"fixture.cache","contract_version":1}},
+    {
+      "id": "four-locations",
+      "expected": {
+        "body": {
+          "model":"fixture-model","max_tokens":32,
+          "tools":[{"name":"A","description":"Tool A","input_schema":{"type":"object","properties":{}},"cache_control":{"type":"ephemeral","ttl":"1h"}}],
+          "system":[{"type":"text","text":"system","cache_control":{"type":"ephemeral","ttl":"1h"}}],
+          "messages":[
+            {"role":"user","content":[{"type":"text","text":"one"},{"type":"text","text":"two","cache_control":{"type":"ephemeral","ttl":"5m"}},{"type":"text","text":"three"},{"type":"text","text":"four"}]},
+            {"role":"system","content":[{"type":"text","text":"update","cache_control":{"type":"ephemeral","ttl":"5m"}}]}
+          ]
+        },
+        "cache_breakpoints": [
+          {"position":{"kind":"item","index":1},"lifetime":"5m"},
+          {"position":{"kind":"message_block","item_index":0,"block_index":1},"lifetime":"5m"},
+          {"position":{"kind":"initial_instruction","index":0},"lifetime":"1h"},
+          {"position":{"kind":"initial_tool","index":0},"lifetime":"1h"}
+        ]
+      }
+    },
+    {
+      "id": "automatic-three",
+      "expected": {
+        "body": {"model":"fixture-model","max_tokens":32,"cache_control":{"type":"ephemeral"},"messages":[{"role":"user","content":[{"type":"text","text":"one","cache_control":{"type":"ephemeral","ttl":"5m"}},{"type":"text","text":"two","cache_control":{"type":"ephemeral","ttl":"5m"}},{"type":"text","text":"three"},{"type":"text","text":"four","cache_control":{"type":"ephemeral","ttl":"5m"}}]}]},
+        "cache_breakpoints": [
+          {"position":{"kind":"message_block","item_index":0,"block_index":0},"lifetime":"5m"},
+          {"position":{"kind":"message_block","item_index":0,"block_index":1},"lifetime":"5m"},
+          {"position":{"kind":"message_block","item_index":0,"block_index":3},"lifetime":"5m"}
+        ]
+      }
+    },
+    {
+      "id": "image-target",
+      "expected": {
+        "body": {"model":"fixture-model","max_tokens":32,"messages":[{"role":"user","content":[{"type":"text","text":"image"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"YWJj"},"cache_control":{"type":"ephemeral","ttl":"5m"}}]}]},
+        "cache_breakpoints": [{"position":{"kind":"message_block","item_index":0,"block_index":1},"lifetime":"5m"}]
+      }
+    },
+    {
+      "id": "tool-lifecycle",
+      "expected": {
+        "headers": [{"name":"content-type","value":"application/json"},{"name":"accept","value":"application/json"},{"name":"anthropic-beta","value":"mid-conversation-tool-changes-2026-07-01"}],
+        "body": {
+          "model":"fixture-model","max_tokens":32,
+          "tools":[{"name":"A","description":"Tool A","input_schema":{"type":"object","properties":{}}},{"name":"B","description":"Tool B","input_schema":{"type":"object","properties":{}},"defer_loading":true}],
+          "messages":[
+            {"role":"user","content":[{"type":"text","text":"request"}]},
+            {"role":"system","content":[{"type":"tool_addition","tool":{"type":"tool_reference","name":"B"},"cache_control":{"type":"ephemeral","ttl":"1h"}}]},
+            {"role":"assistant","content":[{"type":"tool_use","id":"call-B","name":"B","input":{},"cache_control":{"type":"ephemeral","ttl":"1h"}}]},
+            {"role":"user","content":[{"type":"tool_result","tool_use_id":"call-B","is_error":false,"content":[{"type":"text","text":"done"}],"cache_control":{"type":"ephemeral","ttl":"5m"}}]},
+            {"role":"system","content":[{"type":"tool_removal","tool":{"type":"tool_reference","name":"B"},"cache_control":{"type":"ephemeral","ttl":"5m"}}]}
+          ]
+        },
+        "cache_breakpoints": [
+          {"position":{"kind":"item","index":1},"lifetime":"1h"},
+          {"position":{"kind":"message_block","item_index":2,"block_index":0},"lifetime":"1h"},
+          {"position":{"kind":"message_block","item_index":3,"block_index":0},"lifetime":"5m"},
+          {"position":{"kind":"item","index":4},"lifetime":"5m"}
+        ]
+      }
+    },
+    {"id":"automatic-four","error":{"kind":"invalid_request","code":"llm.cache_breakpoint_limit","message":"automatic caching leaves at most three explicit breakpoint slots","provider":"anthropic","protocol":"messages","dialect":"anthropic.messages.v1","profile_id":"fixture.cache","contract_version":1}},
+    {"id":"ttl-order","error":{"kind":"invalid_request","code":"llm.cache_ttl_order_invalid","message":"one-hour cache breakpoints must precede five-minute breakpoints","provider":"anthropic","protocol":"messages","dialect":"anthropic.messages.v1","input_item_index":0,"block_index":1,"profile_id":"fixture.cache","contract_version":1}},
+    {"id":"ttl-conflict","error":{"kind":"invalid_request","code":"llm.cache_ttl_conflict","message":"automatic and explicit cache TTLs conflict at the final eligible block","provider":"anthropic","protocol":"messages","dialect":"anthropic.messages.v1","input_item_index":0,"block_index":3,"profile_id":"fixture.cache","contract_version":1}},
+    {"id":"deferred-target","error":{"kind":"invalid_request","code":"llm.cache_target_invalid","message":"cache position does not identify an eligible emitted block","provider":"anthropic","protocol":"messages","dialect":"anthropic.messages.v1","profile_id":"fixture.cache","contract_version":1}},
+    {"id":"duplicate-target","error":{"kind":"invalid_request","code":"llm.cache_position_duplicate","message":"an explicit cache position may be declared only once","input_item_index":0,"block_index":0}},
+    {"id":"out-of-bounds","error":{"kind":"invalid_request","code":"llm.cache_position_invalid","message":"cache position is outside its original transcript item","input_item_index":0,"block_index":99}},
+    {"id":"missing-capability","error":{"kind":"unsupported","code":"llm.cache_explicit_unsupported","message":"explicit cache breakpoints require the built-in Anthropic contract and model capability","provider":"anthropic","protocol":"messages","dialect":"anthropic.messages.v1","profile_id":"fixture.cache","contract_version":1}},
+    {"id":"deepseek-rejected","error":{"kind":"unsupported","code":"llm.cache_explicit_unsupported","message":"explicit cache breakpoints require the built-in Anthropic contract and model capability","provider":"deepseek","protocol":"messages","dialect":"deepseek.messages.v1","contract_version":1}},
+    {"id":"spoof-rejected","error":{"kind":"unsupported","code":"llm.cache_explicit_unsupported","message":"explicit cache breakpoints require the built-in Anthropic contract and model capability","protocol":"messages","dialect":"fixture.cache.spoof","contract_version":1}}
+  ]
+}

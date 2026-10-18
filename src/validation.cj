@@ -77,7 +77,7 @@ func wireRequiredInt(value: JsonNode, name: String, provider!: String = ""): Int
     }
 }
 
-func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCachePrewarm!: Bool = false): Unit {
+func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCachePrewarm!: Bool = false): ResolvedCachePlan {
     if (codec.protocol == LlmWireProtocol.Responses) { validateResponsesInputSize(request, codec.dialect.compatibilityId == "openai.codex.responses.v1") }
     if (request.model == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.model_missing", "model must not be empty") }
     match (codec.modelProfile) {
@@ -189,6 +189,7 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCach
         } catch (error: LlmWireError) { throw withInputItemContext(error, itemIndex) }
         case _ => ()
     } }
+    resolveCachePlan(codec, request)
 }
 
 func validateMessagePhaseMetadata(codec: LlmWireCodec, message: LlmWireMessage): Unit {

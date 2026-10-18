@@ -196,7 +196,7 @@ class TranscriptSnapshotTest {
                 case _ => @Fail("unsupported version must fail")
             }
         }
-        for (snapshot in ["{", "[]", "{\"version\":1,\"format\":\"other\"}",
+        for (snapshot in ["{", "[]", "{\"version\":3}", "{\"version\":1,\"format\":\"other\"}",
             "{\"version\":1,\"format\":\"llm4cj.transcript\",\"initial_context\":{\"instructions\":[],\"tools\":[]},\"items\":[{\"kind\":\"future\",\"value\":{}}]}"]) {
             match (LlmWireTranscript.restore(snapshot)) { case LlmWireResult.Err(_) => (); case _ => @Fail("malformed snapshot must fail") }
         }

@@ -1,4 +1,5 @@
 class LlmWireAssistantMessageSpan
+class LlmWireCacheBreakpoint
 class LlmWireCacheCapabilities
 class LlmWireCapabilities
 class LlmWireChoice
@@ -62,6 +63,7 @@ enum LlmTransportPhase
 enum LlmWireAnnotation
 enum LlmWireBlock
 enum LlmWireBuiltinDialect
+enum LlmWireCachePosition
 enum LlmWireCapabilityEvidence
 enum LlmWireChoiceOutcome
 enum LlmWireCitationKind

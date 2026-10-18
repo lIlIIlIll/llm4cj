@@ -711,6 +711,43 @@ class FixtureOracleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid fixture reference"):
             check_fixtures.validate_manifest()
 
+    def test_cache_public_check_joins_inventory_and_keeps_registration_validation(self) -> None:
+        fixtures, manifest = self.manifest()
+        (fixtures / "cache.json").write_text("{}\n")
+        entry = {"id": "cache-breakpoints", "command": "check-cache",
+                 "fixture": "cache.json", "source": self.source()}
+        manifest["public_checks"] = [entry]
+        self.write_manifest(fixtures, manifest)
+        validated = check_fixtures.validate_manifest()
+        self.assertIn(fixtures / "cache.json", check_fixtures.fixture_inventory(validated))
+        for change in [{"command": "run-arbitrary-script"},
+                       {"source": self.source() | {"url": "https://example.test/not-primary"}}]:
+            modified = manifest | {"public_checks": [entry | change]}
+            self.write_manifest(fixtures, modified)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                check_fixtures.validate_manifest()
+
+    def test_public_checks_use_fixed_cache_runner_and_reject_unknown_dispatch(self) -> None:
+        fixtures, manifest = self.manifest()
+        checks = []
+        for command, name in [("check-cache", "cache"), ("check-schema", "schema"),
+                              ("check-structured", "structured")]:
+            (fixtures / f"{name}.json").write_text("{}\n")
+            checks.append({"command": command, "fixture": f"{name}.json"})
+        executable = fixtures.parent / "public-probe"
+        with patch.object(check_fixtures.subprocess, "run") as run:
+            self.assertEqual(check_fixtures.verify_public_checks(executable, {"public_checks": checks}), 3)
+            arguments = [call.args[0] for call in run.call_args_list]
+            self.assertIn([sys.executable, str(check_fixtures.ROOT / "scripts/check_cache_fixtures.py"),
+                           "--probe", str(executable), "--fixture", str(fixtures / "cache.json")], arguments)
+            self.assertIn([str(executable), "check-schema", str(fixtures / "schema.json")], arguments)
+            self.assertIn([str(executable), "check-structured", str(fixtures / "structured.json")], arguments)
+            run.reset_mock()
+            with self.assertRaisesRegex(ValueError, "unknown public fixture check command"):
+                check_fixtures.verify_public_checks(executable, {"public_checks": [
+                    {"command": "run-arbitrary-script", "fixture": "cache.json"}]})
+            run.assert_not_called()
+
     def test_inventory_rejects_path_traversal_absolute_paths_and_escaping_symlinks(self) -> None:
         fixtures, manifest = self.manifest()
         outside = fixtures.parent / "outside.json"

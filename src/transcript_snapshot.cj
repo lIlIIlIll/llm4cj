@@ -48,9 +48,10 @@ func readTranscriptSnapshot(source: String): JsonNode {
     }
 }
 
-// Version 3 distinguishes raw custom inputs and definitions. Legacy semantic
-// values retain their exact version 2 encoding.
+// Version 3 distinguishes raw custom inputs, definitions, and explicit cache
+// metadata. Legacy semantic values retain their exact version 2 encoding.
 func transcriptSnapshotVersion(transcript: LlmWireTranscript): Int64 {
+    if (!transcript.cacheBreakpoints.isEmpty()) { return 3 }
     for (tool in transcript.initialContext.tools where tool.tool.kind == LlmWireToolKind.Custom) { return 3 }
     for (item in transcript.items) { match (item) {
         case LlmWireInputItem.ToolDeclaration(value) => if (value.tool.kind == LlmWireToolKind.Custom) { return 3 }
@@ -72,7 +73,7 @@ func encodeTranscriptSnapshot(transcript: LlmWireTranscript): JsonNode {
     for (instruction in transcript.initialContext.instructions) { instructions.add(snapshotInstruction(instruction)) }
     for (tool in transcript.initialContext.tools) { tools.add(snapshotDeclaration(tool, version: version)) }
     for (item in transcript.items) { items.add(snapshotItem(item, version: version)) }
-    wireJsonObject([
+    let result = wireJsonObject([
         WireJsonField("format", wireJsonString("llm4cj.transcript")),
         WireJsonField("version", wireJsonNumber(version.toString())),
         WireJsonField("initial_context", wireJsonObject([
@@ -81,6 +82,12 @@ func encodeTranscriptSnapshot(transcript: LlmWireTranscript): JsonNode {
         ])),
         WireJsonField("items", wireJsonArray(items.toArray()))
     ])
+    if (!transcript.cacheBreakpoints.isEmpty()) {
+        let breakpoints = ArrayList<JsonNode>()
+        for (value in transcript.cacheBreakpoints) { breakpoints.add(snapshotCacheBreakpoint(value)) }
+        result.put("cache_breakpoints", wireJsonArray(breakpoints.toArray()))
+    }
+    result
 }
 
 func decodeTranscriptSnapshot(value: JsonNode): LlmWireTranscript {
@@ -92,16 +99,22 @@ func decodeTranscriptSnapshot(value: JsonNode): LlmWireTranscript {
     if (wireOptionalString(root, "format") != Some("llm4cj.transcript")) {
         throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.transcript_snapshot_invalid", "unknown transcript snapshot format")
     }
-    snapshotFields(root, ["format", "version", "initial_context", "items"])
+    snapshotFields(root, if (version == Some(3)) { ["format", "version", "initial_context", "items", "cache_breakpoints"] } else { ["format", "version", "initial_context", "items"] })
     let context = wireObject(wireRequiredField(root, "initial_context"), "initial context")
     snapshotFields(context, ["instructions", "tools"])
     let instructions = ArrayList<LlmWireInstruction>()
     let tools = ArrayList<LlmWireToolDeclaration>()
     let items = ArrayList<LlmWireInputItem>()
+    let breakpoints = ArrayList<LlmWireCacheBreakpoint>()
     for (entry in snapshotArray(context, "instructions")) { instructions.add(restoreInstruction(entry)) }
     for (entry in snapshotArray(context, "tools")) { tools.add(restoreDeclaration(entry, version: version.getOrThrow())) }
     for (entry in snapshotArray(root, "items")) { items.add(restoreItem(entry, version: version.getOrThrow())) }
-    LlmWireTranscript(LlmWireInitialContext(instructions: instructions.toArray(), tools: tools.toArray()), items: items.toArray())
+    if (root.field("cache_breakpoints").isSome()) {
+        let values = snapshotArray(root, "cache_breakpoints")
+        if (values.size > 4) { snapshotInvalid("at most four cache breakpoints can be restored") }
+        for (entry in values) { breakpoints.add(restoreCacheBreakpoint(entry)) }
+    }
+    LlmWireTranscript(LlmWireInitialContext(instructions: instructions.toArray(), tools: tools.toArray()), items: items.toArray(), cacheBreakpoints: breakpoints.toArray())
 }
 
 func snapshotFields(value: JsonNode, allowed: Array<String>): Unit {
