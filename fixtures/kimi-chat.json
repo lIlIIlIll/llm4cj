@@ -1,0 +1,29 @@
+{
+  "fixture": "kimi.chat.v1",
+  "source": "https://platform.kimi.ai/docs/api/chat",
+  "checked_at": "2026-10-18",
+  "response": {
+    "id": "chat_fixture",
+    "object": "chat.completion",
+    "model": "fixture-model",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "ok é",
+          "reasoning_content": "why"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 3,
+      "completion_tokens": 2,
+      "total_tokens": 5,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    }
+  }
+}

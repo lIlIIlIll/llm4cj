@@ -1,0 +1,82 @@
+{
+  "fixed": {
+    "state": {
+      "kind": "error",
+      "error": {
+        "kind": "invalid_wire",
+        "code": "llm.field_type_invalid",
+        "message": "logprob must be a number",
+        "retryable": false,
+        "http_status": 200,
+        "retry_after_millis": null,
+        "provider": "openai",
+        "provider_error_code": "",
+        "provider_error_type": "",
+        "diagnostic": null,
+        "phase": "wire_decode",
+        "protocol": "chat_completions",
+        "dialect": "openai.chat.v1",
+        "event_type": "",
+        "block_index": -1,
+        "tool_call_id": "",
+        "input_item_index": -1,
+        "tool_name": "",
+        "tool_version": "",
+        "missing_capability": "",
+        "profile_id": "",
+        "contract_version": 1,
+        "provider_request_id": "",
+        "usage": {
+          "input_tokens": 3,
+          "output_tokens": 2,
+          "reasoning_tokens": null,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": null,
+          "total_tokens": 5,
+          "web_search_requests": null,
+          "web_fetch_requests": null,
+          "service_tier": null,
+          "source": {
+            "provider": "openai",
+            "dialect": "openai.chat.v1"
+          },
+          "cache_read_availability": "reported",
+          "cache_write_availability": "unknown"
+        }
+      }
+    },
+    "continuation": null
+  },
+  "stream": {
+    "state": {
+      "kind": "error",
+      "error": {
+        "kind": "invalid_wire",
+        "code": "llm.field_type_invalid",
+        "message": "logprob must be a number",
+        "retryable": false,
+        "http_status": null,
+        "retry_after_millis": null,
+        "provider": "openai",
+        "provider_error_code": "",
+        "provider_error_type": "",
+        "diagnostic": null,
+        "phase": "wire_decode",
+        "protocol": "chat_completions",
+        "dialect": "openai.chat.v1",
+        "event_type": "",
+        "block_index": -1,
+        "tool_call_id": "",
+        "input_item_index": -1,
+        "tool_name": "",
+        "tool_version": "",
+        "missing_capability": "",
+        "profile_id": "",
+        "contract_version": 1,
+        "provider_request_id": "",
+        "usage": null
+      }
+    },
+    "continuation": null
+  }
+}

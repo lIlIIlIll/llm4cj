@@ -1,0 +1,252 @@
+{
+  "canonical": {
+    "state": {
+      "kind": "completed",
+      "reply": {
+        "response_id": "chat_fixture",
+        "model": "fixture-model",
+        "raw_stop_reason": "stop",
+        "blocks": [
+          {
+            "kind": "text",
+            "value": {
+              "text": "ok é",
+              "phase": "unspecified",
+              "logprobs": [],
+              "citations": [],
+              "annotations": []
+            }
+          }
+        ],
+        "usage": {
+          "input_tokens": 3,
+          "output_tokens": 2,
+          "reasoning_tokens": null,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": null,
+          "total_tokens": 5,
+          "web_search_requests": null,
+          "web_fetch_requests": null,
+          "service_tier": null,
+          "source": {
+            "provider": "openai",
+            "dialect": "openai.chat.v1"
+          },
+          "cache_read_availability": "reported",
+          "cache_write_availability": "unknown"
+        },
+        "choices": [
+          {
+            "index": 0,
+            "raw_stop_reason": "stop",
+            "outcome": {
+              "kind": "completed"
+            },
+            "blocks": [
+              {
+                "kind": "text",
+                "value": {
+                  "text": "ok é",
+                  "phase": "unspecified",
+                  "logprobs": [],
+                  "citations": [],
+                  "annotations": []
+                }
+              }
+            ],
+            "message_spans": []
+          }
+        ]
+      }
+    },
+    "continuation": {
+      "default": {
+        "kind": "ok",
+        "snapshot": {
+          "format": "llm4cj.transcript",
+          "version": 2,
+          "initial_context": {
+            "instructions": [],
+            "tools": []
+          },
+          "items": [
+            {
+              "kind": "message",
+              "value": {
+                "role": "assistant",
+                "blocks": [
+                  {
+                    "kind": "text",
+                    "value": {
+                      "text": "ok é",
+                      "phase": "unspecified",
+                      "logprobs": [],
+                      "citations": [],
+                      "annotations": []
+                    }
+                  }
+                ],
+                "message_spans": []
+              }
+            }
+          ]
+        },
+        "restored_snapshot": {
+          "format": "llm4cj.transcript",
+          "version": 2,
+          "initial_context": {
+            "instructions": [],
+            "tools": []
+          },
+          "items": [
+            {
+              "kind": "message",
+              "value": {
+                "role": "assistant",
+                "blocks": [
+                  {
+                    "kind": "text",
+                    "value": {
+                      "text": "ok é",
+                      "phase": "unspecified",
+                      "logprobs": [],
+                      "citations": [],
+                      "annotations": []
+                    }
+                  }
+                ],
+                "message_spans": []
+              }
+            }
+          ]
+        },
+        "encoded": {
+          "body": {
+            "model": "fixture-model",
+            "max_completion_tokens": 256,
+            "messages": [
+              {
+                "role": "user",
+                "content": "hello"
+              },
+              {
+                "role": "assistant",
+                "content": "ok é"
+              },
+              {
+                "role": "user",
+                "content": "next"
+              }
+            ]
+          },
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "choices": [
+        {
+          "index": 0,
+          "result": {
+            "kind": "ok",
+            "snapshot": {
+              "format": "llm4cj.transcript",
+              "version": 2,
+              "initial_context": {
+                "instructions": [],
+                "tools": []
+              },
+              "items": [
+                {
+                  "kind": "message",
+                  "value": {
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "kind": "text",
+                        "value": {
+                          "text": "ok é",
+                          "phase": "unspecified",
+                          "logprobs": [],
+                          "citations": [],
+                          "annotations": []
+                        }
+                      }
+                    ],
+                    "message_spans": []
+                  }
+                }
+              ]
+            },
+            "restored_snapshot": {
+              "format": "llm4cj.transcript",
+              "version": 2,
+              "initial_context": {
+                "instructions": [],
+                "tools": []
+              },
+              "items": [
+                {
+                  "kind": "message",
+                  "value": {
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "kind": "text",
+                        "value": {
+                          "text": "ok é",
+                          "phase": "unspecified",
+                          "logprobs": [],
+                          "citations": [],
+                          "annotations": []
+                        }
+                      }
+                    ],
+                    "message_spans": []
+                  }
+                }
+              ]
+            },
+            "encoded": {
+              "body": {
+                "model": "fixture-model",
+                "max_completion_tokens": 256,
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "hello"
+                  },
+                  {
+                    "role": "assistant",
+                    "content": "ok é"
+                  },
+                  {
+                    "role": "user",
+                    "content": "next"
+                  }
+                ]
+              },
+              "headers": [
+                {
+                  "name": "content-type",
+                  "value": "application/json"
+                },
+                {
+                  "name": "accept",
+                  "value": "application/json"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

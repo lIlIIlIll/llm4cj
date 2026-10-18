@@ -1,0 +1,106 @@
+{
+  "response": {
+    "id": "chat_fixture",
+    "object": "chat.completion",
+    "model": "fixture-model",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "ok é"
+        },
+        "finish_reason": "stop",
+        "logprobs": {
+          "content": [
+            {
+              "token": "ok ",
+              "bytes": [
+                111,
+                107,
+                32
+              ],
+              "logprob": -0.123456789012345678901,
+              "top_logprobs": [
+                {
+                  "token": "x",
+                  "bytes": [
+                    120
+                  ],
+                  "logprob": -2.5
+                }
+              ]
+            },
+            {
+              "token": "é",
+              "bytes": [
+                195,
+                169
+              ],
+              "logprob": -0.100000000000000000001,
+              "top_logprobs": []
+            }
+          ],
+          "refusal": null
+        }
+      },
+      {
+        "index": 1,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "refusal": "no é"
+        },
+        "finish_reason": "stop",
+        "logprobs": {
+          "content": null,
+          "refusal": [
+            {
+              "token": "no ",
+              "bytes": [
+                110,
+                111,
+                32
+              ],
+              "logprob": -0.123456789012345678901,
+              "top_logprobs": [
+                {
+                  "token": "x",
+                  "bytes": [
+                    120
+                  ],
+                  "logprob": -2.5
+                }
+              ]
+            },
+            {
+              "token": "é",
+              "bytes": [
+                195,
+                169
+              ],
+              "logprob": -0.100000000000000000001,
+              "top_logprobs": []
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 3,
+      "completion_tokens": 2,
+      "total_tokens": 5,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    }
+  },
+  "events": [
+    "{\"id\":\"chat_fixture\",\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"logprobs\":null,\"finish_reason\":null},{\"index\":1,\"delta\":{\"role\":\"assistant\"},\"logprobs\":{\"content\":[],\"refusal\":[]},\"finish_reason\":null}]}",
+    "{\"id\":\"chat_fixture\",\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok \"},\"logprobs\":{\"content\":[{\"token\":\"ok \",\"bytes\":[111,107,32],\"logprob\":-0.123456789012345678901,\"top_logprobs\":[{\"token\":\"x\",\"bytes\":[120],\"logprob\":-2.5}]}],\"refusal\":null},\"finish_reason\":null},{\"index\":1,\"delta\":{\"refusal\":\"no \"},\"logprobs\":{\"content\":null,\"refusal\":[{\"token\":\"no \",\"bytes\":[110,111,32],\"logprob\":-0.123456789012345678901,\"top_logprobs\":[{\"token\":\"x\",\"bytes\":[120],\"logprob\":-2.5}]}]},\"finish_reason\":null}]}",
+    "{\"id\":\"chat_fixture\",\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"é\"},\"logprobs\":{\"content\":[{\"token\":\"é\",\"bytes\":[195,169],\"logprob\":-0.100000000000000000001,\"top_logprobs\":[]}]},\"finish_reason\":null},{\"index\":1,\"delta\":{\"refusal\":\"é\"},\"logprobs\":{\"refusal\":[{\"token\":\"é\",\"bytes\":[195,169],\"logprob\":-0.100000000000000000001,\"top_logprobs\":[]}]},\"finish_reason\":null}]}",
+    "{\"id\":\"chat_fixture\",\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"},{\"index\":1,\"delta\":{},\"finish_reason\":\"stop\"}]}",
+    "{\"id\":\"chat_fixture\",\"model\":\"fixture-model\",\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5,\"prompt_tokens_details\":{\"cached_tokens\":0}}}",
+    "[DONE]"
+  ]
+}

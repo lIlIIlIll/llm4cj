@@ -1,0 +1,11 @@
+{
+  "events": [
+    "{\"type\":\"response.created\",\"response\":{\"id\":\"resp_fixture\",\"model\":\"fixture-model\",\"status\":\"in_progress\",\"output\":[]},\"sequence_number\":0}",
+    "{\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"msg_fixture\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[]},\"sequence_number\":1}",
+    "{\"type\":\"response.content_part.added\",\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\"},\"sequence_number\":2}",
+    "{\"type\":\"response.output_text.delta\",\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"delta\":\"ok é\",\"sequence_number\":3}",
+    "{\"type\":\"response.output_text.done\",\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"text\":\"ok é\",\"sequence_number\":4}",
+    "{\"type\":\"response.content_part.done\",\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"ok é\",\"annotations\":[],\"logprobs\":[]},\"sequence_number\":5}",
+    "{\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"msg_fixture\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok é\",\"annotations\":[],\"logprobs\":[]}]},\"sequence_number\":6}"
+  ]
+}

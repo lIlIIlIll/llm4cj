@@ -3,7 +3,6 @@ package llm4cj_provider_probe
 import llm4cj.*
 import std.collection.*
 import std.convert.*
-import std.fs.*
 
 func providerJsonValue<T>(result: LlmWireResult<T>): T {
     match (result) { case LlmWireResult.Ok(value) => value; case LlmWireResult.Err(error) => throw error }
@@ -13,22 +12,25 @@ func messageItems(messages: Array<LlmWireMessage>): Array<LlmWireInputItem> {
     messages.map({message: LlmWireMessage => LlmWireInputItem.Message(message)})
 }
 
-func codecFor(name: String, model!: String = "probe-model"): LlmWireCodec {
+func codecFor(name: String, model!: String = "probe-model", tools!: Bool = false): LlmWireCodec {
+    let capabilities = LlmWireCapabilities(tools: LlmWireToolCapabilities(enabled: tools))
     match (name) {
-        case "openai-responses" => openAiResponsesCodec(openAiResponsesModelProfile(model))
-        case "openai-chat" => openAiChatCodec(openAiChatModelProfile(model))
-        case "anthropic-messages" => anthropicMessagesCodec(anthropicMessagesModelProfile(model))
-        case "deepseek-responses" => deepSeekResponsesCodec(deepSeekResponsesModelProfile(model))
-        case "deepseek-chat" => deepSeekChatCodec(deepSeekChatModelProfile(model))
-        case "deepseek-messages" => deepSeekMessagesCodec(deepSeekMessagesModelProfile(model))
+        case "openai-responses" => openAiResponsesCodec(openAiResponsesModelProfile(model, capabilities: capabilities))
+        case "openai-codex-responses" => openAiCodexResponsesCodec(openAiCodexResponsesModelProfile(model, capabilities: capabilities))
+        case "openai-chat" => openAiChatCodec(openAiChatModelProfile(model, capabilities: capabilities))
+        case "anthropic-messages" => anthropicMessagesCodec(anthropicMessagesModelProfile(model, capabilities: capabilities))
+        case "deepseek-responses" => deepSeekResponsesCodec(deepSeekResponsesModelProfile(model, capabilities: capabilities))
+        case "deepseek-chat" => deepSeekChatCodec(deepSeekChatModelProfile(model, capabilities: capabilities))
+        case "deepseek-messages" => deepSeekMessagesCodec(deepSeekMessagesModelProfile(model, capabilities: capabilities))
+        case "kimi-chat" => kimiChatCodec(kimiChatModelProfile(model, capabilities: capabilities))
         case _ => throw IllegalArgumentException("unknown dialect")
     }
 }
 
 func encode(name: String, model: String, streaming: Bool): Int64 {
     let codec = codecFor(name, model: model)
-    let request = LlmWireRequest(model, LlmWireTranscript(LlmWireInitialContext(), items: messageItems([LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock("hello"))])])), maxOutputTokens: Some(256))
-    let prepared = codec.encodeRequest(request, streaming: streaming)
+    let request = probeRequest(name, LlmWireTranscript(items: messageItems([userMessage("hello")])), model: model)
+    let prepared = codec.encodeRequest(request, streaming: streaming || name == "openai-codex-responses")
     let materialized = match (prepared.materialize()) {
         case LlmWireResult.Ok(value) => value
         case LlmWireResult.Err(_) => return 3
@@ -61,27 +63,11 @@ func encode(name: String, model: String, streaming: Bool): Int64 {
 
 func decodeStream(name: String, path: String, chunkBytes: Int64): Int64 {
     if (chunkBytes < 1 || chunkBytes > 65536) { return 2 }
-    let decoder = codecFor(name).newStreamDecoder(sseLimits: LlmWireSseLimits(
-        maxEventBytes: 8388608, maxLineBytes: 1048576, maxBufferedBytes: 16777216,
-        maxEventsPerPush: 4096, maxOutputBytesPerPush: 16777216
-    ))
-    let file = File(path, OpenMode.Read)
-    let buffer = Array<Byte>(chunkBytes, repeat: 0)
-    while (true) {
-        let count = file.read(buffer)
-        if (count <= 0) { break }
-        let chunk = ArrayList<Byte>()
-        for (index in 0..count) { chunk.add(buffer[index]) }
-        match (decoder.push(chunk.toArray())) { case LlmWireResult.Ok(_) => (); case LlmWireResult.Err(_) => file.close(); return 4 }
-    }
-    file.close()
-    match (decoder.finish()) {
-        case LlmWireResult.Ok(update) => match (update.terminal) {
-            case Some(LlmWireTerminal.Completed(_)) => println("ok"); 0
-            case Some(LlmWireTerminal.ProviderFailed(_)) | Some(LlmWireTerminal.Cancelled(_)) => 6
-            case None => 5
-        }
-        case LlmWireResult.Err(_) => 5
+    let decoded = decodeSse(codecFor(name), readBytes(path), chunkBytes, false)
+    match (decoded.result) {
+        case LlmWireResult.Ok(LlmWireTerminal.Completed(_)) => println("ok"); 0
+        case LlmWireResult.Ok(_) => 6
+        case LlmWireResult.Err(_) => if (decoded.pushFailed) { 4 } else { 5 }
     }
 }
 
@@ -91,6 +77,10 @@ main(args: Array<String>): Int64 {
         case "encode" => encode(args[1], args[2], true)
         case "encode-fixture" => encode(args[1], args[2], false)
         case "decode-stream" => if (args.size == 4) { decodeStream(args[1], args[2], Int64.parse(args[3])) } else { 2 }
+        case "decode-websocket" => inspectWebSocket(args[1], args[2], true)
+        case "inspect-fixed" => inspectFixed(args[1], args[2])
+        case "inspect-stream" | "inspect-cancel" => if (args.size == 4) { inspectStream(args[1], args[2], Int64.parse(args[3]), args[0] == "inspect-cancel") } else { 2 }
+        case "inspect-websocket" => inspectWebSocket(args[1], args[2], false)
         case _ => 2
     }
 }

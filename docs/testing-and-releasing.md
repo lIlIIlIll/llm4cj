@@ -1,14 +1,5 @@
 # 测试与发布
 
-公共 API shape 保存为可审查的 `contract/public-api-shape.txt` 和对应 SHA-256。词法提取覆盖 public 类型头、enum cases、显式 public 成员及接口隐式公开成员，保留修饰符、泛型/where、参数名/类型/命名标记/默认值、返回类型和 property get/set；实现体与注释不参与比较。macro 展开、条件编译语义、extend、type alias、主构造器、隐式成员、modal/FFI 特殊语法及插值表达式解析尚未验证，该门禁不代表完整 AST 或 ABI 检查。
-
-```sh
-python3 scripts/check_contract.py --write-api-shape
-python3 scripts/check_contract.py
-```
-
-API 兼容基线为数值最高的规范稳定 `vX.Y.Z` 标签。只有根包生产源码和 manifest 与 HEAD 字节一致时，才排除指向当前 candidate 的标签；脏工作树的同版本修改仍与已发布版本比较。基线标签必须匹配其 manifest，无历史基线则失败。报告在失败时仍记录 baseline/candidate commit、candidate tag 及源码是否变化；预发布与非规范标签不参与选择。
-
 本地完整门禁：
 
 ```sh
@@ -34,18 +25,32 @@ CI required contexts 固定为：
 - `verify (minimum-1.1.0)`；
 - `verify (stable-latest)`；
 - `coverage`；
-- `contract`。
+- `contract`；
+- `pr-metadata`。
+
+PR body 必须恰好声明一条 `Risk: routine` 或 `Risk: high`。高风险 PR 关联本仓库 open issue，并由有写权限的成员对当前完整 head SHA 留下 `/land <sha>`；新 push 使旧确认失效。重复风险声明会失败，即使两条内容相同。
 
 nightly 是定时 advisory，不阻塞发布。provider smoke 是手动 workflow，只能从受保护 `main` 当前 SHA 运行，并绑定 `provider-smoke` GitHub Environment；输入 SHA 必须等于 workflow 的 trusted `github.sha`。secret-bearing job 不 checkout 任意 candidate。每个响应会通过 public codec 解码，artifact 只保留 provider、dialect、状态和 HTTP status，不写出 key、request body 或原始 response body。
 
 `scripts/check.sh` 还会在临时目录中以外部 cjpm consumer 导入稳定 `llm4cj`、`llm4cj.experimental` 及 transcript 消费程序。这证明包边界在已记录的编译选项下对真实依赖方可用；实验 consumer 的成功只证明可构建和可运行，不把实验声明纳入稳定兼容承诺。
 
-覆盖率门槛是 project line 90%、project branch 80%、patch line 95%、patch branch 85%。patch branch 门槛高于 project branch，同时为 cjcov/gcov 计入的整数溢出、数组边界和异常处理等编译器生成分支保留余量。patch gate 从 cjcov 保留的 `.gcov` 文件取得可插桩行集合；任一新增可执行行缺少 LCOV `DA:` record 都会直接失败，不能通过缩小分母获得假绿。`scripts/check_api_compat.py` 还会将公共 API shape 与最新发布 tag 比较，shape 变化必须伴随 SemVer breaking bump；同一提交内更新当前快照不能绕过该检查。`scripts/check.sh` 会让六种 dialect 的 request、fixed response 与 stream fixture 通过 public codec，而不仅核对 digest；stream fixture 会用 1、3、7 字节分片重放，并额外覆盖只能在尾 CR/EOF 时释放最后事件的 framing。
+覆盖率门槛是 project line 90%、project branch 80%、patch line 95%、patch branch 85%。patch branch 门槛高于 project branch，同时为 cjcov/gcov 计入的整数溢出、数组边界和异常处理等编译器生成分支保留余量。patch gate 从 cjcov 保留的 `.gcov` 文件取得可插桩行集合；任一新增可执行行缺少 LCOV `DA:` record 都会直接失败，不能通过缩小分母获得假绿。
+
+`scripts/check_api_compat.py` 从规范稳定 `vX.Y.Z` 标签中选择数值最高的历史基线。仅当根包生产源码和 manifest 与 HEAD 字节一致时，排除 peeled commit 等于 HEAD 的 candidate 标签；脏工作树的同版本变更仍与已发布标签比较。标签版本必须与其 manifest 一致，无历史基线时失败。shape 变化必须伴随 SemVer breaking bump；同时更新当前快照不能绕过检查。报告在成功和失败时均包含 baselineTag、baselineCommit、candidateCommit、candidateTag、candidateSourceDirty；无法选定的字段为 null。
+
+API shape 是可审查的词法子集：包括 public class/struct/enum/interface 头及注解、enum cases、显式 public 成员及接口隐式公开成员，保留修饰符、泛型/where、参数名/类型/命名标记/默认值、返回类型和 property get/set。实现体与注释不参与 shape。未验证 macro 展开、条件编译语义、extend、type alias、主构造器、隐式生成成员、modal/FFI 特殊语法及插值表达式解析，不能将该 gate 当作编译器 AST 或完整 ABI 检查。更新可读快照后运行正常检查：
+
+```sh
+python3 scripts/check_contract.py --write-api-shape
+python3 scripts/check_contract.py
+```
+
+`scripts/check.sh` 调用 `python3 scripts/check_fixtures.py`，覆盖八个命名 dialect。`fixtures/manifest.json` 保存来源、场景、dialect 和独立手写 oracle；fixed 与 stream 分别对照完整 oracle 后，再比较两条路径，随后核对 continuation、snapshot version 2、restore 与 encode。流式样本覆盖整包、1/3/7 字节分片、CRLF 与尾 CR。oracle 必须按来源审阅后手工更新，没有自动接受当前输出的更新命令；来源和离线回归不代表 live provider 已运行。
 
 发布使用手动 `Release` workflow：输入已存在的 tag 和同一 candidate SHA 的成功 Provider Smoke run ID。下载 artifact 前，workflow 会通过 GitHub API 验证 run 来自固定 `provider-smoke.yml`、事件为 `workflow_dispatch`、分支为 `main`、head SHA 等于 tag candidate、状态为成功，并验证六个 artifact 的 run identity 与 SHA-256 digest。run ID、workflow ID、workflow path 和 artifact digest 会写入 release manifest。工作流随后运行 candidate release gate，并分别从候选 commit 和远端 tag 安装稳定包及 `llm4cj.experimental` 外部 consumer。稳定 API 会与最新发布 tag 比较并生成 `api-compatibility.json`；实验包参与构建和覆盖率，但明确排除在稳定 API 兼容承诺之外。`api-compatibility.json`、`release-manifest.json` 与 `SHA256SUMS` 会作为 GitHub Release assets 上传。若同名 GitHub Release 已存在，workflow 会失败，不覆盖原有证据。创建 tag/release 仍是显式发布动作，不由普通 CI 自动执行。
 
 手动 Provider Smoke 会在受保护 main 上构建 `support/provider_probe`，通过公共 `encodeRequest` 生成 streaming body，再把真实 `text/event-stream` 的网络分片直接交给公共 byte stream decoder。secret 只提供 endpoint、model 与认证 header；预制 raw body 不再是被测试对象。`scripts/check_provider_smoke_security.py` 由普通 CI 执行，防止 workflow 重新 checkout `inputs.candidate_sha` 或移除 main/Environment 限制。
 
-v0.3.0 的 transcript fixture 与性质用例还需覆盖时序工具视图、原生追加位置、snapshot/version、数组/schema 冻结、非法插入点、能力准入、native replay 顺序、unknown/zero usage 及失败前 usage。API baseline 和全部 consumer 必须使用新输入；旧重载/旧快照不能作为 breaking 门禁的绕过路径。
+v0.3.0 的 transcript fixture 与性质用例覆盖时序工具视图、原生追加位置、snapshot/version、数组/schema 冻结、非法插入点、能力准入、native replay 顺序、unknown/zero usage 及失败前 usage。API baseline 和全部 consumer 必须使用新输入；读取规范 version 1 transcript 不恢复缺失语义，也不为旧请求重载提供兼容通道。
 
 动态路径的缓存实验是独立证据。运行方法和当前 not-run 状态见[缓存实验](cache-experiments.md)。provider smoke 通过不等于缓存收益证明；仅有离线布局回归也不能把 W6 的 live 项标成通过。Axyndra 迁移、固定远端 commit/tag consumer 与发布仍需各自实跑，本仓库本地 external consumer 通过只能证明本地契约可集成。所有检查结果应绑定实际源码 commit，当前状态见[实施与证据](issue-27-implementation.md)。

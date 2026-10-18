@@ -35,8 +35,12 @@
 @ Derive [ Equatable ] public enum LlmWireUsageSource
 LlmTransportPhase cases Encode | Request | ResponseHeaders | StreamFraming | WireDecode | SemanticAssembly | Transport
 LlmWireAnnotation cases UrlCitation ( LlmWireCitation ) | FileCitation ( LlmWireCitation )
+LlmWireAssistantMessageSpan member public init ( blockStart : Int64 , blockCount : Int64 , phase ! : LlmWireOutputPhase = LlmWireOutputPhase . Unspecified )
+LlmWireAssistantMessageSpan member public let blockCount : Int64
+LlmWireAssistantMessageSpan member public let blockStart : Int64
+LlmWireAssistantMessageSpan member public let phase : LlmWireOutputPhase
 LlmWireBlock cases Text ( LlmWireTextBlock ) | Image ( LlmWireImageBlock ) | Reasoning ( LlmWireReasoningBlock ) | ToolCall ( LlmWireToolCallBlock ) | ToolResult ( LlmWireToolResultBlock ) | Refusal ( LlmWireRefusalBlock ) | NativeReplay ( LlmWireNativeReplayBlock ) | Opaque ( LlmWireOpaqueBlock )
-LlmWireBuiltinDialect cases OpenAiResponses | OpenAiChat | AnthropicMessages | DeepSeekResponses | DeepSeekChat | DeepSeekMessages | KimiChat
+LlmWireBuiltinDialect cases OpenAiResponses | OpenAiCodexResponses | OpenAiChat | AnthropicMessages | DeepSeekResponses | DeepSeekChat | DeepSeekMessages | KimiChat
 LlmWireCacheCapabilities member public init ( lifetimes ! : Array < LlmWirePromptCacheLifetime > = [ ] )
 LlmWireCacheCapabilities member public prop lifetimes : Array < LlmWirePromptCacheLifetime > accessors get ( )
 LlmWireCapabilities member public init ( input ! : LlmWireInputCapabilities = LlmWireInputCapabilities ( ) , thinking ! : LlmWireThinkingCapabilities = LlmWireThinkingCapabilities ( ) , tools ! : LlmWireToolCapabilities = LlmWireToolCapabilities ( ) , output ! : LlmWireOutputCapabilities = LlmWireOutputCapabilities ( ) , cache ! : LlmWireCacheCapabilities = LlmWireCacheCapabilities ( ) )
@@ -47,11 +51,12 @@ LlmWireCapabilities member public let thinking : LlmWireThinkingCapabilities
 LlmWireCapabilities member public let tools : LlmWireToolCapabilities
 LlmWireCapabilityEvidence cases CallerDeclared
 LlmWireChoice member public func toContinuationInput ( ) : LlmWireResult < Array < LlmWireMessage > >
-LlmWireChoice member public init ( index : Int64 , blocks : Array < LlmWireOutputBlock > , outcome : LlmWireChoiceOutcome , rawStopReason ! : String = "" )
+LlmWireChoice member public init ( index : Int64 , blocks : Array < LlmWireOutputBlock > , outcome : LlmWireChoiceOutcome , rawStopReason ! : String = "" , messageSpans ! : Array < LlmWireAssistantMessageSpan > = [ ] )
 LlmWireChoice member public let blocks : Array < LlmWireOutputBlock >
 LlmWireChoice member public let index : Int64
 LlmWireChoice member public let outcome : LlmWireChoiceOutcome
 LlmWireChoice member public let rawStopReason : String
+LlmWireChoice member public prop messageSpans : Array < LlmWireAssistantMessageSpan > accessors get ( )
 LlmWireChoiceOutcome cases Completed | Incomplete ( LlmWireIncompleteReason ) | Refused ( LlmWireRefusalBlock )
 LlmWireCitation member public init ( kind : LlmWireCitationKind , citedText ! : String = "" , documentIndex ! : ? Int64 = None , documentTitle ! : String = "" , startIndex ! : ? Int64 = None , endIndex ! : ? Int64 = None , startPage ! : ? Int64 = None , endPage ! : ? Int64 = None , startBlock ! : ? Int64 = None , endBlock ! : ? Int64 = None , url ! : String = "" , title ! : String = "" , fileId ! : String = "" , filename ! : String = "" )
 LlmWireCitation member public let citedText : String
@@ -74,6 +79,7 @@ LlmWireCodec member public func decodeResponse ( source : String ) : LlmWireResp
 LlmWireCodec member public func encodeRequest ( request : LlmWireRequest , streaming ! : Bool = false ) : LlmWirePreparedRequest
 LlmWireCodec member public func newHttpStreamDecoder ( statusCode : Int64 , headers ! : Array < LlmWireHeader > = [ ] , limits ! : LlmWireStreamLimits = LlmWireStreamLimits ( ) , sseLimits ! : LlmWireSseLimits = LlmWireSseLimits ( ) , nowEpochMillis ! : Int64 = 0 ) : LlmWireResult < LlmWireStreamDecoder >
 LlmWireCodec member public func newRequestBuilder ( model ! : String = "" ) : LlmWireRequestBuilder
+LlmWireCodec member public func newResponsesWebSocketSession ( limits ! : LlmWireStreamLimits = LlmWireStreamLimits ( ) ) : LlmWireResponsesWebSocketSession
 LlmWireCodec member public func newStreamDecoder ( limits ! : LlmWireStreamLimits = LlmWireStreamLimits ( ) , sseLimits ! : LlmWireSseLimits = LlmWireSseLimits ( ) ) : LlmWireStreamDecoder
 LlmWireCodec member public let capabilities : LlmWireCapabilities
 LlmWireCodec member public let dialect : LlmWireDialect
@@ -153,15 +159,17 @@ LlmWireError member public let toolVersion : String
 LlmWireError member public let usage : ? LlmWireUsage
 LlmWireErrorKind cases InvalidWire | InvalidRequest | Unsupported | InvalidState | Http | BodyLimit | LimitExceeded | Sse | Cancelled | Deadline | Transport
 LlmWireEvent cases StreamStarted ( String , String ) | ContentBlockStarted ( LlmWireStreamBlockKind , LlmWireEventIdentity ) | TextDelta ( String , LlmWireEventIdentity ) | ReasoningDelta ( String , LlmWireEventIdentity ) | RefusalDelta ( String , LlmWireEventIdentity ) | CitationAdded ( LlmWireCitation , LlmWireEventIdentity ) | RefusalObserved ( LlmWireRefusalBlock ) | ToolCallStarted ( LlmWireToolIdentity ) | ToolArgumentsDelta ( String , LlmWireToolIdentity ) | ContentBlockCompleted ( LlmWireStreamBlockKind , LlmWireEventIdentity ) | UsageUpdated ( LlmWireUsage ) | ChoiceCompleted ( Int64 , String ) | TerminalObserved ( LlmWireTerminal ) | ProviderFailure ( LlmWireFailure )
-LlmWireEventIdentity member public init ( blockIndex ! : ? Int64 = None , choiceIndex ! : ? Int64 = None , toolCallIndex ! : ? Int64 = None , outputIndex ! : ? Int64 = None , contentIndex ! : ? Int64 = None , summaryIndex ! : ? Int64 = None , itemId ! : String = "" )
+LlmWireEventIdentity member public init ( blockIndex ! : ? Int64 = None , choiceIndex ! : ? Int64 = None , toolCallIndex ! : ? Int64 = None , outputIndex ! : ? Int64 = None , contentIndex ! : ? Int64 = None , summaryIndex ! : ? Int64 = None , itemId ! : String = "" , phase ! : LlmWireOutputPhase = LlmWireOutputPhase . Unspecified )
 LlmWireEventIdentity member public let blockIndex : ? Int64
 LlmWireEventIdentity member public let choiceIndex : ? Int64
 LlmWireEventIdentity member public let contentIndex : ? Int64
 LlmWireEventIdentity member public let itemId : String
 LlmWireEventIdentity member public let outputIndex : ? Int64
+LlmWireEventIdentity member public let phase : LlmWireOutputPhase
 LlmWireEventIdentity member public let summaryIndex : ? Int64
 LlmWireEventIdentity member public let toolCallIndex : ? Int64
-LlmWireFailure member public init ( kind : LlmWireFailureKind , message : String , provider ! : String = "" , providerErrorCode ! : String = "" , providerErrorType ! : String = "" , retryable ! : Bool = false , httpStatus ! : ? Int64 = None , retryAfterMillis ! : ? Int64 = None , providerRequestId ! : String = "" , usage ! : ? LlmWireUsage = None )
+LlmWireFailure member public init ( kind : LlmWireFailureKind , message : String , provider ! : String = "" , providerErrorCode ! : String = "" , providerErrorType ! : String = "" , retryable ! : Bool = false , httpStatus ! : ? Int64 = None , retryAfterMillis ! : ? Int64 = None , providerRequestId ! : String = "" , usage ! : ? LlmWireUsage = None , diagnosticJson ! : ? String = None )
+LlmWireFailure member public let diagnosticJson : ? String
 LlmWireFailure member public let httpStatus : ? Int64
 LlmWireFailure member public let kind : LlmWireFailureKind
 LlmWireFailure member public let message : String
@@ -229,9 +237,10 @@ LlmWireJsonSchema member public let schema : LlmWireJson
 LlmWireJsonSchema member public let strict : Bool
 LlmWireMaterializedRequest member public prop body : Array < Byte > accessors get ( )
 LlmWireMaterializedRequest member public prop headers : Array < LlmWireHeader > accessors get ( )
-LlmWireMessage member public init ( role : LlmWireRole , blocks : Array < LlmWireBlock > )
+LlmWireMessage member public init ( role : LlmWireRole , blocks : Array < LlmWireBlock > , messageSpans ! : Array < LlmWireAssistantMessageSpan > = [ ] )
 LlmWireMessage member public let blocks : Array < LlmWireBlock >
 LlmWireMessage member public let role : LlmWireRole
+LlmWireMessage member public prop messageSpans : Array < LlmWireAssistantMessageSpan > accessors get ( )
 LlmWireModelProfile member public let capabilities : LlmWireCapabilities
 LlmWireModelProfile member public let dialectId : String
 LlmWireModelProfile member public let endpoint : String
@@ -264,6 +273,7 @@ LlmWireOutputTokenField cases MaxOutputTokens | MaxCompletionTokens | MaxTokens
 LlmWireParallelToolStyle cases Unsupported | OpenAiTopLevel | AnthropicToolChoice
 LlmWirePendingReply cases Queued ( LlmWireReply ) | InProgress ( LlmWireReply )
 LlmWirePreparedRequest member public func materialize ( resolver ! : ? LlmWireRequirementResolver = None , userHeaders ! : Array < LlmWireHeader > = [ ] ) : LlmWireResult < LlmWireMaterializedRequest >
+LlmWirePreparedWebSocketEvent member public prop body : Array < Byte > accessors get ( )
 LlmWirePromptCache cases ProviderDefault | Automatic ( LlmWirePromptCacheLifetime )
 LlmWirePromptCacheLifetime cases ProviderDefault | FiveMinutes | ThirtyMinutes | OneHour | TwentyFourHours
 LlmWirePromptCacheStyle cases Unsupported | OpenAi | Anthropic | ProviderAutomatic
@@ -313,10 +323,14 @@ LlmWireRequestBuilder member public func setStructuredOutput ( value : LlmWireSt
 LlmWireRequestBuilder member public func setThinking ( mode : LlmWireThinkingMode , effort ! : LlmWireReasoningEffort = LlmWireReasoningEffort . ProviderDefault ) : Unit
 LlmWireRequestBuilder member public func setToolChoice ( value : LlmWireToolChoice ) : Unit
 LlmWireRequestBuilder member public func setTranscript ( value : LlmWireTranscript ) : Unit
-LlmWireRequestStyle cases OpenAiResponses | OpenAiChat | AnthropicMessages | DeepSeekResponses | DeepSeekChat | DeepSeekMessages | KimiChat
+LlmWireRequestStyle cases OpenAiResponses | OpenAiCodexResponses | OpenAiChat | AnthropicMessages | DeepSeekResponses | DeepSeekChat | DeepSeekMessages | KimiChat
 LlmWireRequirementResolver member func resolve ( requirement : LlmWireFeatureRequirement ) : LlmWireRequirementState
 LlmWireRequirementState cases Satisfied | Unsatisfied ( String ) | Unknown ( String )
 LlmWireResponseState cases Pending ( LlmWirePendingReply ) | Terminal ( LlmWireTerminal )
+LlmWireResponsesWebSocketSession member public func cancel ( ) : LlmWireResult < LlmWireTerminal >
+LlmWireResponsesWebSocketSession member public func finish ( ) : LlmWireResult < LlmWireStreamUpdate >
+LlmWireResponsesWebSocketSession member public func prepare ( request : LlmWireRequest ) : LlmWirePreparedWebSocketEvent
+LlmWireResponsesWebSocketSession member public func push ( message : Array < Byte > ) : LlmWireResult < LlmWireStreamUpdate >
 LlmWireResult cases Ok ( T ) | Err ( LlmWireError )
 LlmWireResult member public func isOk ( ) : Bool
 LlmWireRole cases User | Assistant
@@ -432,6 +446,7 @@ SseEvent member public let data : String
 SseEvent member public let event : String
 SseEvent member public let id : String
 SseEvent member public let retryMillis : ? Int64
+public class LlmWireAssistantMessageSpan
 public class LlmWireCacheCapabilities
 public class LlmWireCapabilities
 public class LlmWireChoice
@@ -461,11 +476,13 @@ public class LlmWireNativeReplayBlock
 public class LlmWireOpaqueBlock
 public class LlmWireOutputCapabilities
 public class LlmWirePreparedRequest
+public class LlmWirePreparedWebSocketEvent
 public class LlmWireReasoningBlock
 public class LlmWireRefusalBlock
 public class LlmWireReply
 public class LlmWireRequest
 public class LlmWireRequestBuilder
+public class LlmWireResponsesWebSocketSession
 public class LlmWireSseLimits
 public class LlmWireStreamDecoder
 public class LlmWireStreamLimits
@@ -519,6 +536,9 @@ public func kimiChatModelProfile ( model : String , capabilities ! : LlmWireCapa
 public func openAiChatCodec ( profile : LlmWireModelProfile , provider ! : String = "openai" ) : LlmWireCodec
 public func openAiChatDialect ( ) : LlmWireDialect
 public func openAiChatModelProfile ( model : String , capabilities ! : LlmWireCapabilities = LlmWireCapabilities ( ) ) : LlmWireModelProfile
+public func openAiCodexResponsesCodec ( profile : LlmWireModelProfile , provider ! : String = "openai-codex" ) : LlmWireCodec
+public func openAiCodexResponsesDialect ( ) : LlmWireDialect
+public func openAiCodexResponsesModelProfile ( model : String , capabilities ! : LlmWireCapabilities = LlmWireCapabilities ( ) , endpoint ! : String = "" , endpointProfile ! : ? LlmWireEndpointProfile = None ) : LlmWireModelProfile
 public func openAiResponsesCodec ( profile : LlmWireModelProfile , provider ! : String = "openai" ) : LlmWireCodec
 public func openAiResponsesDialect ( ) : LlmWireDialect
 public func openAiResponsesModelProfile ( model : String , capabilities ! : LlmWireCapabilities = LlmWireCapabilities ( ) , endpoint ! : String = "" , endpointProfile ! : ? LlmWireEndpointProfile = None ) : LlmWireModelProfile

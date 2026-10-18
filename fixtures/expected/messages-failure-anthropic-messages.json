@@ -1,0 +1,40 @@
+{
+  "canonical": {
+    "state": {
+      "kind": "provider_failed",
+      "failure": {
+        "kind": "provider_error",
+        "message": "fixture failure",
+        "provider": "anthropic",
+        "provider_error_code": "",
+        "provider_error_type": "overloaded_error",
+        "retryable": false,
+        "http_status": null,
+        "retry_after_millis": null,
+        "provider_request_id": "",
+        "usage": {
+          "input_tokens": 10,
+          "output_tokens": 2,
+          "reasoning_tokens": null,
+          "cache_read_tokens": 20,
+          "cache_write_tokens": 30,
+          "total_tokens": null,
+          "web_search_requests": 2,
+          "web_fetch_requests": 1,
+          "service_tier": null,
+          "source": {
+            "provider": "anthropic",
+            "dialect": "anthropic.messages.v1"
+          },
+          "cache_read_availability": "reported",
+          "cache_write_availability": "reported"
+        },
+        "diagnostic": {
+          "type": "overloaded_error",
+          "message": "fixture failure"
+        }
+      }
+    },
+    "continuation": null
+  }
+}

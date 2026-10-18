@@ -40,6 +40,9 @@ public class LlmWireContextUpdateContract {
             case LlmWireContextUpdateStyle.KimiSystemTools => LlmWireContextUpdateCapabilities(appendSystemInstruction: true, toolDeclaration: true)
         }
     }
+    internal init(style: LlmWireContextUpdateStyle, capabilities: LlmWireContextUpdateCapabilities) {
+        this.style = style; this.version = 1; this.capabilities = capabilities
+    }
     public prop requiredHeaders: Array<LlmWireHeader> { get() {
         match (style) {
             case LlmWireContextUpdateStyle.AnthropicToolReferences => [LlmWireHeader("anthropic-beta", "mid-conversation-tool-changes-2026-07-01")]
@@ -99,6 +102,7 @@ func validateContextUpdateContract(style: LlmWireRequestStyle, contract: LlmWire
     let valid = match ((style, contract.style)) {
         case (_, LlmWireContextUpdateStyle.Unsupported) |
              (LlmWireRequestStyle.OpenAiResponses, LlmWireContextUpdateStyle.ResponsesAdditionalTools) |
+             (LlmWireRequestStyle.OpenAiCodexResponses, LlmWireContextUpdateStyle.ResponsesAdditionalTools) |
              (LlmWireRequestStyle.AnthropicMessages, LlmWireContextUpdateStyle.AnthropicToolReferences) |
              (LlmWireRequestStyle.KimiChat, LlmWireContextUpdateStyle.KimiSystemTools) => true
         case _ => false

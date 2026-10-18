@@ -14,7 +14,7 @@ transcript 校验区分 `llm.context_update_unsupported`（缺少原生/模型/�
 
 新 reply 的 `validateReplyToolInputs(reply, transcript)` 若引用未声明工具或末端 inactive 工具，以 InvalidWire 的 `llm.tool_reference_unknown` / `llm.tool_not_active` 拒绝，连同已观测 reply usage 返回。Disabled 只关闭 schema 检查，不能绕过工具身份与可见性。
 
-默认 JSON 与字符串上限是 8 MiB，深度上限是 256。默认 SSE 单事件上限是 8 MiB，buffer 与单次 push 输出上限是 16 MiB；CRLF 的两个原始字节都计入事件上限。协议流另由 `LlmWireStreamLimits` 限制累计语义字节、文本、reasoning、tool arguments、block、tool call 和输入 provider event 数量。HTTP body 必须由调用方传入正数上限。达到 deadline 或取消后，应用应停止网络读取；本库不拥有 socket 生命周期。
+默认 JSON 输入及完整编码输出上限是 8 MiB，容器深度上限是 256。`LlmWireJson.string/array/object` 在构造时检查预算；字符串转义、object key、标点与组合后的所有子值都计入输出。恰好上限可用，超出返回 `Err`；单独合法的子值不保证父容器仍合法。工厂的 Result 迁移见[迁移指南](migrating-from-v0.2.md#处理可失败的-json-构造)。默认 SSE 单事件上限是 8 MiB，buffer 与单次 push 输出上限是 16 MiB；CRLF 的两个原始字节都计入事件上限。协议流另由 `LlmWireStreamLimits` 限制累计语义字节、文本、reasoning、tool arguments、block、tool call 和输入 provider event 数量。HTTP body 必须由调用方传入正数上限。达到 deadline 或取消后，应用应停止网络读取；本库不拥有 socket 生命周期。
 
 协议流还通过 `maxRetainedStateBytes` 限制 decoder 实际保留的 metadata、native payload 与累计内容。终态完整 body 或 done-only arguments 不得绕过更小的 text/tool/total semantic limit。
 

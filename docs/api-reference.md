@@ -4,7 +4,7 @@
 
 ## Codec 与 dialect
 
-`LlmWireCodec`、`LlmWireCapabilities`、`LlmWireDialect`、`LlmWireDialectContract`、`LlmWireBuiltinDialect`、`LlmWireRequestStyle`、`LlmWireOutputTokenField`、`LlmWireStructuredOutputMode`、`LlmWireParallelToolStyle`、`LlmWireToolErrorStyle`、`LlmWirePromptCacheStyle`、`LlmWireUsageMergeStyle`、`openAiResponsesDialect`、`openAiChatDialect`、`anthropicMessagesDialect`、`deepSeekResponsesDialect`、`deepSeekChatDialect`、`deepSeekMessagesDialect`。
+`LlmWireCodec`、`LlmWireCapabilities`、`LlmWireDialect`、`LlmWireDialectContract`、`LlmWireBuiltinDialect`、`LlmWireRequestStyle`、`LlmWireOutputTokenField`、`LlmWireStructuredOutputMode`、`LlmWireParallelToolStyle`、`LlmWireToolErrorStyle`、`LlmWirePromptCacheStyle`、`LlmWireUsageMergeStyle`、`openAiResponsesDialect`、`openAiCodexResponsesDialect`、`openAiChatDialect`、`anthropicMessagesDialect`、`deepSeekResponsesDialect`、`deepSeekChatDialect`、`deepSeekMessagesDialect`。
 
 `LlmWireCodec.encodeRequest` 返回 opaque `LlmWirePreparedRequest`。调用 `materialize` 后才得到 `LlmWireMaterializedRequest`。后者公开 UTF-8 `body` bytes 和合并后的 headers。未解析的 feature requirement、冲突 header 或不安全 header 会返回 `LlmWireResult.Err`。
 
@@ -14,7 +14,9 @@
 
 `LlmWireProtocol`、`LlmWireRole`、`LlmWireInstructionRole`、`LlmWireInstruction`、`LlmWireInputModality`、`LlmWireImageSourceKind`、`LlmWireImageDetail`、`LlmWireReasoningEffort`、`LlmWireThinkingMode`、`LlmWireServiceTier`、`LlmWireGenerationSpeed`、`LlmWirePromptCacheLifetime`、`LlmWirePromptCache`、`LlmWireToolChoice`、`LlmWireOpaqueCompletion`、`LlmWireNativeReplayScope`、`LlmWireImageBlock`、`LlmWireTextBlock`、`LlmWireReasoningBlock`、`LlmWireToolArguments`、`LlmWireToolCallBlock`、`LlmWireToolResultContent`、`LlmWireToolResultBlock`、`LlmWireRefusalBlock`、`LlmWireNativeReplayBlock`、`LlmWireOpaqueBlock`、`LlmWireBlock`、`LlmWireOutputBlock`、`LlmWireOutputPhase`、`LlmWireCitation`、`LlmWireCitationKind`、`LlmWireAnnotation`、`LlmWireTokenLogprob`、`LlmWireTokenLogprobCandidate`、`LlmWireMessage`、`LlmWireTool`、`LlmWireJson`、`LlmWireJsonSchema`、`LlmWireStructuredOutput`、`LlmWireRequest`、`LlmWireRequestBuilder`、`LlmWireUsage`、`LlmWireChoice`、`LlmWireChoiceOutcome`、`LlmWireReply`、`LlmWirePendingReply`、`LlmWireIncompleteReason`、`LlmWireFailureKind`、`LlmWireFailure`、`LlmWireTerminal`、`LlmWireResponseState`。
 
-`LlmWireRequest.transcript` 保存单一输入事实。`LlmWireInitialContext` 保留初始 system/developer instruction 和工具池；`LlmWireInputItem` 有序联合保存 Message、InstructionUpdate、ToolDeclaration、ToolActivation 和 ToolDeactivation。`LlmWireToolDeclaration` 绑定完整工具、version、deferred；其 identity 为 `LlmWireToolDefinitionIdentity`。`LlmWireTranscript` 的 append 返回新快照，effectiveTools 是顺序重放的只读派生视图。snapshot/restore 只支持 llm4cj.transcript version 1，返回 Result。Messages dialect 不表示 developer role，因此构建请求时返回 `Unsupported`。`LlmWireToolResultBlock.content` 是 `LlmWireToolResultContent` 数组，每个元素是 text 或 image。
+`LlmWireRequest.transcript` 保存单一输入事实。`LlmWireInitialContext` 保留初始 system/developer instruction 和工具池；`LlmWireInputItem` 有序联合保存 Message、InstructionUpdate、ToolDeclaration、ToolActivation 和 ToolDeactivation。`LlmWireToolDeclaration` 绑定完整工具、version、deferred；其 identity 为 `LlmWireToolDefinitionIdentity`。`LlmWireTranscript` 的 append 返回新快照，effectiveTools 是顺序重放的只读派生视图。snapshot 写 llm4cj.transcript version 2，restore 读 version 1 和 2，两者返回 Result；version 1 中未保存的消息边界保持缺失。Messages dialect 不表示 developer role，因此构建请求时返回 `Unsupported`。`LlmWireToolResultBlock.content` 是 `LlmWireToolResultContent` 数组，每个元素是 text 或 image。
+
+`LlmWireAssistantMessageSpan(blockStart, blockCount, phase:)` 保存 Responses assistant message 在 blocks 中的范围。`LlmWireChoice.messageSpans` 和 `LlmWireMessage.messageSpans` 返回独立数组，continuation 投影保留 span。OpenAI Responses/Codex 的缺失或 null phase 对应 `Unspecified`，`commentary` 对应 `Commentary`，`final_answer` 对应 `Final`；其他 wire phase 拒绝。span 有序、不重叠、覆盖 message content，并且不能包含 function call 或 native replay 等独立 wire item。
 
 `LlmWireContextUpdateStyle`、`LlmWireContextUpdateContract` 与 `LlmWireContextUpdateCapabilities` 区分各原生更新及延迟池能力。`LlmWireEndpointProfile` 绑定 profileId/model/dialectId/endpoint/contractVersion/capabilities/evidenceSource/checkedAt；`LlmWireCapabilityEvidence.CallerDeclared` 明确表明其为调用方声明。缺少能力/绑定不匹配时编码前失败，不提供兼容回退。内置契约矩阵见[有序 transcript](ordered-transcript.md)。
 
@@ -28,15 +30,13 @@ usage 来源以 `LlmWireUsageSource.Unknown` 或 ProviderReported(provider, dial
 
 对应类型是 `LlmWireInputCapabilities`、`LlmWireThinkingCapabilities`、`LlmWireToolCapabilities`、`LlmWireOutputCapabilities` 和 `LlmWireCacheCapabilities`。
 
-`LlmWireModelProfile` 把模型名、dialect compatibility ID 和模型能力绑定在一起。工厂为 `openAiResponsesModelProfile`、`openAiChatModelProfile`、`anthropicMessagesModelProfile`、`deepSeekResponsesModelProfile`、`deepSeekChatModelProfile`、`deepSeekMessagesModelProfile` 和 `kimiChatModelProfile`。对应 codec 入口为 `openAiResponsesCodec`、`openAiChatCodec`、`anthropicMessagesCodec`、`deepSeekResponsesCodec`、`deepSeekChatCodec`、`deepSeekMessagesCodec` 和 `kimiChatCodec`；Kimi dialect 入口为 `kimiChatDialect`。codec 会拒绝与 profile 不一致的模型名或 dialect。原生更新支持的 model-profile 工厂还接受显式 endpoint/endpointProfile。
+`LlmWireModelProfile` 把模型名、dialect compatibility ID 和模型能力绑定在一起。工厂为 `openAiResponsesModelProfile`、`openAiCodexResponsesModelProfile`、`openAiChatModelProfile`、`anthropicMessagesModelProfile`、`deepSeekResponsesModelProfile`、`deepSeekChatModelProfile`、`deepSeekMessagesModelProfile` 和 `kimiChatModelProfile`。对应 codec 入口为 `openAiResponsesCodec`、`openAiCodexResponsesCodec`、`openAiChatCodec`、`anthropicMessagesCodec`、`deepSeekResponsesCodec`、`deepSeekChatCodec`、`deepSeekMessagesCodec` 和 `kimiChatCodec`；Kimi dialect 入口为 `kimiChatDialect`。codec 会拒绝与 profile 不一致的模型名或 dialect。原生更新支持的 model-profile 工厂还接受显式 endpoint/endpointProfile。
 
 `LlmWireCodec` 的构造器不是稳定 public API；稳定调用方使用上述工厂。自定义 dialect、cache pre-warm、custom tool 与 grammar 见[实验 API](experimental.md)。
 
 调用 `codec.newRequestBuilder()` 可复用 profile 中的模型和 codec 校验。builder 的 setter 检查局部输入，`build()` 返回 `LlmWireResult<LlmWireRequest>` 并执行完整请求校验。调用 `codec.encodeRequest(request, streaming: true)` 才会发送 streaming 字段；同一个 request 可用于固定响应和流式响应。
 
-公开 JSON 值使用不可变的 `LlmWireJson`，其类型由 `LlmWireJsonKind` 表示，对象工厂接收 `LlmWireJsonField`。`parse`、`number`、`object`、`string` 和 `array` 返回 `LlmWireResult<LlmWireJson>`；`boolean`、`nullValue` 直接返回值。所有成功值均满足 8 MiB/256 层限制，普通读取不会再次发现构造时未检查的超限。内部 DOM 保持私有；`yjson.JsonNode` 不出现在 public API 中。
-
-工具 schema 的 `integer` 按十进制数学值判断，`1.0` 和 `1e0` 均为整数。`enum` 按 JSON 值比较，数字不受机器整数或浮点精度限制，对象键顺序无关，数组顺序保留，布尔值与数字区分；编码保留原始数字文本。
+公开 JSON 值使用不可变的 `LlmWireJson`，其类型由 `LlmWireJsonKind` 表示，对象工厂接收 `LlmWireJsonField`。parse、number、string、array、object 返回 `LlmWireResult<LlmWireJson>`；boolean 与 nullValue 直接返回值。输入、转义后的完整输出及容器组合均受 8 MiB/256 层限制。私有已验证 DOM 用于读取，getter 不暴露可变 provider JSON。numberLiteral 保留原数值词法，schema integer 与 enum 使用精确十进制值比较。迁移代码见[迁移指南](migrating-from-v0.2.md#处理可失败的-json-构造)。
 
 请求计划与 header 协调 API 为 `LlmWireHeader`、`LlmWireFeatureRequirement`、`LlmWireRequirementState`、`LlmWireRequirementResolver`、`LlmWirePreparedRequest` 和 `LlmWireMaterializedRequest`。
 
@@ -47,6 +47,8 @@ usage 来源以 `LlmWireUsageSource.Unknown` 或 ProviderReported(provider, dial
 `LlmWireStreamDecoder.push` 接收 `String` 或 `Array<Byte>`，返回 `LlmWireResult<LlmWireStreamUpdate>`；`finish` 处理 EOF 并要求协议终态，`cancel` 幂等返回 `Cancelled`。`LlmWireEvent` 是 payload enum，包含 text/reasoning/refusal delta、tool identity、citation、usage、choice completion 与 terminal。
 
 `LlmWireStreamLimits` 分别限制 total semantic、text、reasoning、tool arguments、retained state、block、tool call 与输入 provider event 数量；`LlmWireSseLimits` 限制 framing 与非 2xx error body。所有值在 decoder 构造后不可变。`maxEvents` 在每次 provider event 消费时计数，即使该事件不产生 public semantic event。
+
+`LlmWireResponsesWebSocketSession` 由 Codex codec 的 `newResponsesWebSocketSession(limits:)` 创建。`prepare(request)` 返回 `LlmWirePreparedWebSocketEvent`，其 body 是 UTF-8 JSON bytes；`push(Array<Byte>)` 接收一条完整 text message，返回 `LlmWireResult<LlmWireStreamUpdate>`。应用自行重组 WebSocket frame，处理 ping/pong 并管理连接。session 保证一条活动响应，只有已验证终态后才保存同连接 continuation 检查点。`finish()` 处理提前关闭，`cancel()` 建立取消终态。详情见[Codex 示例](codex-subscription.md)。
 
 ## 传输
 

@@ -12,7 +12,7 @@
 
 数组在边界复制，getter 返回副本；schema 使用已有的不可变 `LlmWireJsonSchema`/`LlmWireJson`。builder 是唯一可变构建过程，`build` 后的请求和已准备 bytes 不受调用方改动原数组影响。有效工具视图是顺序重放的派生结果，不能独立设置 `currentTools`。历史调用使用所在时点的 active 定义；回复参数验证使用请求末端的 active 视图。更新不能切开 pending tool call 与对应结果。
 
-`snapshot`/`restore` 只处理 `llm4cj.transcript` 格式 version 1。缺少版本、旧格式与未知版本确定失败；不猜测升级，不读取或改写消费者数据库。native reasoning replay 保持已有来源、协议、签名、完整性与 assistant-turn/order 约束，不能充当上下文更新入口。
+`snapshot`/`restore` 只处理 `llm4cj.transcript` 格式。当前写 version 2，以保存 Responses assistant message spans 和 phase；读取 version 1 和 2。version 1 没有保存的边界保持缺失，不猜测恢复。缺少版本、其他格式与未知版本确定失败，不读取或改写消费者数据库。native reasoning replay 保持已有来源、协议、签名、完整性与 assistant-turn/order 约束，不能充当上下文更新入口。
 
 ## 原生契约
 

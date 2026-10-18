@@ -4,6 +4,10 @@ All notable changes are recorded here.
 
 ## [0.3.0] - Unreleased
 
+- Add the Codex Responses dialect, bounded WebSocket sessions, and an application-owned subscription example with offline OAuth and transport tests.
+- Preserve official Responses message identity, refusal completion, assistant message boundaries and phase through continuation and version 2 snapshots; continue reading version 1 without inventing lost metadata.
+- Verify eight dialects against independently reviewed complete fixture oracles, including request, fixed, streamed, WebSocket and replay semantics.
+
 - Validate all retry decimal digits after saturation so overflow cannot hide an invalid suffix.
 
 - Merge all observed Messages delta usage counters and retain the latest accepted usage across terminal and error paths.

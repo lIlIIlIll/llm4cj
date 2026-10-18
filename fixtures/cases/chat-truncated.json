@@ -1,0 +1,8 @@
+{
+  "events": [
+    "{\"id\":\"chat_fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}",
+    "{\"id\":\"chat_fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok é\"},\"finish_reason\":null}]}",
+    "{\"id\":\"chat_fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}",
+    "{\"id\":\"chat_fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture-model\",\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5,\"prompt_tokens_details\":{\"cached_tokens\":0}}}"
+  ]
+}

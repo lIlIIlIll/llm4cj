@@ -40,7 +40,11 @@ class CanonicalReplyAssembler {
         }
     }
     func addAll(values: Array<LlmWireOutputBlock>): Unit { for (value in values) { add(value) } }
-    func finish(): LlmWireReply { LlmWireReply(responseId: responseId, model: model, blocks: blocks.toArray(), usage: usage, rawStopReason: rawStopReason) }
+    func finish(messageSpans!: Array<LlmWireAssistantMessageSpan> = []): LlmWireReply {
+        let values = blocks.toArray()
+        LlmWireReply(responseId: responseId, model: model, usage: usage, rawStopReason: rawStopReason,
+            choices: [LlmWireChoice(0, values, inferChoiceOutcome(rawStopReason, values), rawStopReason: rawStopReason, messageSpans: messageSpans)])
+    }
 }
 
 func invalidToolAssembly(code: String, message: String, callId: String, usage!: ?LlmWireUsage = None): Nothing {
@@ -49,11 +53,11 @@ func invalidToolAssembly(code: String, message: String, callId: String, usage!: 
 
 func assembleCanonicalReply(
     responseId: String, model: String, blocks: Array<LlmWireOutputBlock>, usage: LlmWireUsage, rawStopReason: String,
-    requireExecutableToolCalls!: Bool = true
+    requireExecutableToolCalls!: Bool = true, messageSpans!: Array<LlmWireAssistantMessageSpan> = []
 ): LlmWireReply {
     let assembler = CanonicalReplyAssembler(responseId, model, rawStopReason, usage: usage, requireExecutableToolCalls: requireExecutableToolCalls)
     assembler.addAll(blocks)
-    assembler.finish()
+    assembler.finish(messageSpans: messageSpans)
 }
 
 func validateReplyToolStop(reply: LlmWireReply, stop: String, toolStop: String, ordinaryStops: Array<String>): Unit {
@@ -96,7 +100,8 @@ func failureWithObservedUsage(failure: LlmWireFailure, usage: ?LlmWireUsage): Ll
     LlmWireFailure(failure.kind, failure.message, provider: failure.provider,
         providerErrorCode: failure.providerErrorCode, providerErrorType: failure.providerErrorType,
         retryable: failure.retryable, httpStatus: failure.httpStatus, retryAfterMillis: failure.retryAfterMillis,
-        providerRequestId: failure.providerRequestId, usage: match (usage) { case Some(_) => usage; case None => failure.usage })
+        providerRequestId: failure.providerRequestId, diagnosticJson: failure.diagnosticJson,
+        usage: match (usage) { case Some(_) => usage; case None => failure.usage })
 }
 
 func mergeUsageValue(current: ?Int64, next: ?Int64, style: LlmWireUsageMergeStyle): ?Int64 {

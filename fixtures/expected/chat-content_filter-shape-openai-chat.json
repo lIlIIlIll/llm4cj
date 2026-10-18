@@ -1,0 +1,131 @@
+{
+  "canonical": {
+    "state": {
+      "kind": "completed",
+      "reply": {
+        "response_id": "chat_fixture",
+        "model": "fixture-model",
+        "raw_stop_reason": "content_filter",
+        "blocks": [
+          {
+            "kind": "tool_call",
+            "value": {
+              "call_id": "call_fixture",
+              "name": "f",
+              "arguments": {
+                "kind": "invalid_shape",
+                "value": []
+              }
+            }
+          }
+        ],
+        "usage": {
+          "input_tokens": 3,
+          "output_tokens": 2,
+          "reasoning_tokens": null,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": null,
+          "total_tokens": 5,
+          "web_search_requests": null,
+          "web_fetch_requests": null,
+          "service_tier": null,
+          "source": {
+            "provider": "openai",
+            "dialect": "openai.chat.v1"
+          },
+          "cache_read_availability": "reported",
+          "cache_write_availability": "unknown"
+        },
+        "choices": [
+          {
+            "index": 0,
+            "raw_stop_reason": "content_filter",
+            "outcome": {
+              "kind": "incomplete",
+              "reason": "content_filter"
+            },
+            "blocks": [
+              {
+                "kind": "tool_call",
+                "value": {
+                  "call_id": "call_fixture",
+                  "name": "f",
+                  "arguments": {
+                    "kind": "invalid_shape",
+                    "value": []
+                  }
+                }
+              }
+            ],
+            "message_spans": []
+          }
+        ]
+      }
+    },
+    "continuation": {
+      "default": {
+        "kind": "error",
+        "error": {
+          "kind": "invalid_state",
+          "code": "llm.tool_arguments_not_executable",
+          "message": "diagnostic or partial tool arguments cannot be projected into continuation input",
+          "retryable": false,
+          "http_status": null,
+          "retry_after_millis": null,
+          "provider": "",
+          "provider_error_code": "",
+          "provider_error_type": "",
+          "diagnostic": null,
+          "phase": null,
+          "protocol": null,
+          "dialect": "",
+          "event_type": "",
+          "block_index": -1,
+          "tool_call_id": "",
+          "input_item_index": -1,
+          "tool_name": "",
+          "tool_version": "",
+          "missing_capability": "",
+          "profile_id": "",
+          "contract_version": 0,
+          "provider_request_id": "",
+          "usage": null
+        }
+      },
+      "choices": [
+        {
+          "index": 0,
+          "result": {
+            "kind": "error",
+            "error": {
+              "kind": "invalid_state",
+              "code": "llm.tool_arguments_not_executable",
+              "message": "diagnostic or partial tool arguments cannot be projected into continuation input",
+              "retryable": false,
+              "http_status": null,
+              "retry_after_millis": null,
+              "provider": "",
+              "provider_error_code": "",
+              "provider_error_type": "",
+              "diagnostic": null,
+              "phase": null,
+              "protocol": null,
+              "dialect": "",
+              "event_type": "",
+              "block_index": -1,
+              "tool_call_id": "",
+              "input_item_index": -1,
+              "tool_name": "",
+              "tool_version": "",
+              "missing_capability": "",
+              "profile_id": "",
+              "contract_version": 0,
+              "provider_request_id": "",
+              "usage": null
+            }
+          }
+        }
+      ]
+    }
+  }
+}

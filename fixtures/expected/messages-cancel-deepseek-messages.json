@@ -1,0 +1,37 @@
+{
+  "stream": {
+    "state": {
+      "kind": "cancelled",
+      "failure": {
+        "kind": "cancelled",
+        "message": "stream decoding was cancelled",
+        "provider": "deepseek",
+        "provider_error_code": "",
+        "provider_error_type": "",
+        "retryable": false,
+        "http_status": null,
+        "retry_after_millis": null,
+        "provider_request_id": "",
+        "usage": {
+          "input_tokens": 10,
+          "output_tokens": 2,
+          "reasoning_tokens": null,
+          "cache_read_tokens": 20,
+          "cache_write_tokens": 30,
+          "total_tokens": null,
+          "web_search_requests": 2,
+          "web_fetch_requests": 1,
+          "service_tier": null,
+          "source": {
+            "provider": "deepseek",
+            "dialect": "deepseek.messages.v1"
+          },
+          "cache_read_availability": "reported",
+          "cache_write_availability": "reported"
+        },
+        "diagnostic": null
+      }
+    },
+    "continuation": null
+  }
+}

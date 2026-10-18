@@ -781,7 +781,7 @@ class Llm4CjV02Tests {
         @Expect(eventText(responses.push(event("{\"type\":\"response.output_text.delta\",\"delta\":\"a\",\"output_index\":0,\"content_index\":0,\"item_id\":\"i\"}")).events[0]), "a")
         let _ = responses.push(event("{\"type\":\"response.output_text.done\",\"text\":\"a\",\"output_index\":0,\"content_index\":0,\"item_id\":\"i\"}"))
         let _ = responses.push(event("{\"type\":\"response.content_part.done\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"a\"}}"))
-        let _ = responses.push(event("{\"type\":\"response.output_item.done\",\"output_index\":0,\"item_id\":\"i\",\"item\":{\"id\":\"i\",\"type\":\"message\"}}"))
+        let _ = responses.push(event("{\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"i\",\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"a\"}]}}"))
         let _ = responses.push(event("{\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"id\":\"r1\",\"type\":\"reasoning\"}}"))
         let _ = responses.push(event("{\"type\":\"response.reasoning_summary_part.added\",\"item_id\":\"r1\",\"output_index\":1,\"summary_index\":0,\"part\":{\"type\":\"summary_text\",\"text\":\"\"}}"))
         @Expect(eventText(responses.push(event("{\"type\":\"response.reasoning_summary_text.delta\",\"delta\":\"b\",\"output_index\":1,\"summary_index\":0,\"item_id\":\"r1\"}")).events[0]), "b")
@@ -1051,7 +1051,7 @@ class Llm4CjV02Tests {
         let _ = chatPartial.push(event("{\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"f\",\"arguments\":\"{\"}}]}}]}"))
         let _ = chatPartial.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}]}"))
         let _ = chatPartial.push(event("[DONE]"))
-        match (chatPartial.finishTransport()) { case LlmWireTerminal.Completed(reply) => expectIncomplete(reply, LlmWireIncompleteReason.Length); match (reply.blocks[0]) { case LlmWireOutputBlock.ToolCall(call) => match (call.arguments) { case LlmWireToolArguments.InvalidJson(raw) => @Expect(raw, "{"); case _ => @Fail("invalid JSON tool arguments") }; case _ => @Fail("tool call") }; case _ => @Fail("length") }
+        match (chatPartial.finishTransport()) { case LlmWireTerminal.Completed(reply) => expectIncomplete(reply, LlmWireIncompleteReason.Length); match (reply.blocks[0]) { case LlmWireOutputBlock.ToolCall(call) => match (call.arguments) { case LlmWireToolArguments.InvalidJson(raw) => @Expect(raw, "{"); case _ => @Fail("invalid arguments") }; case _ => @Fail("tool call") }; case _ => @Fail("length") }
         let unsupportedChat = LlmWireCodec(LlmWireProtocol.ChatCompletions, openAiChatDialect()).newStreamDecoder()
         expectLlmError("llm.chat_finish_reason_unsupported", { => let _ = unsupportedChat.push(event("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"future\"}]}")) })
 
@@ -2221,7 +2221,7 @@ class Llm4CjV02Tests {
         let _ = text.push(event("{\"type\":\"response.output_text.done\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"text\":\"ok\"}"))
         let completed = text.push(event("{\"type\":\"response.content_part.done\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"ok\"}}"))
         match (completed.events[0]) { case LlmWireEvent.ContentBlockCompleted(LlmWireStreamBlockKind.Text, _) => (); case _ => @Fail("text block completion") }
-        let _ = text.push(event("{\"type\":\"response.output_item.done\",\"item_id\":\"i\",\"output_index\":0,\"item\":{\"id\":\"i\",\"type\":\"message\"}}"))
+        let _ = text.push(event("{\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"i\",\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}}"))
         let textTerminal = text.push(event("{\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"model\":\"m\",\"status\":\"completed\",\"output\":[{\"id\":\"i\",\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}]}}"))
         @Expect(succeededReply(textTerminal).blocks.size, 1)
 
@@ -2230,9 +2230,9 @@ class Llm4CjV02Tests {
         let _ = refusal.push(event("{\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"i\",\"type\":\"message\"}}"))
         let _ = refusal.push(event("{\"type\":\"response.content_part.added\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"refusal\",\"refusal\":\"\"}}"))
         let _ = refusal.push(event("{\"type\":\"response.refusal.delta\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"delta\":\"no\"}"))
-        let _ = refusal.push(event("{\"type\":\"response.refusal.done\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"text\":\"no\"}"))
+        let _ = refusal.push(event("{\"type\":\"response.refusal.done\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"refusal\":\"no\"}"))
         let _ = refusal.push(event("{\"type\":\"response.content_part.done\",\"item_id\":\"i\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"refusal\",\"refusal\":\"no\"}}"))
-        let _ = refusal.push(event("{\"type\":\"response.output_item.done\",\"item_id\":\"i\",\"output_index\":0,\"item\":{\"id\":\"i\",\"type\":\"message\"}}"))
+        let _ = refusal.push(event("{\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"i\",\"type\":\"message\",\"content\":[{\"type\":\"refusal\",\"refusal\":\"no\"}]}}"))
         let refusalTerminal = refusal.push(event("{\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"id\":\"i\",\"type\":\"message\",\"content\":[{\"type\":\"refusal\",\"refusal\":\"no\"}]}]}}"))
         @Expect(succeededReply(refusalTerminal).blocks.size, 1)
 
@@ -2819,9 +2819,8 @@ class Llm4CjV02Tests {
     @TestCase
     func t070ProviderMetadataDecodersCoverEveryTypedAndRejectedShape() {
         let responses = openAiResponsesCodec(openAiResponsesModelProfile("gpt"))
-        @Expect(decodeResponsesPhase(responses, parseWireJson("{\"phase\":\"analysis\"}"), 0), LlmWireOutputPhase.Analysis)
         @Expect(decodeResponsesPhase(responses, parseWireJson("{\"phase\":\"commentary\"}"), 0), LlmWireOutputPhase.Commentary)
-        @Expect(decodeResponsesPhase(responses, parseWireJson("{\"phase\":\"final\"}"), 0), LlmWireOutputPhase.Final)
+        @Expect(decodeResponsesPhase(responses, parseWireJson("{\"phase\":\"final_answer\"}"), 0), LlmWireOutputPhase.Final)
         @Expect(decodeResponsesPhase(responses, parseWireJson("{}"), 0), LlmWireOutputPhase.Unspecified)
         expectLlmError("llm.responses_semantic_unsupported", { =>
             let _ = decodeResponsesPhase(responses, parseWireJson("{\"phase\":\"future\"}"), 0)

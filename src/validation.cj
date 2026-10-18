@@ -78,6 +78,7 @@ func wireRequiredInt(value: JsonNode, name: String, provider!: String = ""): Int
 }
 
 func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCachePrewarm!: Bool = false): Unit {
+    if (codec.dialect.compatibilityId == "openai.codex.responses.v1") { validateCodexInputSize(request) }
     if (request.model == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.model_missing", "model must not be empty") }
     match (codec.modelProfile) {
         case Some(profile) =>
@@ -143,6 +144,7 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCach
         case LlmWireInputItem.Message(message) =>
         try {
         let blocks = message.blocks
+        validateMessagePhaseMetadata(codec, message)
         var deepSeekReasoningBlocks: Int64 = 0
         if (!messageHasContent(message)) {
             throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.message_empty", "canonical messages must contain at least one non-empty block")
@@ -170,6 +172,33 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCach
             }
         }
         } catch (error: LlmWireError) { throw withInputItemContext(error, itemIndex) }
+        case _ => ()
+    } }
+}
+
+func validateMessagePhaseMetadata(codec: LlmWireCodec, message: LlmWireMessage): Unit {
+    let spans = message.messageSpans
+    validateMessageSpanLayout(spans, message.blocks.size, { index => isResponsesMessageContent(message.blocks[index]) })
+    if (!spans.isEmpty()) {
+        if (message.role != LlmWireRole.Assistant) { unsupportedRequest("llm.responses_phase_role_unsupported", "assistant message spans cannot be attached to user messages") }
+        if (codec.protocol != LlmWireProtocol.Responses) { unsupportedRequest("llm.responses_phase_unsupported", "this protocol cannot represent Responses assistant message boundaries") }
+        for (span in spans) {
+            let _ = outputPhaseName(span.phase)
+            for (index in span.blockStart..span.blockStart + span.blockCount) { match (message.blocks[index]) {
+                case LlmWireBlock.Text(value) =>
+                    if (value.phase != LlmWireOutputPhase.Unspecified && value.phase != span.phase) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.responses_phase_mismatch", "text phase conflicts with its assistant message span") }
+                case _ => ()
+            } }
+        }
+    }
+    for (block in message.blocks) { match (block) {
+        case LlmWireBlock.Text(value) => if (value.phase != LlmWireOutputPhase.Unspecified) {
+            if (message.role != LlmWireRole.Assistant) {
+                unsupportedRequest(if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.OpenAiCodexResponses) { "llm.codex_phase_role_unsupported" } else { "llm.responses_phase_role_unsupported" }, "phase belongs to assistant messages")
+            }
+            if (codec.protocol != LlmWireProtocol.Responses) { unsupportedRequest("llm.responses_phase_unsupported", "this protocol cannot represent assistant message phase") }
+            let _ = outputPhaseName(value.phase)
+        }
         case _ => ()
     } }
 }

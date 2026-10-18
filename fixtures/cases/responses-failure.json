@@ -1,0 +1,29 @@
+{
+  "response": {
+    "id": "resp_fixture",
+    "object": "response",
+    "model": "fixture-model",
+    "status": "failed",
+    "output": [],
+    "error": {
+      "type": "server_error",
+      "code": "fixture_error",
+      "message": "fixture failure"
+    },
+    "usage": {
+      "input_tokens": 3,
+      "output_tokens": 2,
+      "input_tokens_details": {
+        "cached_tokens": 0
+      },
+      "output_tokens_details": {
+        "reasoning_tokens": 1
+      },
+      "total_tokens": 5
+    }
+  },
+  "events": [
+    "{\"type\":\"response.created\",\"response\":{\"id\":\"resp_fixture\",\"model\":\"fixture-model\",\"status\":\"in_progress\",\"output\":[]}}",
+    "{\"type\":\"response.failed\",\"response\":{\"id\":\"resp_fixture\",\"object\":\"response\",\"model\":\"fixture-model\",\"status\":\"failed\",\"output\":[],\"error\":{\"type\":\"server_error\",\"code\":\"fixture_error\",\"message\":\"fixture failure\"},\"usage\":{\"input_tokens\":3,\"output_tokens\":2,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens_details\":{\"reasoning_tokens\":1},\"total_tokens\":5}}}"
+  ]
+}

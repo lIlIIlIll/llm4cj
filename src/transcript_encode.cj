@@ -24,11 +24,18 @@ func responsesInstruction(instruction: LlmWireInstruction): JsonNode {
     ])
 }
 
-func encodeResponsesTranscript(transcript: LlmWireTranscript): JsonNode {
+func encodeResponsesTranscript(codec: LlmWireCodec, transcript: LlmWireTranscript): JsonNode {
     let input = wireJsonArray([]); let seen = transcriptDeclaredNames(transcript)
-    for (instruction in transcript.initialContext.instructions) { input.add(responsesInstruction(instruction)) }
+    let codex = codec.dialect.contract.requestStyle == LlmWireRequestStyle.OpenAiCodexResponses
+    for (instruction in transcript.initialContext.instructions) {
+        if (!codex || instruction.role != LlmWireInstructionRole.System) { input.add(responsesInstruction(instruction)) }
+    }
+    if (codex && !transcript.initialContext.tools.isEmpty()) {
+        let declarations = wireJsonObject([]); addResponsesTools(declarations, initialTranscriptTools(transcript))
+        input.add(wireJsonObject([WireJsonField("type", wireJsonString("additional_tools")), WireJsonField("role", wireJsonString("developer")), WireJsonField("tools", declarations["tools"])]))
+    }
     for (item in transcript.items) { match (item) {
-        case LlmWireInputItem.Message(message) => appendResponsesMessage(input, message)
+        case LlmWireInputItem.Message(message) => appendResponsesMessage(codec, input, message)
         case LlmWireInputItem.InstructionUpdate(instruction) => input.add(responsesInstruction(instruction))
         case LlmWireInputItem.ToolDeclaration(declaration) =>
             if (seen.add(declaration.tool.name)) {
@@ -40,21 +47,58 @@ func encodeResponsesTranscript(transcript: LlmWireTranscript): JsonNode {
     input
 }
 
-func appendResponsesMessage(input: JsonNode, message: LlmWireMessage): Unit {
+func appendResponsesMessage(codec: LlmWireCodec, input: JsonNode, message: LlmWireMessage): Unit {
+    let codex = codec.dialect.contract.requestStyle == LlmWireRequestStyle.OpenAiCodexResponses
+    let spans = message.messageSpans
+    if (!spans.isEmpty()) {
+        var cursor: Int64 = 0
+        for (span in spans) {
+            for (index in cursor..span.blockStart) { appendResponsesStandalone(input, message.blocks[index]) }
+            let content = wireJsonArray([])
+            for (index in span.blockStart..span.blockStart + span.blockCount) { content.add(encodeResponsesMessageContent(codec, message.role, message.blocks[index])) }
+            flushResponsesMessage(input, message.role, content, phase: span.phase, force: true, includeType: codex)
+            cursor = span.blockStart + span.blockCount
+        }
+        for (index in cursor..message.blocks.size) { appendResponsesStandalone(input, message.blocks[index]) }
+        return
+    }
     var content = wireJsonArray([])
-    for (block in message.blocks) { match (block) {
-        case LlmWireBlock.Text(_) | LlmWireBlock.Image(_) => content.add(encodeResponsesContent(block))
-        case LlmWireBlock.ToolCall(call) =>
-            flushResponsesMessage(input, message.role, content); content = wireJsonArray([])
-            input.add(wireJsonObject([WireJsonField("type", wireJsonString("function_call")), WireJsonField("call_id", wireJsonString(call.callId)), WireJsonField("name", wireJsonString(call.name)), WireJsonField("arguments", wireJsonString(toolArgumentsRaw(call.arguments)))]))
-        case LlmWireBlock.ToolResult(result) =>
-            flushResponsesMessage(input, message.role, content); content = wireJsonArray([])
-            input.add(wireJsonObject([WireJsonField("type", wireJsonString("function_call_output")), WireJsonField("call_id", wireJsonString(result.callId)), WireJsonField("output", encodeResponsesToolResult(result))]))
-        case LlmWireBlock.NativeReplay(value) =>
-            flushResponsesMessage(input, message.role, content); content = wireJsonArray([]); input.add(value.payload())
-        case _ => unsupportedRequest("llm.responses_block_unsupported", "display and diagnostic blocks cannot be encoded as request input")
+    var phase = LlmWireOutputPhase.Unspecified
+    for (block in message.blocks) {
+        if (isResponsesMessageContent(block)) {
+            let nextPhase = match (block) { case LlmWireBlock.Text(value) => value.phase; case _ => LlmWireOutputPhase.Unspecified }
+            if (!content.items.isEmpty() && nextPhase != phase) { flushResponsesMessage(input, message.role, content, phase: phase, includeType: codex); content = wireJsonArray([]) }
+            phase = nextPhase
+            content.add(encodeResponsesMessageContent(codec, message.role, block))
+        } else {
+            flushResponsesMessage(input, message.role, content, phase: phase, includeType: codex); content = wireJsonArray([])
+            appendResponsesStandalone(input, block)
+        }
+    }
+    flushResponsesMessage(input, message.role, content, phase: phase, includeType: codex)
+}
+
+func isResponsesMessageContent(block: LlmWireBlock): Bool {
+    match (block) { case LlmWireBlock.Text(_) | LlmWireBlock.Image(_) | LlmWireBlock.Refusal(_) => true; case _ => false }
+}
+
+func encodeResponsesMessageContent(codec: LlmWireCodec, role: LlmWireRole, block: LlmWireBlock): JsonNode {
+    if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.OpenAiCodexResponses) { match (block) {
+        case LlmWireBlock.Text(value) =>
+            if (!value.citations.isEmpty() || !value.annotations.isEmpty() || !value.logprobs.isEmpty()) { unsupportedRequest("llm.codex_text_metadata_unsupported", "Codex input cannot replay text citations, annotations, or logprobs") }
+            return wireJsonObject([WireJsonField("type", wireJsonString(if (role == LlmWireRole.Assistant) { "output_text" } else { "input_text" })), WireJsonField("text", wireJsonString(value.text))])
+        case _ => ()
     } }
-    flushResponsesMessage(input, message.role, content)
+    encodeResponsesContent(block)
+}
+
+func appendResponsesStandalone(input: JsonNode, block: LlmWireBlock): Unit {
+    match (block) {
+        case LlmWireBlock.ToolCall(call) => input.add(wireJsonObject([WireJsonField("type", wireJsonString("function_call")), WireJsonField("call_id", wireJsonString(call.callId)), WireJsonField("name", wireJsonString(call.name)), WireJsonField("arguments", wireJsonString(toolArgumentsRaw(call.arguments)))]))
+        case LlmWireBlock.ToolResult(result) => input.add(wireJsonObject([WireJsonField("type", wireJsonString("function_call_output")), WireJsonField("call_id", wireJsonString(result.callId)), WireJsonField("output", encodeResponsesToolResult(result))]))
+        case LlmWireBlock.NativeReplay(value) => input.add(value.payload())
+        case _ => unsupportedRequest("llm.responses_block_unsupported", "display and diagnostic blocks cannot be encoded as request input")
+    }
 }
 
 func encodeChatTranscript(codec: LlmWireCodec, transcript: LlmWireTranscript): JsonNode {

@@ -1,0 +1,484 @@
+{
+  "canonical": {
+    "state": {
+      "kind": "completed",
+      "reply": {
+        "response_id": "resp_fixture",
+        "model": "fixture-model",
+        "raw_stop_reason": "completed",
+        "blocks": [
+          {
+            "kind": "native_replay",
+            "value": {
+              "protocol": "responses",
+              "dialect_id": "openai.responses.v1",
+              "native_type": "reasoning",
+              "schema_version": 1,
+              "scope": "assistant_turn",
+              "assistant_turn_index": 0,
+              "block_order": 0,
+              "complete": true,
+              "payload": {
+                "id": "rs_fixture",
+                "type": "reasoning",
+                "summary": [
+                  {
+                    "type": "summary_text",
+                    "text": "why"
+                  }
+                ]
+              },
+              "model_constraint": "fixture-model",
+              "display_reasoning": "why"
+            }
+          },
+          {
+            "kind": "text",
+            "value": {
+              "text": "ok é",
+              "phase": "final",
+              "logprobs": [],
+              "citations": [],
+              "annotations": []
+            }
+          }
+        ],
+        "usage": {
+          "input_tokens": 3,
+          "output_tokens": 2,
+          "reasoning_tokens": 1,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": null,
+          "total_tokens": 5,
+          "web_search_requests": null,
+          "web_fetch_requests": null,
+          "service_tier": null,
+          "source": {
+            "provider": "openai",
+            "dialect": "openai.responses.v1"
+          },
+          "cache_read_availability": "reported",
+          "cache_write_availability": "unknown"
+        },
+        "choices": [
+          {
+            "index": 0,
+            "raw_stop_reason": "completed",
+            "outcome": {
+              "kind": "completed"
+            },
+            "blocks": [
+              {
+                "kind": "native_replay",
+                "value": {
+                  "protocol": "responses",
+                  "dialect_id": "openai.responses.v1",
+                  "native_type": "reasoning",
+                  "schema_version": 1,
+                  "scope": "assistant_turn",
+                  "assistant_turn_index": 0,
+                  "block_order": 0,
+                  "complete": true,
+                  "payload": {
+                    "id": "rs_fixture",
+                    "type": "reasoning",
+                    "summary": [
+                      {
+                        "type": "summary_text",
+                        "text": "why"
+                      }
+                    ]
+                  },
+                  "model_constraint": "fixture-model",
+                  "display_reasoning": "why"
+                }
+              },
+              {
+                "kind": "text",
+                "value": {
+                  "text": "ok é",
+                  "phase": "final",
+                  "logprobs": [],
+                  "citations": [],
+                  "annotations": []
+                }
+              }
+            ],
+            "message_spans": [
+              {
+                "block_start": 1,
+                "block_count": 1,
+                "phase": "final"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "continuation": {
+      "default": {
+        "kind": "ok",
+        "snapshot": {
+          "format": "llm4cj.transcript",
+          "version": 2,
+          "initial_context": {
+            "instructions": [],
+            "tools": []
+          },
+          "items": [
+            {
+              "kind": "message",
+              "value": {
+                "role": "assistant",
+                "blocks": [
+                  {
+                    "kind": "native_replay",
+                    "value": {
+                      "protocol": "responses",
+                      "dialect_id": "openai.responses.v1",
+                      "native_type": "reasoning",
+                      "schema_version": 1,
+                      "scope": "assistant_turn",
+                      "assistant_turn_index": 0,
+                      "block_order": 0,
+                      "complete": true,
+                      "payload": {
+                        "id": "rs_fixture",
+                        "type": "reasoning",
+                        "summary": [
+                          {
+                            "type": "summary_text",
+                            "text": "why"
+                          }
+                        ]
+                      },
+                      "model_constraint": "fixture-model",
+                      "display_reasoning": "why"
+                    }
+                  },
+                  {
+                    "kind": "text",
+                    "value": {
+                      "text": "ok é",
+                      "phase": "final",
+                      "logprobs": [],
+                      "citations": [],
+                      "annotations": []
+                    }
+                  }
+                ],
+                "message_spans": [
+                  {
+                    "block_start": 1,
+                    "block_count": 1,
+                    "phase": "final"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "restored_snapshot": {
+          "format": "llm4cj.transcript",
+          "version": 2,
+          "initial_context": {
+            "instructions": [],
+            "tools": []
+          },
+          "items": [
+            {
+              "kind": "message",
+              "value": {
+                "role": "assistant",
+                "blocks": [
+                  {
+                    "kind": "native_replay",
+                    "value": {
+                      "protocol": "responses",
+                      "dialect_id": "openai.responses.v1",
+                      "native_type": "reasoning",
+                      "schema_version": 1,
+                      "scope": "assistant_turn",
+                      "assistant_turn_index": 0,
+                      "block_order": 0,
+                      "complete": true,
+                      "payload": {
+                        "id": "rs_fixture",
+                        "type": "reasoning",
+                        "summary": [
+                          {
+                            "type": "summary_text",
+                            "text": "why"
+                          }
+                        ]
+                      },
+                      "model_constraint": "fixture-model",
+                      "display_reasoning": "why"
+                    }
+                  },
+                  {
+                    "kind": "text",
+                    "value": {
+                      "text": "ok é",
+                      "phase": "final",
+                      "logprobs": [],
+                      "citations": [],
+                      "annotations": []
+                    }
+                  }
+                ],
+                "message_spans": [
+                  {
+                    "block_start": 1,
+                    "block_count": 1,
+                    "phase": "final"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "encoded": {
+          "body": {
+            "model": "fixture-model",
+            "max_output_tokens": 256,
+            "input": [
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "input_text",
+                    "text": "hello"
+                  }
+                ]
+              },
+              {
+                "id": "rs_fixture",
+                "type": "reasoning",
+                "summary": [
+                  {
+                    "type": "summary_text",
+                    "text": "why"
+                  }
+                ]
+              },
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "input_text",
+                    "text": "ok é"
+                  }
+                ],
+                "phase": "final_answer"
+              },
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "input_text",
+                    "text": "next"
+                  }
+                ]
+              }
+            ]
+          },
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "choices": [
+        {
+          "index": 0,
+          "result": {
+            "kind": "ok",
+            "snapshot": {
+              "format": "llm4cj.transcript",
+              "version": 2,
+              "initial_context": {
+                "instructions": [],
+                "tools": []
+              },
+              "items": [
+                {
+                  "kind": "message",
+                  "value": {
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "kind": "native_replay",
+                        "value": {
+                          "protocol": "responses",
+                          "dialect_id": "openai.responses.v1",
+                          "native_type": "reasoning",
+                          "schema_version": 1,
+                          "scope": "assistant_turn",
+                          "assistant_turn_index": 0,
+                          "block_order": 0,
+                          "complete": true,
+                          "payload": {
+                            "id": "rs_fixture",
+                            "type": "reasoning",
+                            "summary": [
+                              {
+                                "type": "summary_text",
+                                "text": "why"
+                              }
+                            ]
+                          },
+                          "model_constraint": "fixture-model",
+                          "display_reasoning": "why"
+                        }
+                      },
+                      {
+                        "kind": "text",
+                        "value": {
+                          "text": "ok é",
+                          "phase": "final",
+                          "logprobs": [],
+                          "citations": [],
+                          "annotations": []
+                        }
+                      }
+                    ],
+                    "message_spans": [
+                      {
+                        "block_start": 1,
+                        "block_count": 1,
+                        "phase": "final"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "restored_snapshot": {
+              "format": "llm4cj.transcript",
+              "version": 2,
+              "initial_context": {
+                "instructions": [],
+                "tools": []
+              },
+              "items": [
+                {
+                  "kind": "message",
+                  "value": {
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "kind": "native_replay",
+                        "value": {
+                          "protocol": "responses",
+                          "dialect_id": "openai.responses.v1",
+                          "native_type": "reasoning",
+                          "schema_version": 1,
+                          "scope": "assistant_turn",
+                          "assistant_turn_index": 0,
+                          "block_order": 0,
+                          "complete": true,
+                          "payload": {
+                            "id": "rs_fixture",
+                            "type": "reasoning",
+                            "summary": [
+                              {
+                                "type": "summary_text",
+                                "text": "why"
+                              }
+                            ]
+                          },
+                          "model_constraint": "fixture-model",
+                          "display_reasoning": "why"
+                        }
+                      },
+                      {
+                        "kind": "text",
+                        "value": {
+                          "text": "ok é",
+                          "phase": "final",
+                          "logprobs": [],
+                          "citations": [],
+                          "annotations": []
+                        }
+                      }
+                    ],
+                    "message_spans": [
+                      {
+                        "block_start": 1,
+                        "block_count": 1,
+                        "phase": "final"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "encoded": {
+              "body": {
+                "model": "fixture-model",
+                "max_output_tokens": 256,
+                "input": [
+                  {
+                    "role": "user",
+                    "content": [
+                      {
+                        "type": "input_text",
+                        "text": "hello"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "rs_fixture",
+                    "type": "reasoning",
+                    "summary": [
+                      {
+                        "type": "summary_text",
+                        "text": "why"
+                      }
+                    ]
+                  },
+                  {
+                    "role": "assistant",
+                    "content": [
+                      {
+                        "type": "input_text",
+                        "text": "ok é"
+                      }
+                    ],
+                    "phase": "final_answer"
+                  },
+                  {
+                    "role": "user",
+                    "content": [
+                      {
+                        "type": "input_text",
+                        "text": "next"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "headers": [
+                {
+                  "name": "content-type",
+                  "value": "application/json"
+                },
+                {
+                  "name": "accept",
+                  "value": "application/json"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

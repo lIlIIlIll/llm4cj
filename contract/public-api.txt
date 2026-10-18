@@ -1,3 +1,4 @@
+class LlmWireAssistantMessageSpan
 class LlmWireCacheCapabilities
 class LlmWireCapabilities
 class LlmWireChoice
@@ -27,11 +28,13 @@ class LlmWireNativeReplayBlock
 class LlmWireOpaqueBlock
 class LlmWireOutputCapabilities
 class LlmWirePreparedRequest
+class LlmWirePreparedWebSocketEvent
 class LlmWireReasoningBlock
 class LlmWireRefusalBlock
 class LlmWireReply
 class LlmWireRequest
 class LlmWireRequestBuilder
+class LlmWireResponsesWebSocketSession
 class LlmWireSseLimits
 class LlmWireStreamDecoder
 class LlmWireStreamLimits
@@ -120,6 +123,9 @@ func kimiChatModelProfile
 func openAiChatCodec
 func openAiChatDialect
 func openAiChatModelProfile
+func openAiCodexResponsesCodec
+func openAiCodexResponsesDialect
+func openAiCodexResponsesModelProfile
 func openAiResponsesCodec
 func openAiResponsesDialect
 func openAiResponsesModelProfile

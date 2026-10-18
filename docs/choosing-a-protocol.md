@@ -2,7 +2,7 @@
 
 protocol 定义 envelope；dialect 定义 provider 对同一 envelope 的字段语义。两者必须匹配，否则 `LlmWireCodec` 构造失败。
 
-稳定包通过七个命名 model-profile/codec 工厂创建 codec。自定义 contract 位于 `llm4cj.experimental`；它只能扩展已有三种协议族，不能使用内置 compatibility ID，也不能替换 JSON/SSE parser、terminal 规则或 canonical assembler。
+稳定包通过八个命名 model-profile/codec 工厂创建 codec。自定义 contract 位于 `llm4cj.experimental`；它只能扩展已有三种协议族，不能使用内置 compatibility ID，也不能替换 JSON/SSE parser、terminal 规则或 canonical assembler。
 
 codec 构造时会冻结 dialect contract、protocol 与 compatibility identity。provider-native reasoning replay 仅对明确支持其类型的内置 dialect 开放；实验 custom dialect 只能声明 `ProviderDefault` thinking，避免出现请求可编码、响应却无法安全续轮的半闭合扩展。
 
@@ -10,11 +10,13 @@ codec 构造时会冻结 dialect contract、protocol 与 compatibility identity�
 
 | protocol | 首选内置 dialect | 其他内置 dialect |
 | --- | --- | --- |
-| Responses | `openai.responses.v1` | `deepseek.responses.v1` |
+| Responses | `openai.responses.v1` | `openai.codex.responses.v1`、`deepseek.responses.v1` |
 | Chat Completions | `openai.chat.v1` | `deepseek.chat.v1`、`kimi.chat.v1` |
 | Messages | `anthropic.messages.v1` | `deepseek.messages.v1` |
 
 新集成优先 Responses。只有 endpoint 明确要求 Chat Completions 或 Messages 时才切换。兼容名称不是行为承诺；调用方还必须根据具体模型提供 `LlmWireCapabilities`。
+
+`openai.codex.responses.v1` 用于 SIWC 获准的 ChatGPT 订阅推理，使用公开 Responses endpoint、`store: false` 及受限的请求选项。HTTP/SSE 与 WebSocket 共用 canonical 语义；账户、OAuth 和网络由应用管理，见[接入 Codex 订阅](codex-subscription.md)。该 dialect 不接受 ChatGPT 私有 backend endpoint 的历史 wire 约定。
 
 未提供 capability 时，仅保证基础文本和 `ProviderDefault` thinking。任何图片、显式 thinking、tools、structured output、parallel tool calls、service tier 或 cache 选项都必须先声明支持。
 
