@@ -120,44 +120,49 @@ func contextEndpointProfile(codec: LlmWireCodec): ?LlmWireEndpointProfile {
     match (codec.modelProfile) { case Some(value) => value.endpointProfile; case None => None }
 }
 
-func requireContextCapability(codec: LlmWireCodec, supported: Bool, capability: String, itemIndex: Int64, toolName!: String = "", toolVersion!: String = ""): Unit {
+func requireContextCapability(codec: LlmWireCodec, supported: Bool, capability: String, itemIndex: Int64, toolName!: String = "", toolVersion!: String = "", checks!: RequestCheckSink = RequestCheckSink()): Unit {
     if (supported) { return }
     let profile = contextEndpointProfile(codec)
+    checks.check("context." + capability, { =>
     throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.context_update_unsupported", "native transcript operation requires explicit capability: " + capability,
         inputItemIndex: itemIndex, toolName: toolName, toolVersion: toolVersion, missingCapability: capability,
         profileId: match (profile) { case Some(value) => value.profileId; case None => "" }, contractVersion: codec.dialect.contract.contextUpdates.version)
+    }, itemIndex: itemIndex)
 }
 
-func validateTranscriptCapabilities(codec: LlmWireCodec, request: LlmWireRequest): Unit {
+func validateTranscriptCapabilities(codec: LlmWireCodec, request: LlmWireRequest, checks!: RequestCheckSink = RequestCheckSink()): Unit {
     let contract = codec.dialect.contract.contextUpdates
     let profile = contextEndpointProfile(codec)
     let capabilities = match (profile) {
         case Some(value) =>
+            let valid = checks.check("context.profile", { =>
             if (value.contractVersion != contract.version || !declaredContextCapabilitiesFit(value.capabilities, contract.capabilities)) {
                 throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.endpoint_profile_capability_unsupported", "endpoint profile declares capabilities outside the versioned dialect contract", profileId: value.profileId, contractVersion: value.contractVersion)
             }
             if (contract.style == LlmWireContextUpdateStyle.KimiSystemTools && (value.model != "kimi-k3" || value.endpoint != "https://api.moonshot.ai/v1/chat/completions")) {
                 throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.endpoint_profile_capability_unsupported", "Kimi dynamic tools contract is scoped to kimi-k3 on the documented endpoint", profileId: value.profileId, contractVersion: value.contractVersion)
             }
+            }, prerequisite: true)
+            if (!valid) { return }
             value.capabilities
         case None => LlmWireContextUpdateCapabilities()
     }
-    for (declaration in request.transcript.initialContext.tools where declaration.deferred) {
-        requireContextCapability(codec, capabilities.deferredToolPool, "deferred_tool_pool", -1, toolName: declaration.tool.name, toolVersion: declaration.version)
+    for (declaration in request.transcript.initialContext.tools) { checks.charge()
+        if (declaration.deferred) { requireContextCapability(codec, capabilities.deferredToolPool, "deferred_tool_pool", -1, toolName: declaration.tool.name, toolVersion: declaration.version, checks: checks) }
     }
     let items = request.transcript.items
-    let declaredNames = transcriptDeclaredNames(request.transcript)
-    for (index in 0..items.size) { match (items[index]) {
+    let declaredNames = transcriptDeclaredNames(request.transcript, checks: checks)
+    for (index in 0..items.size) { checks.charge(); match (items[index]) {
         case LlmWireInputItem.InstructionUpdate(value) =>
             let system = value.role == LlmWireInstructionRole.System
-            requireContextCapability(codec, if (system) { capabilities.appendSystemInstruction } else { capabilities.appendDeveloperInstruction }, if (system) { "append_system_instruction" } else { "append_developer_instruction" }, index)
+            requireContextCapability(codec, if (system) { capabilities.appendSystemInstruction } else { capabilities.appendDeveloperInstruction }, if (system) { "append_system_instruction" } else { "append_developer_instruction" }, index, checks: checks)
         case LlmWireInputItem.ToolDeclaration(value) =>
             if (declaredNames.add(value.tool.name)) {
-                requireContextCapability(codec, capabilities.toolDeclaration, "tool_declaration", index, toolName: value.tool.name, toolVersion: value.version)
-                if (value.deferred) { requireContextCapability(codec, capabilities.deferredPoolExtension, "deferred_pool_extension", index, toolName: value.tool.name, toolVersion: value.version) }
+                requireContextCapability(codec, capabilities.toolDeclaration, "tool_declaration", index, toolName: value.tool.name, toolVersion: value.version, checks: checks)
+                if (value.deferred) { requireContextCapability(codec, capabilities.deferredPoolExtension, "deferred_pool_extension", index, toolName: value.tool.name, toolVersion: value.version, checks: checks) }
             }
-        case LlmWireInputItem.ToolActivation(value) => requireContextCapability(codec, capabilities.toolActivation, "tool_activation", index, toolName: value.name, toolVersion: value.version)
-        case LlmWireInputItem.ToolDeactivation(value) => requireContextCapability(codec, capabilities.toolDeactivation, "tool_deactivation", index, toolName: value.name, toolVersion: value.version)
+        case LlmWireInputItem.ToolActivation(value) => requireContextCapability(codec, capabilities.toolActivation, "tool_activation", index, toolName: value.name, toolVersion: value.version, checks: checks)
+        case LlmWireInputItem.ToolDeactivation(value) => requireContextCapability(codec, capabilities.toolDeactivation, "tool_deactivation", index, toolName: value.name, toolVersion: value.version, checks: checks)
         case LlmWireInputItem.Message(_) => ()
     } }
 }

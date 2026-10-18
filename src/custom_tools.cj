@@ -60,6 +60,18 @@ func validateCustomToolCapability(codec: LlmWireCodec, tool: LlmWireToolDefiniti
     }
 }
 
+func validateCustomToolRequestChecks(codec: LlmWireCodec, request: LlmWireRequest, checks: RequestCheckSink): Unit {
+    for (declaration in request.transcript.initialContext.tools) { checks.charge()
+        checks.check("tools.custom_format", { => validateCustomToolCapability(codec, declaration.tool) })
+    }
+    let items = request.transcript.items
+    for (index in 0..items.size) { checks.charge(); match (items[index]) {
+        case LlmWireInputItem.ToolDeclaration(value) =>
+            checks.check("tools.custom_format", { => validateCustomToolCapability(codec, value.tool) }, itemIndex: index)
+        case _ => ()
+    } }
+}
+
 func writeBoundedRequestJson(value: JsonNode, code: String, message: String): String {
     let output = WireJsonOutput()
     try {

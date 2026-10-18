@@ -4,6 +4,8 @@ All notable changes are recorded here.
 
 ## [0.3.0] - Unreleased
 
+- Add bounded deterministic request capability reports shared with strict validation, including custom tools, cache positions and audio checks; keep resolver, clock and header decisions at materialization.
+
 - Add Result-returning transcript prefix forks and selected-choice continuation appends. Preserve complete replay groups and cache coordinates, reject open source histories, and permit only newly appended assistant calls to remain pending.
 
 - Add typed OpenAI Chat WAV/MP3 input and six-format fixed/SSE audio output with explicit capabilities and prepared response context. Preserve audio bytes, transcript and usage, enforce bounded per-field RFC4648 decoding, and require canonical order plus an explicit unexpired clock for closed assistant replay. Persist audio with shared snapshot v3; schema-derived fixtures do not claim live media or provider framing proof.

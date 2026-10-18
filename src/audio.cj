@@ -53,6 +53,9 @@ public class LlmWireAudioCapabilities {
     public prop fixedOutputFormats: Array<LlmWireAudioFormat> { get() { copyValues(fixedValue) } }
     public prop streamOutputFormats: Array<LlmWireAudioFormat> { get() { copyValues(streamValue) } }
     public prop voices: Array<LlmWireAudioVoice> { get() { copyValues(voicesValue) } }
+    func chargeInspection(checks: RequestCheckSink): Unit {
+        checks.charge(count: inputValue.size + fixedValue.size + streamValue.size + voicesValue.size)
+    }
 }
 
 public class LlmWireResponseContext {
@@ -190,39 +193,52 @@ func requireAudioContext(codec: LlmWireCodec, context: ?LlmWireResponseContext, 
 }
 func containsAudioFormat(values: Array<LlmWireAudioFormat>, value: LlmWireAudioFormat): Bool { for (entry in values where entry == value) { return true }; false }
 
-func validateAudioRequest(codec: LlmWireCodec, request: LlmWireRequest, streaming: Bool, anyOutputMode!: Bool = false): Unit {
+func validateAudioRequest(codec: LlmWireCodec, request: LlmWireRequest, streaming: Bool, anyOutputMode!: Bool = false, checks!: RequestCheckSink = RequestCheckSink()): Unit {
     var size: Int64 = 0
-    for (item in request.transcript.items) { match (item) { case LlmWireInputItem.Message(message) =>
+    let items = request.transcript.items
+    for (itemIndex in 0..items.size) { checks.charge(); match (items[itemIndex]) { case LlmWireInputItem.Message(message) =>
         var replaySeen = false
-        for (blockIndex in 0..message.blocks.size) { match (message.blocks[blockIndex]) {
+        for (blockIndex in 0..message.blocks.size) { checks.charge(); match (message.blocks[blockIndex]) {
             case LlmWireBlock.AudioInput(value) =>
-                requireAudioDialect(codec)
-                if (message.role != LlmWireRole.User) { unsupportedRequest("llm.audio_input_role_invalid", "audio input must belong to a user message") }
-                var audioModality = false
-                for (modality in codec.capabilities.input.modalities where modality == LlmWireInputModality.Audio) { audioModality = true }
-                if (!audioModality) { unsupportedRequest("llm.audio_input_capability_missing", "audio input requires the audio modality capability") }
-                if (!containsAudioFormat(codec.capabilities.audio.inputFormats, value.format)) { unsupportedRequest("llm.audio_input_capability_missing", "model capability does not declare this audio input format") }
-                if (value.audioBytes().size > AUDIO_MAX_BYTES - size) { throw audioLimit() }; size += value.audioBytes().size
+                checks.check("audio.dialect", { => requireAudioDialect(codec) }, itemIndex: itemIndex, blockIndex: blockIndex)
+                checks.check("audio.input_role", { => if (message.role != LlmWireRole.User) { unsupportedRequest("llm.audio_input_role_invalid", "audio input must belong to a user message") } }, itemIndex: itemIndex, blockIndex: blockIndex)
+                checks.check("audio.input_modality", { =>
+                    var audioModality = false
+                    for (modality in codec.capabilities.input.modalities where modality == LlmWireInputModality.Audio) { audioModality = true }
+                    if (!audioModality) { unsupportedRequest("llm.audio_input_capability_missing", "audio input requires the audio modality capability") }
+                }, itemIndex: itemIndex, blockIndex: blockIndex)
+                checks.check("audio.input_format", { => if (!containsAudioFormat(codec.capabilities.audio.inputFormats, value.format)) { unsupportedRequest("llm.audio_input_capability_missing", "model capability does not declare this audio input format") } }, itemIndex: itemIndex, blockIndex: blockIndex)
+                let accumulated = size
+                if (checks.check("audio.input_size", { => if (value.audioBytes().size > AUDIO_MAX_BYTES - accumulated) { throw audioLimit() } }, itemIndex: itemIndex, blockIndex: blockIndex)) { size += value.audioBytes().size }
             case LlmWireBlock.AudioReplay(value) =>
-                requireAudioDialect(codec)
-                if (message.role != LlmWireRole.Assistant || replaySeen) { unsupportedRequest("llm.audio_replay_position_invalid", "one audio replay is allowed in each assistant message") }
-                if (value.blockOrder != blockIndex || blockIndex != message.blocks.size - 1) { unsupportedRequest("llm.audio_replay_position_invalid", "audio replay must retain its canonical final block order") }
-                for (before in 0..blockIndex) { match (message.blocks[before]) { case LlmWireBlock.Text(_) => (); case _ => unsupportedRequest("llm.audio_replay_position_invalid", "audio replay can follow only canonical text content") } }
+                checks.check("audio.dialect", { => requireAudioDialect(codec) }, itemIndex: itemIndex, blockIndex: blockIndex)
+                let duplicateReplay = replaySeen
+                checks.check("audio.replay_position", { => if (message.role != LlmWireRole.Assistant || duplicateReplay) { unsupportedRequest("llm.audio_replay_position_invalid", "one audio replay is allowed in each assistant message") } }, itemIndex: itemIndex, blockIndex: blockIndex)
+                checks.check("audio.replay_position", { => if (value.blockOrder != blockIndex || blockIndex != message.blocks.size - 1) { unsupportedRequest("llm.audio_replay_position_invalid", "audio replay must retain its canonical final block order") } }, itemIndex: itemIndex, blockIndex: blockIndex)
+                checks.charge(count: blockIndex)
+                checks.check("audio.replay_position", { => for (before in 0..blockIndex) { match (message.blocks[before]) {
+                    case LlmWireBlock.Text(_) => ()
+                    case _ => unsupportedRequest("llm.audio_replay_position_invalid", "audio replay can follow only canonical text content")
+                } } }, itemIndex: itemIndex, blockIndex: blockIndex)
                 replaySeen = true
-                if (!codec.capabilities.audio.assistantReplay) { unsupportedRequest("llm.audio_replay_capability_missing", "model capability does not declare assistant audio replay") }
-                if (value.provider != codec.provider || value.model != request.model) { unsupportedRequest("llm.audio_replay_origin_mismatch", "audio replay must retain its provider and requested model") }
+                checks.check("audio.replay_capability", { => if (!codec.capabilities.audio.assistantReplay) { unsupportedRequest("llm.audio_replay_capability_missing", "model capability does not declare assistant audio replay") } }, itemIndex: itemIndex, blockIndex: blockIndex)
+                checks.check("audio.replay_origin", { => if (value.provider != codec.provider || value.model != request.model) { unsupportedRequest("llm.audio_replay_origin_mismatch", "audio replay must retain its provider and requested model") } }, itemIndex: itemIndex, blockIndex: blockIndex)
             case _ => ()
         } }
         case _ => ()
     } }
     match (request.audioOutput) { case Some(value) =>
-        requireAudioDialect(codec)
-        let formats = if (streaming) { codec.capabilities.audio.streamOutputFormats } else { codec.capabilities.audio.fixedOutputFormats }
-        if (!containsAudioFormat(formats, value.format) && !(anyOutputMode && containsAudioFormat(codec.capabilities.audio.streamOutputFormats, value.format))) { unsupportedRequest("llm.audio_output_format_unsupported", "model capability does not declare this audio output format") }
-        var voiceFound = false
-        for (voice in codec.capabilities.audio.voices where voice == value.voice) { voiceFound = true }
-        if (!voiceFound) { unsupportedRequest("llm.audio_voice_unsupported", "model capability does not declare this audio voice") }
-        match (request.structuredOutput) { case LlmWireStructuredOutput.ProviderDefault | LlmWireStructuredOutput.Text => (); case _ => unsupportedRequest("llm.audio_structured_output_unsupported", "audio cannot be combined with structured output") }
+        checks.check("audio.output_dialect", { => requireAudioDialect(codec) })
+        checks.check("audio.output_format", { =>
+            let formats = if (streaming) { codec.capabilities.audio.streamOutputFormats } else { codec.capabilities.audio.fixedOutputFormats }
+            if (!containsAudioFormat(formats, value.format) && !(anyOutputMode && containsAudioFormat(codec.capabilities.audio.streamOutputFormats, value.format))) { unsupportedRequest("llm.audio_output_format_unsupported", "model capability does not declare this audio output format") }
+        })
+        checks.check("audio.output_voice", { =>
+            var voiceFound = false
+            for (voice in codec.capabilities.audio.voices where voice == value.voice) { voiceFound = true }
+            if (!voiceFound) { unsupportedRequest("llm.audio_voice_unsupported", "model capability does not declare this audio voice") }
+        })
+        checks.check("audio.output_combination", { => match (request.structuredOutput) { case LlmWireStructuredOutput.ProviderDefault | LlmWireStructuredOutput.Text => (); case _ => unsupportedRequest("llm.audio_structured_output_unsupported", "audio cannot be combined with structured output") } })
         case None => ()
     }
 }

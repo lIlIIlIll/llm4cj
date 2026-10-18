@@ -3,6 +3,18 @@
   "live_provider": "not_run",
   "public_checks": [
     {
+      "id": "request-capabilities",
+      "fixture": "request-capabilities.json",
+      "command": "check-capabilities",
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/responses/streaming-events",
+        "revision": "existing protocol fixture references and local capability policy",
+        "checked_at": "2026-10-18",
+        "notes": "Hand-written report and materialization oracles across all eight codecs, malformed replay, external requirements, cache, audio and custom tools. Static declarations do not prove live provider support."
+      }
+    },
+    {
       "id": "transcript-branches",
       "fixture": "transcript-branches.json",
       "command": "check-transcript-branches",

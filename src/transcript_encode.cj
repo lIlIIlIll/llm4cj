@@ -11,9 +11,9 @@ func initialTranscriptTools(transcript: LlmWireTranscript): Array<LlmWireToolDef
     output.toArray()
 }
 
-func transcriptDeclaredNames(transcript: LlmWireTranscript): HashSet<String> {
+func transcriptDeclaredNames(transcript: LlmWireTranscript, checks!: RequestCheckSink = RequestCheckSink()): HashSet<String> {
     let names = HashSet<String>()
-    for (declaration in transcript.initialContext.tools) { names.add(declaration.tool.name) }
+    for (declaration in transcript.initialContext.tools) { checks.charge(bytes: declaration.tool.name.size); names.add(declaration.tool.name) }
     names
 }
 
@@ -85,7 +85,7 @@ func isResponsesMessageContent(block: LlmWireBlock): Bool {
 func encodeResponsesMessageContent(codec: LlmWireCodec, role: LlmWireRole, block: LlmWireBlock): JsonNode {
     if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.OpenAiCodexResponses) { match (block) {
         case LlmWireBlock.Text(value) =>
-            if (!value.citations.isEmpty() || !value.annotations.isEmpty() || !value.logprobs.isEmpty()) { unsupportedRequest("llm.codex_text_metadata_unsupported", "Codex input cannot replay text citations, annotations, or logprobs") }
+            validateCodexTextReplay(value)
             return wireJsonObject([WireJsonField("type", wireJsonString(if (role == LlmWireRole.Assistant) { "output_text" } else { "input_text" })), WireJsonField("text", wireJsonString(value.text))])
         case _ => ()
     } }
@@ -153,6 +153,7 @@ func chatHasReplayReasoning(codec: LlmWireCodec): Bool {
 }
 
 func encodeKimiToolResult(result: LlmWireToolResultBlock): JsonNode {
+    validateKimiToolResultShape(result)
     if (result.content.size == 1) { match (result.content[0]) {
         case LlmWireToolResultContent.Text(value) => return wireJsonString(value.text)
         case _ => ()

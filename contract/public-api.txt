@@ -8,6 +8,7 @@ class LlmWireAudioOutputOptions
 class LlmWireCacheBreakpoint
 class LlmWireCacheCapabilities
 class LlmWireCapabilities
+class LlmWireCapabilityDiagnostic
 class LlmWireChoice
 class LlmWireCitation
 class LlmWireCodec
@@ -43,6 +44,7 @@ class LlmWireRefusalBlock
 class LlmWireReply
 class LlmWireRequest
 class LlmWireRequestBuilder
+class LlmWireRequestCapabilityReport
 class LlmWireResponseContext
 class LlmWireResponsesWebSocketSession
 class LlmWireSchemaValidationLimits
@@ -74,6 +76,7 @@ enum LlmWireAudioVoice
 enum LlmWireBlock
 enum LlmWireBuiltinDialect
 enum LlmWireCachePosition
+enum LlmWireCapabilityDiagnosticKind
 enum LlmWireCapabilityEvidence
 enum LlmWireChoiceOutcome
 enum LlmWireCitationKind
@@ -140,6 +143,7 @@ func deepSeekResponsesDialect
 func deepSeekResponsesModelProfile
 func extractRetryAfterMillis
 func extractStructuredOutput
+func inspectRequestCapabilities
 func kimiChatCodec
 func kimiChatDialect
 func kimiChatModelProfile

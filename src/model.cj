@@ -270,6 +270,7 @@ public class LlmWireNativeReplayBlock {
     public let completion: LlmWireOpaqueCompletion
     public let displayReasoning: ?String
     private let canonicalReplayJson: String
+    private let inspectionNodes: Int64
 
     init(
         protocol: LlmWireProtocol,
@@ -282,11 +283,13 @@ public class LlmWireNativeReplayBlock {
         blockOrder: Int64,
         completion: LlmWireOpaqueCompletion,
         canonicalReplayJson: String,
-        displayReasoning: ?String
+        displayReasoning: ?String,
+        inspectionNodes: Int64
     ) {
         this.protocol = protocol; this.dialectId = dialectId; this.nativeType = nativeType; this.schemaVersion = schemaVersion
         this.modelConstraint = modelConstraint; this.scope = scope; this.assistantTurnIndex = assistantTurnIndex; this.blockOrder = blockOrder
         this.completion = completion; this.canonicalReplayJson = canonicalReplayJson; this.displayReasoning = displayReasoning
+        this.inspectionNodes = inspectionNodes
     }
 
     public static func restore(snapshot: String): LlmWireNativeReplayBlock {
@@ -303,6 +306,8 @@ public class LlmWireNativeReplayBlock {
     }
 
     func payload(): JsonNode { parseWireJson(canonicalReplayJson) }
+    func inspectionBytes(): Int64 { canonicalReplayJson.size }
+    func chargeInspection(checks: RequestCheckSink): Unit { checks.charge(count: inspectionNodes, bytes: canonicalReplayJson.size) }
     public func snapshot(): String {
         let root = wireJsonObject([
             WireJsonField("protocol", wireJsonString(protocolName(protocol))), WireJsonField("dialect_id", wireJsonString(dialectId)),
@@ -336,7 +341,8 @@ func nativeReplayFromPayload(
         case None => throw LlmWireError(LlmWireErrorKind.InvalidWire, "llm.native_replay_type_missing", "native replay payload must contain type")
     }
     validateNativeReplayPayload(protocol, dialectId, nativeType, payload)
-    LlmWireNativeReplayBlock(protocol, dialectId, nativeType, schemaVersion, modelConstraint, scope, assistantTurnIndex, blockOrder, completion, payload.stringify(), displayReasoning)
+    LlmWireNativeReplayBlock(protocol, dialectId, nativeType, schemaVersion, modelConstraint, scope, assistantTurnIndex, blockOrder, completion,
+        payload.stringify(), displayReasoning, nativeInspectionNodeCount(payload, 100001))
 }
 
 func validateNativeReplayPayload(protocol: LlmWireProtocol, dialectId: String, nativeType: String, payload: JsonNode): Unit {
@@ -441,6 +447,7 @@ public class LlmWireMessage {
         this.messageSpansValue = copyValues(messageSpans)
     }
     public prop messageSpans: Array<LlmWireAssistantMessageSpan> { get() { copyValues(messageSpansValue) } }
+    func messageSpanCount(): Int64 { messageSpansValue.size }
 }
 
 public class LlmWireTool {
