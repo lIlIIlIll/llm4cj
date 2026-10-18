@@ -1,9 +1,12 @@
 package llm4cj
 
+import std.collection.*
+
 public class LlmWireRequestBuilder {
     private let codec: LlmWireCodec
     private let model: String
-    private var transcript = LlmWireTranscript()
+    private var initialContext = LlmWireInitialContext()
+    private var items = ArrayList<LlmWireInputItem>()
     private var thinkingMode = LlmWireThinkingMode.ProviderDefault
     private var reasoningEffort = LlmWireReasoningEffort.ProviderDefault
     private var maxOutputTokens: ?Int64 = None
@@ -21,29 +24,32 @@ public class LlmWireRequestBuilder {
         requireNoItems()
         try { validateInitialShape(context) }
         catch (error: LlmWireError) { throw withCodecContext(error, codec, LlmTransportPhase.Encode) }
-        transcript = LlmWireTranscript(context)
+        let candidate = LlmWireInitialContext(instructions: context.instructions, tools: context.tools)
+        initialContext = candidate
     }
     public func setTranscript(value: LlmWireTranscript): Unit {
         requireNoItems()
         try { validateInitialShape(value.initialContext) }
         catch (error: LlmWireError) { throw withCodecContext(error, codec, LlmTransportPhase.Encode) }
-        let items = value.items
-        for (index in 0..items.size) {
-            try { validateItemShape(items[index]) }
-            catch (error: LlmWireError) { throw withCodecContext(withInputItemContext(error, index), codec, LlmTransportPhase.Encode) }
+        let candidateContext = LlmWireInitialContext(instructions: value.initialContext.instructions, tools: value.initialContext.tools)
+        let candidateItems = value.items
+        for (index in 0..candidateItems.size) {
+            validateItemShape(candidateItems[index], index)
         }
-        transcript = value
+        let candidate = ArrayList<LlmWireInputItem>()
+        for (item in candidateItems) { candidate.add(item) }
+        initialContext = candidateContext
+        items = candidate
     }
     public func append(item: LlmWireInputItem): Unit {
-        try { validateItemShape(item) }
-        catch (error: LlmWireError) { throw withCodecContext(withInputItemContext(error, transcript.itemCount()), codec, LlmTransportPhase.Encode) }
-        transcript = transcript.append(item)
+        validateItemShape(item, items.size)
+        items.add(copyTranscriptItem(item))
     }
     public func appendMessage(message: LlmWireMessage): Unit { append(LlmWireInputItem.Message(message)) }
     private func requireNoItems(): Unit {
-        if (transcript.itemCount() != 0) {
+        if (items.size != 0) {
             throw withCodecContext(LlmWireError(LlmWireErrorKind.InvalidState, "llm.initial_context_already_started", "initial context must be assigned before transcript items",
-                inputItemIndex: transcript.itemCount()), codec, LlmTransportPhase.Encode)
+                inputItemIndex: items.size), codec, LlmTransportPhase.Encode)
         }
     }
     private func validateInitialShape(context: LlmWireInitialContext): Unit {
@@ -63,17 +69,20 @@ public class LlmWireRequestBuilder {
             throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_schema_invalid", "tool input schema must be a JSON object", toolName: declaration.tool.name, toolVersion: declaration.version)
         }
     }
-    private func validateItemShape(item: LlmWireInputItem): Unit {
-        match (item) {
-            case LlmWireInputItem.Message(message) =>
-                if (!messageHasContent(message)) {
-                    throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.message_empty", "messages must contain semantic content")
-                }
-                for (block in message.blocks) { validateBlockShape(block) }
-            case LlmWireInputItem.InstructionUpdate(instruction) => validateInstructionShape(instruction)
-            case LlmWireInputItem.ToolDeclaration(declaration) => validateDeclarationShape(declaration)
-            case _ => ()
+    private func validateItemShape(item: LlmWireInputItem, itemIndex: Int64): Unit {
+        try {
+            match (item) {
+                case LlmWireInputItem.Message(message) =>
+                    if (!messageHasContent(message)) {
+                        throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.message_empty", "messages must contain semantic content")
+                    }
+                    for (block in message.blocks) { validateBlockShape(block) }
+                case LlmWireInputItem.InstructionUpdate(instruction) => validateInstructionShape(instruction)
+                case LlmWireInputItem.ToolDeclaration(declaration) => validateDeclarationShape(declaration)
+                case _ => ()
+            }
         }
+        catch (error: LlmWireError) { throw withCodecContext(withInputItemContext(error, itemIndex), codec, LlmTransportPhase.Encode) }
     }
 
     public func setThinking(mode: LlmWireThinkingMode, effort!: LlmWireReasoningEffort = LlmWireReasoningEffort.ProviderDefault): Unit {
@@ -103,7 +112,7 @@ public class LlmWireRequestBuilder {
 
     public func build(): LlmWireResult<LlmWireRequest> {
         let request = LlmWireRequest(
-            model, transcript,
+            model, LlmWireTranscript(initialContext, items: items.toArray()),
             thinkingMode: thinkingMode, reasoningEffort: reasoningEffort, maxOutputTokens: maxOutputTokens,
             parallelToolCalls: parallelToolCalls, serviceTier: serviceTier, generationSpeed: generationSpeed,
             promptCache: promptCache, promptCacheRoutingKey: promptCacheRoutingKey,
@@ -114,7 +123,8 @@ public class LlmWireRequestBuilder {
     }
 
     public func reset(): Unit {
-        transcript = LlmWireTranscript()
+        initialContext = LlmWireInitialContext()
+        items = ArrayList<LlmWireInputItem>()
         thinkingMode = LlmWireThinkingMode.ProviderDefault; reasoningEffort = LlmWireReasoningEffort.ProviderDefault
         maxOutputTokens = None; parallelToolCalls = None; serviceTier = LlmWireServiceTier.ProviderDefault
         generationSpeed = LlmWireGenerationSpeed.ProviderDefault; promptCache = LlmWirePromptCache.ProviderDefault
