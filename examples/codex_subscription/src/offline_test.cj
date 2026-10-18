@@ -56,7 +56,9 @@ class TestAuthHttp <: AuthHttp {
     var tokenCalls: Int64 = 0
     var jwksCalls: Int64 = 0
     var error = ""
+    var errorStatus: Int64 = 400
     var transient: Int64 = 0
+    var transportFailures: Int64 = 0
     var revokeStatus: Int64 = 200
     var grantedScope = REQUESTED_SCOPES
     var seenRefreshForm = ""
@@ -69,8 +71,9 @@ class TestAuthHttp <: AuthHttp {
         if (url.endsWith("oauth/revoke")) { require(method == "POST" && body.contains("client_id=issued-client"), "Bad revocation request"); return AuthReply(revokeStatus, "") }
         require(url.endsWith("oauth/token") && method == "POST", "Unexpected OAuth request")
         tokenCalls++; seenRefreshForm = body
+        if (transportFailures > 0) { transportFailures--; throw ExampleError("Synthetic OAuth transport failure") }
         if (transient > 0) { transient--; return AuthReply(503, "{\"error\":\"temporarily_unavailable\"}") }
-        if (error != "") { return AuthReply(400, object([("error", jsonString(error))]).stringify()) }
+        if (error != "") { return AuthReply(errorStatus, object([("error", jsonString(error))]).stringify()) }
         AuthReply(200, identity.tokens(scope: grantedScope))
     }
 }
@@ -143,15 +146,49 @@ class CodexExampleTest {
     }
 
     @TestCase
-    func invalidGrantClearsTokensAndTransientFailurePreservesThem() {
-        let identity = TestIdentity(); let store = testStore(); let http = TestAuthHttp(identity); let auth = AuthManager(store, http: http)
-        seed(store, auth, identity); http.error = "invalid_grant"
-        expectExampleFailure({ => let _ = auth.access("account") })
-        let signedOut = store.locked({ => findAccount(store.load(), "account") })
-        @Expect(optionalText(signedOut, "access_token"), ""); @Expect(text(signedOut, "client_id"), "issued-client"); @Expect(text(signedOut, "sub"), "subject")
-        http.error = ""; seed(store, auth, identity); http.transient = 3
-        expectExampleFailure({ => let _ = auth.access("account") })
-        @Expect(store.locked({ => text(findAccount(store.load(), "account"), "refresh_token") }), "synthetic-rotated-refresh")
+    func unusableRefreshErrorsClearTokensAndStopRefreshRetries() {
+        let identity = TestIdentity()
+        for (code in ["invalid_grant", "invalid_refresh_token", "token_expired", "refresh_token_expired", "refresh_token_invalidated", "refresh_token_reused"]) {
+            let store = testStore(); let http = TestAuthHttp(identity); let auth = AuthManager(store, http: http)
+            seed(store, auth, identity); http.error = code
+            let host = store.locked({ => text(store.load(), "host_id") })
+            try { let _ = auth.access("account"); @Fail("unusable refresh token must require sign-in") }
+            catch (error: TokenEndpointError) { @Expect(error.code, code) }
+            let state = store.locked({ => store.load() }); let signedOut = findAccount(state, "account")
+            for (name in ["access_token", "refresh_token", "id_token", "scope", "expires_at", "earliest_refresh_at"]) {
+                @Expect(signedOut.field(name).isNone(), true)
+            }
+            @Expect(text(signedOut, "label"), "account"); @Expect(text(signedOut, "client_id"), "issued-client")
+            @Expect(text(signedOut, "sub"), "subject"); @Expect(text(state, "host_id") == host, true)
+            @Expect(http.tokenCalls, 1)
+            expectExampleFailure({ => let _ = auth.access("account") })
+            @Expect(http.tokenCalls, 1)
+        }
+    }
+
+    @TestCase
+    func nonterminalRefreshFailuresRetainCredentials() {
+        let identity = TestIdentity()
+        for ((status, code) in [(400, "invalid_client"), (400, "temporarily_unavailable"), (400, "server_error"),
+            (400, "unknown_error"), (302, "invalid_grant"), (503, "invalid_grant")]) {
+            let store = testStore(); let http = TestAuthHttp(identity); let auth = AuthManager(store, http: http)
+            seed(store, auth, identity); http.error = code; http.errorStatus = status
+            let before = store.locked({ => store.load().stringify() })
+            expectExampleFailure({ => let _ = auth.access("account") })
+            @Expect(http.tokenCalls, if (status >= 500) { 3 } else { 1 })
+            @Expect(store.locked({ => store.load().stringify() }) == before, true)
+        }
+        for (network in [false, true]) {
+            let store = testStore(); let http = TestAuthHttp(identity); let auth = AuthManager(store, http: http)
+            seed(store, auth, identity)
+            if (network) { http.transportFailures = 3 } else { http.transient = 3 }
+            let before = store.locked({ => store.load().stringify() })
+            expectExampleFailure({ => let _ = auth.access("account") })
+            @Expect(http.tokenCalls, 3)
+            @Expect(store.locked({ => store.load().stringify() }) == before, true)
+            let access = auth.access("account")
+            @Expect(access != "", true); @Expect(http.tokenCalls, 4)
+        }
     }
 
     @TestCase

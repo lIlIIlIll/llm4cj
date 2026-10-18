@@ -96,8 +96,9 @@ class NativeAuthHttp <: AuthHttp {
     }
 }
 class TokenEndpointError <: ExampleError {
+    let status: Int64
     let code: String
-    init(status: Int64, code: String) { super("OAuth endpoint returned HTTP " + status.toString() + ": " + code); this.code = code }
+    init(status: Int64, code: String) { super("OAuth endpoint returned HTTP " + status.toString() + ": " + code); this.status = status; this.code = code }
 }
 
 // Encode a JWK RSA key as SubjectPublicKeyInfo for stdx's native verifier.
@@ -293,7 +294,12 @@ class AuthManager {
                 require(optionalText(account, "refresh_token") != "", "Account has no refresh grant; run login again")
                 let response = try { tokenRequest([("grant_type", "refresh_token"), ("client_id", text(account, "client_id")), ("refresh_token", text(account, "refresh_token")), ("resource", RESOURCE)]) }
                 catch (error: TokenEndpointError) {
-                    if (error.code == "invalid_grant" || error.code == "invalid_token" || error.code == "login_required" || error.code == "interaction_required" || error.code == "consent_required") { store.save(replaceAccount(state, label, clearTokens(account))) }
+                    if (error.status >= 400 && error.status < 500 &&
+                        (error.code == "invalid_grant" || error.code == "invalid_refresh_token" || error.code == "token_expired" ||
+                        error.code == "refresh_token_expired" || error.code == "refresh_token_invalidated" || error.code == "refresh_token_reused" ||
+                        error.code == "invalid_token" || error.code == "login_required" || error.code == "interaction_required" || error.code == "consent_required")) {
+                        store.save(replaceAccount(state, label, clearTokens(account)))
+                    }
                     throw error
                 }
                 let replacement = try { tokenAccount(response, label, text(account, "client_id"), "", text(account, "sub")) } catch (error: Exception) { store.save(replaceAccount(state, label, clearTokens(account))); throw error }
