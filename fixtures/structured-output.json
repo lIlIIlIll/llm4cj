@@ -1,0 +1,98 @@
+{
+  "format": "llm4cj.structured-output",
+  "version": 1,
+  "checked_date": "2026-10-18",
+  "sources": [
+    "https://developers.openai.com/api/reference/resources/chat/completions/",
+    "https://developers.openai.com/api/reference/resources/responses/streaming-events",
+    "https://platform.claude.com/docs/en/build-with-claude/streaming"
+  ],
+  "oracle": "Hand-authored wire and extraction expectations; no expected value is generated from a decoder result. Compatible dialects exercise the same supported text path, not a live provider claim.",
+  "cases": [
+    {
+      "id": "chat-json",
+      "dialects": ["openai-chat", "deepseek-chat", "kimi-chat"],
+      "raw_text": " {\"answer\": 2} ",
+      "response": {"id":"chat_structured","model":"fixture-model","choices":[{"index":0,"message":{"role":"assistant","content":" {\"answer\": 2} "},"finish_reason":"stop"}]},
+      "events": [
+        {"id":"chat_structured","model":"fixture-model","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]},
+        {"id":"chat_structured","model":"fixture-model","choices":[{"index":0,"delta":{"content":" {\"answer\":"},"finish_reason":null}]},
+        {"id":"chat_structured","model":"fixture-model","choices":[{"index":0,"delta":{"content":" 2} "},"finish_reason":null}]},
+        {"id":"chat_structured","model":"fixture-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]},
+        "[DONE]"
+      ],
+      "variants": [
+        {"format":"object","expected":"Valid","value":{"answer":2}},
+        {"format":"schema","schema":{"properties":{"answer":{"minimum":3}}},"expected":"SchemaViolation","expected_code":"llm.structured_output_schema_violation"},
+        {"format":"schema","schema":{"properties":{"absent":{"pattern":"x"}}},"expected":"UnsupportedSchema","expected_code":"llm.structured_output_schema_unsupported"}
+      ]
+    },
+    {
+      "id": "messages-split-json",
+      "dialects": ["anthropic-messages", "deepseek-messages"],
+      "raw_text": "{\"answer\":2}",
+      "response": {"id":"msg_structured","type":"message","role":"assistant","model":"fixture-model","content":[{"type":"text","text":"{\"answer\":"},{"type":"text","text":"2}"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":2}},
+      "events": [
+        {"type":"message_start","message":{"id":"msg_structured","type":"message","role":"assistant","model":"fixture-model","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":0}}},
+        {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}},
+        {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"{\"answer\":"}},
+        {"type":"content_block_stop","index":0},
+        {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}},
+        {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"2}"}},
+        {"type":"content_block_stop","index":1},
+        {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":2}},
+        {"type":"message_stop"}
+      ],
+      "variants": [
+        {"format":"document","schema":{"properties":{"answer":{"const":2}}},"expected":"Valid","value":{"answer":2}},
+        {"format":"document","schema":{"properties":{"answer":{"maximum":1}}},"expected":"SchemaViolation","expected_code":"llm.structured_output_schema_violation"},
+        {"format":"document","schema":{"$ref":"#/unused"},"expected":"UnsupportedSchema","expected_code":"llm.structured_output_schema_unsupported"}
+      ]
+    },
+    {
+      "id": "responses-final-json",
+      "dialects": ["openai-responses", "openai-codex-responses", "deepseek-responses"],
+      "raw_text": "{\"answer\":2}",
+      "response": {"id":"resp_structured","model":"fixture-model","status":"completed","output":[{"id":"msg_structured","type":"message","role":"assistant","status":"completed","phase":"final_answer","content":[{"type":"output_text","text":"{\"answer\":2}","annotations":[],"logprobs":[]}]}]},
+      "events": [
+        {"type":"response.created","response":{"id":"resp_structured","model":"fixture-model","status":"in_progress","output":[]}},
+        {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_structured","type":"message","role":"assistant","status":"in_progress","phase":"final_answer","content":[]}},
+        {"type":"response.content_part.added","item_id":"msg_structured","output_index":0,"content_index":0,"part":{"type":"output_text","text":""}},
+        {"type":"response.output_text.delta","item_id":"msg_structured","output_index":0,"content_index":0,"delta":"{\"answer\":2}"},
+        {"type":"response.output_text.done","item_id":"msg_structured","output_index":0,"content_index":0,"text":"{\"answer\":2}"},
+        {"type":"response.content_part.done","item_id":"msg_structured","output_index":0,"content_index":0,"part":{"type":"output_text","text":"{\"answer\":2}","annotations":[],"logprobs":[]}},
+        {"type":"response.output_item.done","output_index":0,"item":{"id":"msg_structured","type":"message","role":"assistant","status":"completed","phase":"final_answer","content":[{"type":"output_text","text":"{\"answer\":2}","annotations":[],"logprobs":[]}]}},
+        {"type":"response.completed","response":{"id":"resp_structured","model":"fixture-model","status":"completed","output":[{"id":"msg_structured","type":"message","role":"assistant","status":"completed","phase":"final_answer","content":[{"type":"output_text","text":"{\"answer\":2}","annotations":[],"logprobs":[]}]}]}}
+      ],
+      "variants": [
+        {"format":"object","expected":"Valid","value":{"answer":2}},
+        {"format":"schema","schema":{"type":"array"},"expected":"SchemaViolation","expected_code":"llm.structured_output_schema_violation"},
+        {"format":"schema","schema":{"oneOf":[true,{"future":1} ]},"expected":"UnsupportedSchema","expected_code":"llm.structured_output_schema_unsupported"}
+      ]
+    },
+    {
+      "id":"chat-invalid-json",
+      "dialects":["openai-chat"],
+      "raw_text":"```json\n{}\n```",
+      "response":{"choices":[{"index":0,"message":{"role":"assistant","content":"```json\n{}\n```"},"finish_reason":"stop"}]},
+      "events":[{"choices":[{"index":0,"delta":{"content":"```json\n{}\n```"},"finish_reason":null}]},{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]},"[DONE]"],
+      "variants":[{"format":"object","expected":"InvalidJson","expected_code":"llm.structured_output_invalid_json"}]
+    },
+    {
+      "id":"chat-refusal",
+      "dialects":["openai-chat"],
+      "raw_text":null,
+      "response":{"choices":[{"index":0,"message":{"role":"assistant","content":null,"refusal":"no"},"finish_reason":"stop"}]},
+      "events":[{"choices":[{"index":0,"delta":{"refusal":"no"},"finish_reason":null}]},{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]},"[DONE]"],
+      "variants":[{"format":"object","expected":"Refused"}]
+    },
+    {
+      "id":"chat-incomplete-valid-json",
+      "dialects":["openai-chat"],
+      "raw_text":null,
+      "response":{"choices":[{"index":0,"message":{"role":"assistant","content":"{}"},"finish_reason":"length"}]},
+      "events":[{"choices":[{"index":0,"delta":{"content":"{}"},"finish_reason":null}]},{"choices":[{"index":0,"delta":{},"finish_reason":"length"}]},"[DONE]"],
+      "variants":[{"format":"object","expected":"Incomplete"}]
+    }
+  ]
+}

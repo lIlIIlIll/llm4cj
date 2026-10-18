@@ -44,6 +44,12 @@ usage 来源以 `LlmWireUsageSource.Unknown` 或 ProviderReported(provider, dial
 
 请求计划与 header 协调 API 为 `LlmWireHeader`、`LlmWireFeatureRequirement`、`LlmWireRequirementState`、`LlmWireRequirementResolver`、`LlmWirePreparedRequest` 和 `LlmWireMaterializedRequest`。
 
+## 结构化输出提取
+
+`extractStructuredOutput(reply, request, choiceIndex:, mode:, limits:, maxTextBytes:)` 是解码后的显式校验入口。结果类型 `LlmWireStructuredOutputResult` 保留 `choiceIndex`、可选原始 `rawText` 和 `LlmWireStructuredOutputOutcome`，通过 `LlmWireResult` 返回。六种 outcome 为 Valid、InvalidJson、SchemaViolation、UnsupportedSchema、Incomplete、Refused；拒绝和截断不返回候选文本，也不会因合法 JSON 被升级为成功。
+
+多 choice 按显式 index 选择；只提取唯一 Final message，没有 Final 时接受唯一 Unspecified message。候选内部按顺序拼接文本，不修复 JSON 或移除代码围栏。默认文本上限为 8 MiB，schema 使用同一 `LlmWireSchemaValidationLimits`。Disabled、Text 和 ProviderDefault 格式不适用。语法错误仅包含安全消息、choice 和已知的 UTF-8 字节位置。用法见[结构化输出](structured-output.md)。
+
 ## 流式
 
 `LlmWireStreamBlockKind`、`LlmWireEventIdentity`、`LlmWireToolIdentity`、`LlmWireEvent`、`LlmWireStreamLimits`、`LlmWireSseLimits`、`LlmWireStreamUpdate`、`LlmWireStreamDecoder`。

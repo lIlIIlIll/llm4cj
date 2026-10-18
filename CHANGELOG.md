@@ -4,6 +4,8 @@ All notable changes are recorded here.
 
 ## [0.3.0] - Unreleased
 
+- Extract structured JSON from a selected final answer without repairing text or treating refusal and truncation as success. Return typed parse/schema outcomes with bounded diagnostics and reuse the tool-schema evaluator.
+
 - Validate common JSON Schema bounds, const, and allOf/anyOf/oneOf with exact numbers, Unicode lengths, nested boolean schemas, and a shared work budget. Preflight unused schemas and reject unknown rules instead of certifying a supported subset as valid.
 
 - Buffer builder appends without copying earlier items, retaining immutable built snapshots and full validation at build time.
