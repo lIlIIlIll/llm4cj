@@ -48,18 +48,33 @@ func readTranscriptSnapshot(source: String): JsonNode {
     }
 }
 
-// Version 2 adds assistant message boundaries. Version 1 remains readable but
-// cannot recover boundaries that its writer did not retain.
+// Version 3 distinguishes raw custom inputs and definitions. Legacy semantic
+// values retain their exact version 2 encoding.
+func transcriptSnapshotVersion(transcript: LlmWireTranscript): Int64 {
+    for (tool in transcript.initialContext.tools where tool.tool.kind == LlmWireToolKind.Custom) { return 3 }
+    for (item in transcript.items) { match (item) {
+        case LlmWireInputItem.ToolDeclaration(value) => if (value.tool.kind == LlmWireToolKind.Custom) { return 3 }
+        case LlmWireInputItem.Message(value) => for (block in value.blocks) { match (block) {
+            case LlmWireBlock.ToolCall(call) => if (call.kind == LlmWireToolKind.Custom) { return 3 }
+            case LlmWireBlock.ToolResult(result) => if (result.kind == LlmWireToolKind.Custom) { return 3 }
+            case _ => ()
+        } }
+        case _ => ()
+    } }
+    2
+}
+
 func encodeTranscriptSnapshot(transcript: LlmWireTranscript): JsonNode {
+    let version = transcriptSnapshotVersion(transcript)
     let instructions = ArrayList<JsonNode>()
     let tools = ArrayList<JsonNode>()
     let items = ArrayList<JsonNode>()
     for (instruction in transcript.initialContext.instructions) { instructions.add(snapshotInstruction(instruction)) }
-    for (tool in transcript.initialContext.tools) { tools.add(snapshotDeclaration(tool)) }
-    for (item in transcript.items) { items.add(snapshotItem(item)) }
+    for (tool in transcript.initialContext.tools) { tools.add(snapshotDeclaration(tool, version: version)) }
+    for (item in transcript.items) { items.add(snapshotItem(item, version: version)) }
     wireJsonObject([
         WireJsonField("format", wireJsonString("llm4cj.transcript")),
-        WireJsonField("version", wireJsonNumber("2")),
+        WireJsonField("version", wireJsonNumber(version.toString())),
         WireJsonField("initial_context", wireJsonObject([
             WireJsonField("instructions", wireJsonArray(instructions.toArray())),
             WireJsonField("tools", wireJsonArray(tools.toArray()))
@@ -71,8 +86,8 @@ func encodeTranscriptSnapshot(transcript: LlmWireTranscript): JsonNode {
 func decodeTranscriptSnapshot(value: JsonNode): LlmWireTranscript {
     let root = wireObject(value, "transcript snapshot")
     let version = wireOptionalInt(root, "version")
-    if (version != Some(1) && version != Some(2)) {
-        throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.transcript_version_unsupported", "only transcript snapshot versions 1 and 2 are supported")
+    if (version != Some(1) && version != Some(2) && version != Some(3)) {
+        throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.transcript_version_unsupported", "only transcript snapshot versions 1, 2 and 3 are supported")
     }
     if (wireOptionalString(root, "format") != Some("llm4cj.transcript")) {
         throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.transcript_snapshot_invalid", "unknown transcript snapshot format")
@@ -84,7 +99,7 @@ func decodeTranscriptSnapshot(value: JsonNode): LlmWireTranscript {
     let tools = ArrayList<LlmWireToolDeclaration>()
     let items = ArrayList<LlmWireInputItem>()
     for (entry in snapshotArray(context, "instructions")) { instructions.add(restoreInstruction(entry)) }
-    for (entry in snapshotArray(context, "tools")) { tools.add(restoreDeclaration(entry)) }
+    for (entry in snapshotArray(context, "tools")) { tools.add(restoreDeclaration(entry, version: version.getOrThrow())) }
     for (entry in snapshotArray(root, "items")) { items.add(restoreItem(entry, version: version.getOrThrow())) }
     LlmWireTranscript(LlmWireInitialContext(instructions: instructions.toArray(), tools: tools.toArray()), items: items.toArray())
 }
@@ -131,18 +146,46 @@ func restoreInstruction(value: JsonNode): LlmWireInstruction {
     LlmWireInstruction(role, wireRequiredString(value, "text"))
 }
 
-func snapshotDeclaration(value: LlmWireToolDeclaration): JsonNode {
-    wireJsonObject([
+func snapshotDeclaration(value: LlmWireToolDeclaration, version!: Int64 = 2): JsonNode {
+    let result = wireJsonObject([
         WireJsonField("name", wireJsonString(value.tool.name)), WireJsonField("version", wireJsonString(value.version)),
-        WireJsonField("description", wireJsonString(value.tool.description)), WireJsonField("schema", value.tool.inputSchema.jsonNode()),
-        WireJsonField("deferred", wireJsonBool(value.deferred))
+        WireJsonField("description", wireJsonString(value.tool.description))
     ])
+    match (value.tool) {
+        case LlmWireToolDefinition.Function(tool) => result.put("schema", tool.inputSchema.jsonNode())
+        case LlmWireToolDefinition.Custom(_) => result.put("format", encodeResponsesTool(value.tool)["format"])
+    }
+    result.put("deferred", wireJsonBool(value.deferred))
+    if (version >= 3) { result.put("tool_kind", wireJsonString(toolKindName(value.tool.kind))) }
+    result
 }
 
-func restoreDeclaration(value: JsonNode): LlmWireToolDeclaration {
-    snapshotFields(value, ["name", "version", "description", "schema", "deferred"])
-    let tool = LlmWireTool(wireRequiredString(value, "name"), wireRequiredString(value, "description"),
-        LlmWireJson.fromJsonNode(wireRequiredField(value, "schema")))
+func toolKindName(kind: LlmWireToolKind): String { match (kind) { case LlmWireToolKind.Function => "function"; case LlmWireToolKind.Custom => "custom" } }
+func restoreToolKind(value: String): LlmWireToolKind { match (value) { case "function" => LlmWireToolKind.Function; case "custom" => LlmWireToolKind.Custom; case _ => snapshotInvalid("unknown tool kind in transcript snapshot") } }
+
+func restoreCustomToolFormat(value: JsonNode): LlmWireCustomToolFormat {
+    match (wireRequiredString(value, "type")) {
+        case "text" => snapshotFields(value, ["type"]); LlmWireCustomToolFormat.Text
+        case "grammar" =>
+            snapshotFields(value, ["type", "syntax", "definition"])
+            let syntax = match (wireRequiredString(value, "syntax")) {
+                case "regex" => LlmWireGrammarSyntax.Regex
+                case "lark" => LlmWireGrammarSyntax.Lark
+                case _ => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.custom_tool_format_unsupported", "unknown custom grammar syntax")
+            }
+            LlmWireCustomToolFormat.Grammar(LlmWireGrammar(syntax, wireRequiredString(value, "definition")))
+        case _ => throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.custom_tool_format_unsupported", "unknown custom tool format")
+    }
+}
+
+func restoreDeclaration(value: JsonNode, version!: Int64 = 2): LlmWireToolDeclaration {
+    let kind = if (version >= 3) { restoreToolKind(wireRequiredString(value, "tool_kind")) } else { LlmWireToolKind.Function }
+    snapshotFields(value, if (version < 3) { ["name", "version", "description", "schema", "deferred"] } else if (kind == LlmWireToolKind.Function) { ["name", "version", "description", "schema", "deferred", "tool_kind"] } else { ["name", "version", "description", "format", "deferred", "tool_kind"] })
+    let name = wireRequiredString(value, "name"); let description = wireRequiredString(value, "description")
+    let tool = match (kind) {
+        case LlmWireToolKind.Function => LlmWireToolDefinition.Function(LlmWireTool(name, description, LlmWireJson.fromJsonNode(wireRequiredField(value, "schema"))))
+        case LlmWireToolKind.Custom => LlmWireToolDefinition.Custom(LlmWireCustomTool(name, description: description, format: restoreCustomToolFormat(wireRequiredField(value, "format"))))
+    }
     LlmWireToolDeclaration(tool, version: wireRequiredString(value, "version"), deferred: snapshotBool(value, "deferred"))
 }
 
@@ -155,11 +198,11 @@ func restoreDefinitionIdentity(value: JsonNode): LlmWireToolDefinitionIdentity {
     LlmWireToolDefinitionIdentity(wireRequiredString(value, "name"), version: wireRequiredString(value, "version"))
 }
 
-func snapshotItem(item: LlmWireInputItem): JsonNode {
+func snapshotItem(item: LlmWireInputItem, version!: Int64 = 2): JsonNode {
     let (kind, value) = match (item) {
-        case LlmWireInputItem.Message(message) => ("message", snapshotMessage(message))
+        case LlmWireInputItem.Message(message) => ("message", snapshotMessage(message, version: version))
         case LlmWireInputItem.InstructionUpdate(instruction) => ("instruction_update", snapshotInstruction(instruction))
-        case LlmWireInputItem.ToolDeclaration(declaration) => ("tool_declaration", snapshotDeclaration(declaration))
+        case LlmWireInputItem.ToolDeclaration(declaration) => ("tool_declaration", snapshotDeclaration(declaration, version: version))
         case LlmWireInputItem.ToolActivation(identity) => ("tool_activation", snapshotDefinitionIdentity(identity))
         case LlmWireInputItem.ToolDeactivation(identity) => ("tool_deactivation", snapshotDefinitionIdentity(identity))
     }
@@ -172,17 +215,17 @@ func restoreItem(item: JsonNode, version!: Int64 = 2): LlmWireInputItem {
     match (wireRequiredString(item, "kind")) {
         case "message" => LlmWireInputItem.Message(restoreMessage(value, version: version))
         case "instruction_update" => LlmWireInputItem.InstructionUpdate(restoreInstruction(value))
-        case "tool_declaration" => LlmWireInputItem.ToolDeclaration(restoreDeclaration(value))
+        case "tool_declaration" => LlmWireInputItem.ToolDeclaration(restoreDeclaration(value, version: version))
         case "tool_activation" => LlmWireInputItem.ToolActivation(restoreDefinitionIdentity(value))
         case "tool_deactivation" => LlmWireInputItem.ToolDeactivation(restoreDefinitionIdentity(value))
         case _ => snapshotInvalid("unknown input item kind in transcript snapshot")
     }
 }
 
-func snapshotMessage(value: LlmWireMessage): JsonNode {
+func snapshotMessage(value: LlmWireMessage, version!: Int64 = 2): JsonNode {
     validateSnapshotMessageSpans(value.role, value.blocks, value.messageSpans)
     let blocks = ArrayList<JsonNode>()
-    for (block in value.blocks) { blocks.add(snapshotBlock(block)) }
+    for (block in value.blocks) { blocks.add(snapshotBlock(block, version: version)) }
     let spans = ArrayList<JsonNode>()
     for (span in value.messageSpans) {
         spans.add(wireJsonObject([WireJsonField("block_start", wireJsonNumber(span.blockStart.toString())),
@@ -202,9 +245,9 @@ func restoreMessage(value: JsonNode, version!: Int64 = 2): LlmWireMessage {
         case _ => snapshotInvalid("unknown message role in transcript snapshot")
     }
     let blocks = ArrayList<LlmWireBlock>()
-    for (block in snapshotArray(value, "blocks")) { blocks.add(restoreBlock(block)) }
+    for (block in snapshotArray(value, "blocks")) { blocks.add(restoreBlock(block, version: version)) }
     let spans = ArrayList<LlmWireAssistantMessageSpan>()
-    if (version == 2) { for (span in snapshotArray(value, "message_spans")) {
+    if (version >= 2) { for (span in snapshotArray(value, "message_spans")) {
         snapshotFields(span, ["block_start", "block_count", "phase"])
         spans.add(LlmWireAssistantMessageSpan(wireRequiredInt(span, "block_start"), wireRequiredInt(span, "block_count"), phase: restoreSnapshotPhase(wireRequiredString(span, "phase"))))
     } }
@@ -238,7 +281,7 @@ func restoreSnapshotPhase(value: String): LlmWireOutputPhase {
     }
 }
 
-func snapshotBlock(block: LlmWireBlock): JsonNode {
+func snapshotBlock(block: LlmWireBlock, version!: Int64 = 2): JsonNode {
     let (kind, value) = match (block) {
         case LlmWireBlock.Text(text) => ("text", snapshotText(text))
         case LlmWireBlock.Image(image) => ("image", snapshotImage(image))
@@ -249,7 +292,7 @@ func snapshotBlock(block: LlmWireBlock): JsonNode {
             WireJsonField("call_id", wireJsonString(call.callId)), WireJsonField("name", wireJsonString(call.name)),
             WireJsonField("arguments", snapshotArguments(call.arguments))
         ]))
-        case LlmWireBlock.ToolResult(result) => ("tool_result", snapshotToolResult(result))
+        case LlmWireBlock.ToolResult(result) => ("tool_result", snapshotToolResult(result, version: version))
         case LlmWireBlock.Refusal(refusal) => ("refusal", snapshotRefusal(refusal))
         case LlmWireBlock.NativeReplay(replay) => ("native_replay", parseWireJson(replay.snapshot()))
         case LlmWireBlock.Opaque(opaque) => ("opaque", wireJsonObject([
@@ -261,7 +304,7 @@ func snapshotBlock(block: LlmWireBlock): JsonNode {
     wireJsonObject([WireJsonField("kind", wireJsonString(kind)), WireJsonField("value", value)])
 }
 
-func restoreBlock(block: JsonNode): LlmWireBlock {
+func restoreBlock(block: JsonNode, version!: Int64 = 2): LlmWireBlock {
     snapshotFields(block, ["kind", "value"])
     let value = wireRequiredField(block, "value")
     match (wireRequiredString(block, "kind")) {
@@ -272,8 +315,8 @@ func restoreBlock(block: JsonNode): LlmWireBlock {
             LlmWireBlock.Reasoning(LlmWireReasoningBlock(wireRequiredString(value, "text"), replayDialectId: wireRequiredString(value, "replay_dialect_id")))
         case "tool_call" =>
             snapshotFields(value, ["call_id", "name", "arguments"])
-            LlmWireBlock.ToolCall(LlmWireToolCallBlock(wireRequiredString(value, "call_id"), wireRequiredString(value, "name"), restoreArguments(wireRequiredField(value, "arguments"))))
-        case "tool_result" => LlmWireBlock.ToolResult(restoreToolResult(value))
+            LlmWireBlock.ToolCall(LlmWireToolCallBlock(wireRequiredString(value, "call_id"), wireRequiredString(value, "name"), restoreArguments(wireRequiredField(value, "arguments"), version: version)))
+        case "tool_result" => LlmWireBlock.ToolResult(restoreToolResult(value, version: version))
         case "refusal" => LlmWireBlock.Refusal(restoreRefusal(value))
         case "native_replay" => LlmWireBlock.NativeReplay(restoreTranscriptReplay(value))
         case "opaque" =>
@@ -290,11 +333,13 @@ func snapshotArguments(value: LlmWireToolArguments): JsonNode {
         case LlmWireToolArguments.InvalidJson(text) => ("invalid_json", wireJsonString(text))
         case LlmWireToolArguments.InvalidShape(json) => ("invalid_shape", json.jsonNode())
         case LlmWireToolArguments.Partial(text) => ("partial", wireJsonString(text))
+        case LlmWireToolArguments.Text(text) => ("text", wireJsonString(text))
+        case LlmWireToolArguments.PartialText(text) => ("partial_text", wireJsonString(text))
     }
     wireJsonObject([WireJsonField("kind", wireJsonString(kind)), WireJsonField("value", payload)])
 }
 
-func restoreArguments(value: JsonNode): LlmWireToolArguments {
+func restoreArguments(value: JsonNode, version!: Int64 = 2): LlmWireToolArguments {
     snapshotFields(value, ["kind", "value"])
     let payload = wireRequiredField(value, "value")
     match (wireRequiredString(value, "kind")) {
@@ -302,6 +347,8 @@ func restoreArguments(value: JsonNode): LlmWireToolArguments {
         case "invalid_shape" => LlmWireToolArguments.InvalidShape(LlmWireJson.fromJsonNode(payload))
         case "invalid_json" => LlmWireToolArguments.InvalidJson(wireRequiredString(value, "value"))
         case "partial" => LlmWireToolArguments.Partial(wireRequiredString(value, "value"))
+        case "text" => if (version >= 3) { LlmWireToolArguments.Text(wireRequiredString(value, "value")) } else { snapshotInvalid("custom inputs require snapshot version 3") }
+        case "partial_text" => if (version >= 3) { LlmWireToolArguments.PartialText(wireRequiredString(value, "value")) } else { snapshotInvalid("custom inputs require snapshot version 3") }
         case _ => snapshotInvalid("unknown tool argument kind in transcript snapshot")
     }
 }
@@ -326,7 +373,7 @@ func restoreImage(value: JsonNode): LlmWireImageBlock {
     LlmWireImageBlock(source, wireRequiredString(value, "data"), mediaType: wireRequiredString(value, "media_type"), detail: detail)
 }
 
-func snapshotToolResult(value: LlmWireToolResultBlock): JsonNode {
+func snapshotToolResult(value: LlmWireToolResultBlock, version!: Int64 = 2): JsonNode {
     let content = ArrayList<JsonNode>()
     for (part in value.content) {
         match (part) {
@@ -334,20 +381,22 @@ func snapshotToolResult(value: LlmWireToolResultBlock): JsonNode {
             case LlmWireToolResultContent.Image(image) => content.add(snapshotBlock(LlmWireBlock.Image(image)))
         }
     }
-    wireJsonObject([WireJsonField("call_id", wireJsonString(value.callId)), WireJsonField("content", wireJsonArray(content.toArray())), WireJsonField("is_error", wireJsonBool(value.isError))])
+    let result = wireJsonObject([WireJsonField("call_id", wireJsonString(value.callId)), WireJsonField("content", wireJsonArray(content.toArray())), WireJsonField("is_error", wireJsonBool(value.isError))])
+    if (version >= 3) { result.put("tool_kind", wireJsonString(toolKindName(value.kind))) }
+    result
 }
 
-func restoreToolResult(value: JsonNode): LlmWireToolResultBlock {
-    snapshotFields(value, ["call_id", "content", "is_error"])
+func restoreToolResult(value: JsonNode, version!: Int64 = 2): LlmWireToolResultBlock {
+    snapshotFields(value, if (version >= 3) { ["call_id", "content", "is_error", "tool_kind"] } else { ["call_id", "content", "is_error"] })
     let content = ArrayList<LlmWireToolResultContent>()
     for (part in snapshotArray(value, "content")) {
-        match (restoreBlock(part)) {
+        match (restoreBlock(part, version: version)) {
             case LlmWireBlock.Text(text) => content.add(LlmWireToolResultContent.Text(text))
             case LlmWireBlock.Image(image) => content.add(LlmWireToolResultContent.Image(image))
             case _ => snapshotInvalid("tool result contains invalid content kind in transcript snapshot")
         }
     }
-    LlmWireToolResultBlock(wireRequiredString(value, "call_id"), content.toArray(), isError: snapshotBool(value, "is_error"))
+    LlmWireToolResultBlock(wireRequiredString(value, "call_id"), content.toArray(), isError: snapshotBool(value, "is_error"), kind: if (version >= 3) { restoreToolKind(wireRequiredString(value, "tool_kind")) } else { LlmWireToolKind.Function })
 }
 
 func snapshotOptionalText(value: ?String): JsonNode { match (value) { case Some(text) => wireJsonString(text); case None => JsonNode.nullValue } }

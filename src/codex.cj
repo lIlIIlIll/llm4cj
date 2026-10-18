@@ -5,23 +5,32 @@ import yjson.*
 
 class CodexRequestBudget {
     private var size: Int64 = 0
+    private let codex: Bool
+    init(codex: Bool) { this.codex = codex }
     func add(value: String): Unit {
         if (value.size > LLM_JSON_MAX_BYTES - size) {
-            throw LlmWireError(LlmWireErrorKind.BodyLimit, "llm.codex_request_too_large", "Codex request input exceeds 8 MiB")
+            throw LlmWireError(LlmWireErrorKind.BodyLimit, if (codex) { "llm.codex_request_too_large" } else { "llm.request_too_large" }, if (codex) { "Codex request input exceeds 8 MiB" } else { "Responses request input exceeds 8 MiB" })
         }
         size += value.size
     }
 }
 
-func validateCodexInputSize(request: LlmWireRequest): Unit {
-    let budget = CodexRequestBudget()
+func validateResponsesInputSize(request: LlmWireRequest, codex: Bool): Unit {
+    let budget = CodexRequestBudget(codex)
     let add = { value: String => budget.add(value) }
     add(request.model)
     for (instruction in request.transcript.initialContext.instructions) { add(instruction.text) }
-    for (tool in request.transcript.initialContext.tools) { add(tool.tool.name); add(tool.tool.description); add(tool.tool.inputSchema.stringify()) }
+    let addTool = { tool: LlmWireToolDefinition =>
+        add(tool.name); add(tool.description)
+        match (tool) {
+            case LlmWireToolDefinition.Function(value) => add(value.inputSchema.stringify())
+            case LlmWireToolDefinition.Custom(value) => match (value.format) { case LlmWireCustomToolFormat.Grammar(grammar) => add(grammar.definition); case _ => () }
+        }
+    }
+    for (tool in request.transcript.initialContext.tools) { addTool(tool.tool) }
     for (item in request.transcript.items) { match (item) {
         case LlmWireInputItem.InstructionUpdate(value) => add(value.text)
-        case LlmWireInputItem.ToolDeclaration(value) => add(value.tool.name); add(value.tool.description); add(value.tool.inputSchema.stringify())
+        case LlmWireInputItem.ToolDeclaration(value) => addTool(value.tool)
         case LlmWireInputItem.Message(message) =>
         for (block in message.blocks) {
             match (block) {
@@ -45,14 +54,7 @@ func validateCodexInputSize(request: LlmWireRequest): Unit {
 }
 
 func writeCodexRequestJson(value: JsonNode, limitMessage: String): String {
-    let output = WireJsonOutput()
-    try {
-        value.writeJson(output, options: JsonWriteOptions(maxOutputBytes: LLM_JSON_MAX_BYTES, maxDepth: LLM_JSON_MAX_DEPTH))
-    } catch (error: JsonException) {
-        if (error.code != "output_too_large" && error.code != "max_depth") { throw error }
-        throw LlmWireError(LlmWireErrorKind.BodyLimit, "llm.codex_request_too_large", limitMessage)
-    }
-    output.text()
+    writeBoundedRequestJson(value, "llm.codex_request_too_large", limitMessage)
 }
 
 // SIWC is a distinct Responses dialect, not a configurable backend URL.

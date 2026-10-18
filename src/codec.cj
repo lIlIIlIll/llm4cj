@@ -84,7 +84,8 @@ func encodeResponsesRequest(codec: LlmWireCodec, request: LlmWireRequest, requir
         case LlmWireStructuredOutput.JsonSchema(spec) => root.put("text", wireJsonObject([WireJsonField("format", encodeResponsesJsonSchemaFormat(spec))]))
         case _ => ()
     }
-    root.put("input", encodeResponsesTranscript(codec, request.transcript)); addResponsesTools(root, initialTranscriptTools(request.transcript)); root.stringify()
+    root.put("input", encodeResponsesTranscript(codec, request.transcript)); addResponsesTools(root, initialTranscriptTools(request.transcript))
+    writeBoundedRequestJson(root, "llm.request_too_large", "Responses request exceeds the JSON byte or depth limit")
 }
 
 func encodeChatRequest(codec: LlmWireCodec, request: LlmWireRequest, requirements: ArrayList<LlmWireFeatureRequirement>, streaming: Bool): String {
@@ -95,7 +96,8 @@ func encodeChatRequest(codec: LlmWireCodec, request: LlmWireRequest, requirement
         case LlmWireStructuredOutput.JsonSchema(spec) => root.put("response_format", wireJsonObject([WireJsonField("type", wireJsonString("json_schema")), WireJsonField("json_schema", encodeChatJsonSchemaSpec(spec))]))
         case _ => ()
     }
-    root.put("messages", encodeChatTranscript(codec, request.transcript)); addChatTools(root, initialTranscriptTools(request.transcript)); root.stringify()
+    root.put("messages", encodeChatTranscript(codec, request.transcript)); addChatTools(root, initialTranscriptTools(request.transcript))
+    writeBoundedRequestJson(root, "llm.request_too_large", "Chat request exceeds the JSON byte or depth limit")
 }
 
 func encodeMessagesRequest(codec: LlmWireCodec, request: LlmWireRequest, headers: ArrayList<LlmWireHeader>, requirements: ArrayList<LlmWireFeatureRequirement>, streaming: Bool): String {
@@ -136,7 +138,7 @@ func encodeMessagesRequest(codec: LlmWireCodec, request: LlmWireRequest, headers
     if (requestHasFileImage(request)) { headers.add(LlmWireHeader("anthropic-beta", "files-api-2025-04-14")) }
     root.put("messages", encodeMessagesTranscript(codec, request.transcript, headers))
     addMessagesInitialTools(root, request.transcript)
-    root.stringify()
+    writeBoundedRequestJson(root, "llm.request_too_large", "Messages request exceeds the JSON byte or depth limit")
 }
 
 func encodeResponsesJsonSchemaFormat(spec: LlmWireJsonSchema): JsonNode {
@@ -215,20 +217,17 @@ func generationSpeedName(value: LlmWireGenerationSpeed): String { match (value) 
 func cacheLifetimeName(value: LlmWirePromptCacheLifetime): String { match (value) { case LlmWirePromptCacheLifetime.FiveMinutes => "5m"; case LlmWirePromptCacheLifetime.ThirtyMinutes => "30m"; case LlmWirePromptCacheLifetime.OneHour => "1h"; case LlmWirePromptCacheLifetime.TwentyFourHours => "24h"; case _ => "" } }
 func wireReasoningEffort(value: LlmWireReasoningEffort): String { match (value) { case LlmWireReasoningEffort.Minimal => "minimal"; case LlmWireReasoningEffort.Low => "low"; case LlmWireReasoningEffort.Medium => "medium"; case LlmWireReasoningEffort.High => "high"; case LlmWireReasoningEffort.XHigh => "xhigh"; case LlmWireReasoningEffort.Max => "max"; case LlmWireReasoningEffort.ProviderDefault => "" } }
 
-func addResponsesTools(root: JsonNode, values: Array<LlmWireTool>): Unit {
+func addResponsesTools(root: JsonNode, values: Array<LlmWireToolDefinition>): Unit {
     if (values.isEmpty()) { return }
     let tools = wireJsonArray([])
-    for (tool in values) { tools.add(wireJsonObject([
-        WireJsonField("type", wireJsonString("function")), WireJsonField("name", wireJsonString(tool.name)),
-        WireJsonField("description", wireJsonString(tool.description)), WireJsonField("parameters", tool.inputSchema.jsonNode())
-    ])) }
+    for (tool in values) { tools.add(encodeResponsesTool(tool)) }
     root.put("tools", tools)
 }
 
-func addChatTools(root: JsonNode, values: Array<LlmWireTool>): Unit {
+func addChatTools(root: JsonNode, values: Array<LlmWireToolDefinition>): Unit {
     if (values.isEmpty()) { return }
     let tools = wireJsonArray([])
-    for (tool in values) { tools.add(wireJsonObject([
+    for (definition in values) { let tool = requireFunctionTool(definition); tools.add(wireJsonObject([
         WireJsonField("type", wireJsonString("function")), WireJsonField("function", wireJsonObject([
             WireJsonField("name", wireJsonString(tool.name)), WireJsonField("description", wireJsonString(tool.description)), WireJsonField("parameters", tool.inputSchema.jsonNode())
         ]))
@@ -267,6 +266,10 @@ func encodeMessagesContent(codec: LlmWireCodec, block: LlmWireBlock): JsonNode {
 }
 
 func encodeResponsesToolResult(value: LlmWireToolResultBlock): JsonNode {
+    if (value.kind == LlmWireToolKind.Custom && value.content.size == 1) { match (value.content[0]) {
+        case LlmWireToolResultContent.Text(text) => return wireJsonString(text.text)
+        case _ => ()
+    } }
     let output = wireJsonArray([])
     for (part in value.content) { match (part) {
         case LlmWireToolResultContent.Text(text) => output.add(wireJsonObject([WireJsonField("type", wireJsonString("input_text")), WireJsonField("text", wireJsonString(text.text))]))
@@ -330,7 +333,8 @@ func toolArgumentsRaw(arguments: LlmWireToolArguments): String {
         case LlmWireToolArguments.Complete(value) => value.stringify()
         case LlmWireToolArguments.InvalidJson(raw) => raw
         case LlmWireToolArguments.InvalidShape(value) => value.stringify()
-        case LlmWireToolArguments.Partial(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be encoded")
+        case LlmWireToolArguments.Text(raw) => raw
+        case LlmWireToolArguments.Partial(_) | LlmWireToolArguments.PartialText(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be encoded")
     }
 }
 
@@ -340,6 +344,7 @@ func toolArgumentsObject(arguments: LlmWireToolArguments): JsonNode {
         case LlmWireToolArguments.InvalidShape(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "tool arguments must be an object")
         case LlmWireToolArguments.InvalidJson(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_json_invalid", "tool arguments must contain valid JSON")
         case LlmWireToolArguments.Partial(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be encoded")
+        case LlmWireToolArguments.Text(_) | LlmWireToolArguments.PartialText(_) => unsupportedRequest("llm.custom_tool_unsupported", "this dialect cannot represent custom tool input")
     }
 }
 
@@ -491,14 +496,14 @@ func withHttpContext(error: LlmWireError, status: Int64, retryAfter: ?Int64, req
     )
 }
 
-func decodeResponsesResponse(codec: LlmWireCodec, root: JsonNode, resolvedPhases!: Array<LlmWireOutputPhase> = []): LlmWireResponseState {
+func decodeResponsesResponse(codec: LlmWireCodec, root: JsonNode, resolvedPhases!: Array<LlmWireOutputPhase> = [], completedCustomInputs!: Array<Int64> = []): LlmWireResponseState {
     match (wireOptionalObject(root, "error", provider: codec.provider)) { case Some(error) => return LlmWireResponseState.Terminal(LlmWireTerminal.ProviderFailed(providerFailure(codec, error, usage: observedWireUsage(decodeResponsesUsage(codec, root))))); case None => () }
     validateOptionalIdentity(codec, root, "object", "response")
     let status = wireRequiredString(root, "status", provider: codec.provider)
     if (status == "completed" || status == "incomplete") {
         let _ = match (wireOptionalArray(root, "output", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "terminal Responses response is missing output", provider: codec.provider) }
     }
-    let reply = responsesReply(codec, root, resolvedPhases: resolvedPhases)
+    let reply = responsesReply(codec, root, resolvedPhases: resolvedPhases, completedCustomInputs: completedCustomInputs)
     match (status) {
         case "queued" => LlmWireResponseState.Pending(LlmWirePendingReply.Queued(reply))
         case "in_progress" => LlmWireResponseState.Pending(LlmWirePendingReply.InProgress(reply))
@@ -520,7 +525,7 @@ func replyWithChoiceOutcome(reply: LlmWireReply, outcome: LlmWireChoiceOutcome):
     )
 }
 
-func responsesReply(codec: LlmWireCodec, root: JsonNode, resolvedPhases!: Array<LlmWireOutputPhase> = []): LlmWireReply {
+func responsesReply(codec: LlmWireCodec, root: JsonNode, resolvedPhases!: Array<LlmWireOutputPhase> = [], completedCustomInputs!: Array<Int64> = []): LlmWireReply {
     let blocks = ArrayList<LlmWireOutputBlock>()
     let spans = ArrayList<LlmWireAssistantMessageSpan>()
     match (wireOptionalArray(root, "output", provider: codec.provider)) {
@@ -543,6 +548,14 @@ func responsesReply(codec: LlmWireCodec, root: JsonNode, resolvedPhases!: Array<
                 case "function_call" =>
                     let rawArguments = wireRequiredString(item, "arguments", provider: codec.provider)
                     blocks.add(LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(wireRequiredString(item, "call_id", provider: codec.provider), wireRequiredString(item, "name", provider: codec.provider), classifyToolArguments(rawArguments))))
+                case "custom_tool_call" =>
+                    requireResponsesCustomTool(codec, item, itemIndex)
+                    let rawInput = wireRequiredString(item, "input", provider: codec.provider)
+                    let status = wireOptionalString(item, "status", provider: codec.provider)
+                    if (status.isSome() && status != Some("completed") && status != Some("incomplete") && status != Some("in_progress")) { invalidWire("llm.responses_custom_status_invalid", "custom tool call has an invalid status", provider: codec.provider) }
+                    let complete = wireRequiredString(root, "status", provider: codec.provider) == "completed" || status == Some("completed") || completedCustomInputs.contains(itemIndex)
+                    if (complete && status.isSome() && status != Some("completed")) { invalidWire("llm.responses_custom_status_mismatch", "custom input completion conflicts with item status", provider: codec.provider) }
+                    blocks.add(LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(wireRequiredString(item, "call_id", provider: codec.provider), wireRequiredString(item, "name", provider: codec.provider), if (complete) { LlmWireToolArguments.Text(rawInput) } else { LlmWireToolArguments.PartialText(rawInput) })))
                 case "reasoning" => blocks.add(LlmWireOutputBlock.NativeReplay(nativeFromNative(codec, item, kind, responsesReasoningDisplay(item, codec.provider), optionalStringOrNone(root, "model", codec.provider), blocks.size)))
                 case _ => unsupportedSemantic(codec, kind, item, "llm.responses_block_unsupported", blockIndex: itemIndex)
             }
@@ -763,6 +776,28 @@ func rejectResponsesItemSemantic(codec: LlmWireCodec, item: JsonNode, blockIndex
     }
     match (wireOptionalString(item, "namespace", provider: codec.provider)) {
         case Some(value) => if (value != "") { unsupportedSemantic(codec, "namespace", item["namespace"], "llm.responses_semantic_unsupported", blockIndex: blockIndex, eventType: "response.output_item") }
+        case None => ()
+    }
+    if (wireRequiredString(item, "type", provider: codec.provider) == "custom_tool_call") {
+        requireResponsesCustomTool(codec, item, blockIndex)
+    }
+}
+
+func requireResponsesCustomTool(codec: LlmWireCodec, item: JsonNode, blockIndex: Int64): Unit {
+    if (codec.dialect.contract.customToolFormats.isEmpty()) { unsupportedSemantic(codec, "custom_tool_call", item, "llm.custom_tool_unsupported", blockIndex: blockIndex) }
+    match (item.field("async")) {
+        case Some(value) =>
+            if (value.wireKind != WireJsonKind.Boolean) { invalidWire("llm.field_type_invalid", "async must be a boolean", provider: codec.provider) }
+            if (value.bool) { unsupportedSemantic(codec, "async", value, "llm.custom_tool_semantic_unsupported", blockIndex: blockIndex) }
+        case None => ()
+    }
+    match (wireOptionalObject(item, "caller", provider: codec.provider)) {
+        case Some(value) =>
+            if (wireRequiredString(value, "type", provider: codec.provider) != "direct" || value.fields.size != 1) { unsupportedSemantic(codec, "caller", value, "llm.custom_tool_semantic_unsupported", blockIndex: blockIndex) }
+        case None => ()
+    }
+    match (item.field("namespace")) {
+        case Some(value) => if (value.wireKind != WireJsonKind.Text) { invalidWire("llm.field_type_invalid", "custom tool namespace must be a string", provider: codec.provider) }
         case None => ()
     }
 }

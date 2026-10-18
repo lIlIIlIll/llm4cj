@@ -13,11 +13,15 @@ public class LlmWireToolDefinitionIdentity {
 }
 
 public class LlmWireToolDeclaration {
-    public let tool: LlmWireTool
+    public let tool: LlmWireToolDefinition
     public let version: String
     public let deferred: Bool
     public init(tool: LlmWireTool, version!: String = "1", deferred!: Bool = false) {
-        this.tool = LlmWireTool(tool.name, tool.description, tool.inputSchema)
+        this.tool = LlmWireToolDefinition.Function(tool)
+        this.version = version; this.deferred = deferred
+    }
+    public init(tool: LlmWireToolDefinition, version!: String = "1", deferred!: Bool = false) {
+        this.tool = tool
         this.version = version; this.deferred = deferred
     }
     public prop identity: LlmWireToolDefinitionIdentity {
@@ -60,7 +64,7 @@ public class LlmWireTranscript {
     }
     public prop items: Array<LlmWireInputItem> { get() { copyTranscriptItems(itemsValue) } }
     func itemCount(): Int64 { itemsValue.size }
-    public prop effectiveTools: Array<LlmWireTool> { get() { replayTranscript(this).activeTools } }
+    public prop effectiveTools: Array<LlmWireToolDefinition> { get() { replayTranscript(this).activeTools } }
     public func append(item: LlmWireInputItem): LlmWireTranscript {
         let result = ArrayList<LlmWireInputItem>()
         for (value in itemsValue) { result.add(value) }
@@ -122,7 +126,7 @@ func copyTranscriptMessage(message: LlmWireMessage): LlmWireMessage {
                         case LlmWireToolResultContent.Image(image) => content.add(LlmWireToolResultContent.Image(image))
                     }
                 }
-                blocks.add(LlmWireBlock.ToolResult(LlmWireToolResultBlock(value.callId, content.toArray(), isError: value.isError)))
+                blocks.add(LlmWireBlock.ToolResult(LlmWireToolResultBlock(value.callId, content.toArray(), isError: value.isError, kind: value.kind)))
             case LlmWireBlock.Refusal(value) =>
                 blocks.add(LlmWireBlock.Refusal(LlmWireRefusalBlock(value.text, category: value.category,
                     explanation: value.explanation, logprobs: copyTranscriptLogprobs(value.logprobs))))

@@ -1,0 +1,40 @@
+{
+  "fixture": "openai.responses.custom-tools",
+  "source": {
+    "kind": "schema_derived",
+    "url": "https://developers.openai.com/api/docs/guides/function-calling#custom-tools",
+    "revision": "rolling reference",
+    "checked_at": "2026-10-18",
+    "notes": "Synthetic model, IDs and text; custom input/output and lifecycle independently reconstructed from the official custom tools and streaming event schemas. No live capture."
+  },
+  "live_provider": "not_run",
+  "response": {
+    "id": "resp_custom_fixture",
+    "object": "response",
+    "model": "fixture-model",
+    "status": "incomplete",
+    "output": [
+      {
+        "id": "custom_fixture",
+        "type": "custom_tool_call",
+        "call_id": "call_custom_fixture",
+        "name": "run",
+        "input": "run["
+      }
+    ],
+    "usage": {
+      "input_tokens": 3,
+      "output_tokens": 2,
+      "total_tokens": 5,
+      "input_tokens_details": {
+        "cached_tokens": 0
+      },
+      "output_tokens_details": {
+        "reasoning_tokens": 1
+      }
+    },
+    "incomplete_details": {
+      "reason": "max_output_tokens"
+    }
+  }
+}

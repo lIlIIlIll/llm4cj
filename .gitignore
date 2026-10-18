@@ -32,3 +32,5 @@ __pycache__/
 !/fixtures/cases/*.json
 !/fixtures/expected/
 !/fixtures/expected/*.json
+!/fixtures/custom-tools/
+!/fixtures/custom-tools/*.json

@@ -226,10 +226,45 @@ public func validateReplyToolInputs(
 ): LlmWireResult<Unit> {
     try {
         let view = replayTranscript(transcript)
-        for (choice in reply.choices) { for (block in choice.blocks) { match (block) {
+        for (choice in reply.choices) {
+            let callIds = HashSet<String>()
+            for (block in choice.blocks) { match (block) {
             case LlmWireOutputBlock.ToolCall(call) =>
+                if (!callIds.add(call.callId)) {
+                    return LlmWireResult.Err(LlmWireError(
+                        LlmWireErrorKind.InvalidWire, "llm.tool_call_id_duplicate",
+                        "generated tool calls must have unique call IDs",
+                        toolCallId: boundedTranscriptEvidence(call.callId), usage: observedWireUsage(reply.usage)
+                    ))
+                }
+                if (call.kind == LlmWireToolKind.Custom) {
+                    if (call.callId == "" || !validToolName(call.name)) {
+                        return LlmWireResult.Err(LlmWireError(
+                            LlmWireErrorKind.InvalidWire, "llm.tool_call_incomplete",
+                            "custom tool call requires an id and a valid name", usage: observedWireUsage(reply.usage)
+                        ))
+                    }
+                    match (call.arguments) {
+                        case LlmWireToolArguments.PartialText(_) =>
+                            return LlmWireResult.Err(LlmWireError(
+                                LlmWireErrorKind.InvalidWire, "llm.tool_arguments_not_executable",
+                                "partial custom input cannot be executed", toolName: call.name,
+                                toolCallId: boundedTranscriptEvidence(call.callId), usage: observedWireUsage(reply.usage)
+                            ))
+                        case _ => ()
+                    }
+                }
                 var active = false
-                for (tool in view.activeTools where tool.name == call.name) { active = true }
+                for (tool in view.activeTools where tool.name == call.name) {
+                    if (tool.kind != call.kind) {
+                        return LlmWireResult.Err(LlmWireError(
+                            LlmWireErrorKind.InvalidWire, "llm.tool_kind_mismatch",
+                            "generated tool kind does not match the active definition", toolName: call.name,
+                            toolCallId: boundedTranscriptEvidence(call.callId), usage: observedWireUsage(reply.usage)
+                        ))
+                    }
+                    active = true
+                }
                 if (!active) {
                     var declared: ?LlmWireToolDeclaration = None
                     for (value in view.declaredTools where value.tool.name == call.name) { declared = Some(value) }
@@ -252,7 +287,7 @@ public func validateReplyToolInputs(
 }
 
 internal func validateReplyToolInputSchemas(
-    reply: LlmWireReply, tools: Array<LlmWireTool>, mode: LlmWireToolInputValidationMode,
+    reply: LlmWireReply, tools: Array<LlmWireToolDefinition>, mode: LlmWireToolInputValidationMode,
     limits!: LlmWireSchemaValidationLimits = LlmWireSchemaValidationLimits()
 ): LlmWireResult<Unit> {
     match (mode) {
@@ -267,7 +302,10 @@ internal func validateReplyToolInputSchemas(
                 match (call.arguments) {
                     case LlmWireToolArguments.Complete(value) =>
                         var declared: ?LlmWireJson = None
-                        for (tool in tools where tool.name == call.name) { declared = Some(tool.inputSchema) }
+                        for (definition in tools where definition.name == call.name) { match (definition) {
+                            case LlmWireToolDefinition.Function(tool) => declared = Some(tool.inputSchema)
+                            case _ => ()
+                        } }
                         match (declared) {
                             case Some(schema) =>
                                 let evaluator = SchemaEvaluator(budget)
@@ -279,6 +317,14 @@ internal func validateReplyToolInputSchemas(
                                 }
                             case None => ()
                         }
+                    case LlmWireToolArguments.Text(_) =>
+                        for (definition in tools where definition.name == call.name) { match (definition) {
+                            case LlmWireToolDefinition.Custom(tool) => match (tool.format) {
+                                case LlmWireCustomToolFormat.Grammar(_) => return LlmWireResult.Err(LlmWireError(LlmWireErrorKind.Unsupported, "llm.tool_grammar_validation_unsupported", "custom grammar validation requires a grammar engine not provided by this library", toolName: call.name, toolCallId: boundedTranscriptEvidence(call.callId)))
+                                case _ => ()
+                            }
+                            case _ => ()
+                        } }
                     case _ => ()
                 }
             case _ => ()

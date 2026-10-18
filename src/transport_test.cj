@@ -3319,7 +3319,7 @@ class Llm4CjV02Tests {
             case _ => @Fail("enum mismatch with bounded evidence must violate")
         }
 
-        let scalarSchema = [readTool("7")]
+        let scalarSchema = [LlmWireToolDefinition.Function(readTool("7"))]
         @Expect(validateReplyToolInputSchemas(replyWithCalls([toolCall("c16", "read_file", "7")]), scalarSchema, LlmWireToolInputValidationMode.ValidateSupportedSubset).isOk(), false)
         match (validateReplyToolInputSchemas(replyWithCalls([toolCall("c16", "read_file", "7")]), scalarSchema, LlmWireToolInputValidationMode.Strict)) {
             case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"schema_not_object\""), true)

@@ -26,7 +26,8 @@ class CanonicalReplyAssembler {
                     match (call.arguments) {
                         case LlmWireToolArguments.Complete(value) =>
                             if (value.jsonNode().wireKind != WireJsonKind.Object) { invalidToolAssembly("llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object", call.callId, usage: observedWireUsage(usage)) }
-                        case _ => invalidToolAssembly("llm.tool_arguments_not_executable", "a successful reply contains tool arguments that are not a complete JSON object", call.callId, usage: observedWireUsage(usage))
+                        case LlmWireToolArguments.Text(_) => ()
+                        case _ => invalidToolAssembly("llm.tool_arguments_not_executable", "a successful reply contains incomplete or diagnostic tool input", call.callId, usage: observedWireUsage(usage))
                     }
                     toolCallIds.add(call.callId)
                 }

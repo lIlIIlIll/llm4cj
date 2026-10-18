@@ -126,6 +126,39 @@ def validate_source(source: dict, label: str) -> None:
         raise ValueError(f"{label}: capture authorization and sanitization are required")
 
 
+def validate_custom_requests(manifest: dict, identifiers: set[str]) -> None:
+    entries = manifest.get("custom_requests", [])
+    if type(entries) is not list:
+        raise ValueError("custom_requests must be an array")
+    supported_probes = {"openai-responses", "openai-codex-responses"}
+    supported_formats = {"text", "regex", "lark"}
+    seen: set[tuple[str, str]] = set()
+    for entry in entries:
+        if type(entry) is not dict or set(entry) != {"probe", "format", "expected"}:
+            raise ValueError("custom request requires probe, format and expected")
+        probe, tool_format = entry["probe"], entry["format"]
+        if type(probe) is not str or type(tool_format) is not str or probe not in supported_probes or tool_format not in supported_formats:
+            raise ValueError("unknown custom request dialect or format")
+        key = (probe, tool_format)
+        identifier = f"custom-request-{tool_format}-{probe}"
+        if key in seen or identifier in identifiers:
+            raise ValueError("duplicate custom request fixture")
+        seen.add(key)
+        identifiers.add(identifier)
+        record = load_json(fixture_path(entry["expected"]))
+        if type(record) is not dict or record.get("live_provider") != "not_run":
+            raise ValueError("custom request fixture must retain its offline evidence boundary")
+        validate_source(record["source"], identifier)
+        expected = record.get("expected")
+        if type(expected) is not dict or set(expected) != {"body", "headers"}:
+            raise ValueError("custom request oracle requires body and headers")
+        if type(expected["body"]) is not dict or type(expected["headers"]) is not list:
+            raise ValueError("custom request oracle body and headers have invalid shapes")
+    required = {(probe, tool_format) for probe in supported_probes for tool_format in supported_formats}
+    if entries and seen != required:
+        raise ValueError("custom requests must cover Text, Regex and Lark on both supported Responses dialects")
+
+
 def validate_manifest() -> dict:
     manifest = load_json(MANIFEST)
     if manifest.get("version") != 1 or manifest.get("live_provider") != "not_run":
@@ -195,6 +228,7 @@ def validate_manifest() -> dict:
             raise ValueError("unknown public fixture check command")
         fixture_path(check["fixture"])
         validate_source(check["source"], identifier)
+    validate_custom_requests(manifest, identifiers)
     return manifest
 
 
@@ -203,6 +237,7 @@ def fixture_inventory(manifest: dict | None = None) -> list[Path]:
     manifest = validate_manifest() if manifest is None else manifest
     relatives = {"manifest.json", *manifest["requests"], *manifest["transcripts"]}
     relatives.update(check["fixture"] for check in manifest.get("public_checks", []))
+    relatives.update(check["expected"] for check in manifest.get("custom_requests", []))
     for case in manifest["cases"]:
         relatives.add(case["expected"])
         relatives.update(value for key, value in case["wire"].items() if key != "cancel")
@@ -282,6 +317,15 @@ def verify_requests(executable: Path, manifest: dict) -> int:
     return len(manifest["requests"])
 
 
+def verify_custom_requests(executable: Path, manifest: dict) -> int:
+    entries = manifest.get("custom_requests", [])
+    for entry in entries:
+        actual = run_probe(executable, "encode-custom-fixture", entry["probe"], entry["format"])
+        expected = load_json(fixture_path(entry["expected"]))["expected"]
+        assert_equal(actual, expected, entry["expected"] + ".request")
+    return len(entries)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--validate-only", action="store_true", help="validate provenance and inventory without Cangjie")
@@ -310,12 +354,13 @@ def main() -> None:
         for case in chosen:
             count += verify_case(executable, case, Path(raw))
     requests = verify_requests(executable, manifest) if not options.cases else 0
+    custom_requests = verify_custom_requests(executable, manifest) if not options.cases else 0
     if not options.cases:
         for check in manifest.get("public_checks", []):
             subprocess.run([str(executable), check["command"], str(fixture_path(check["fixture"]))],
                            cwd=ROOT, check=True)
     print(f"public fixture semantics verified: {len(chosen)} scenarios, {count} decode comparisons, "
-          f"{requests} requests, live provider not_run")
+          f"{requests} requests, {custom_requests} custom requests, live provider not_run")
 
 
 if __name__ == "__main__":

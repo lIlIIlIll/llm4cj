@@ -78,7 +78,7 @@ func wireRequiredInt(value: JsonNode, name: String, provider!: String = ""): Int
 }
 
 func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCachePrewarm!: Bool = false): Unit {
-    if (codec.dialect.compatibilityId == "openai.codex.responses.v1") { validateCodexInputSize(request) }
+    if (codec.protocol == LlmWireProtocol.Responses) { validateResponsesInputSize(request, codec.dialect.compatibilityId == "openai.codex.responses.v1") }
     if (request.model == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.model_missing", "model must not be empty") }
     match (codec.modelProfile) {
         case Some(profile) =>
@@ -127,6 +127,7 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCach
     for (message in view.messages) { for (block in message.blocks) { match (block) { case LlmWireBlock.ToolCall(_) | LlmWireBlock.ToolResult(_) => usesTools = true; case _ => () } } }
     match (request.toolChoice) { case LlmWireToolChoice.ProviderDefault => (); case _ => usesTools = true }
     if (usesTools && (!codec.dialect.contract.tools || !codec.capabilities.tools.enabled)) { unsupportedRequest("llm.tools_unsupported", "tools require an explicit dialect and model capability") }
+    for (declaration in view.declaredTools) { validateCustomToolCapability(codec, declaration.tool) }
     if ((request.toolChoice == LlmWireToolChoice.Required || request.toolChoice == LlmWireToolChoice.Auto) && view.activeTools.isEmpty()) {
         throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_choice_without_tools", "toolChoice requires at least one declared tool")
     }
@@ -160,9 +161,23 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCach
                         if (deepSeekReasoningBlocks > 1) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_cardinality_invalid", "Chat assistant turns may contain only one reasoning_content replay block") }
                     }
                 case LlmWireBlock.ToolResult(value) =>
-                    if (value.content.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty", "tool results require at least one content part") }
+                    if (value.kind == LlmWireToolKind.Function && value.content.isEmpty()) {
+                        throw LlmWireError(
+                            LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty",
+                            "tool results require at least one content part"
+                        )
+                    }
                     for (part in value.content) { match (part) {
-                        case LlmWireToolResultContent.Text(text) => if (text.text == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty", "tool-result text must not be empty") }
+                        case LlmWireToolResultContent.Text(text) =>
+                            if (value.kind == LlmWireToolKind.Function && text.text == "") {
+                                throw LlmWireError(
+                                    LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty",
+                                    "tool-result text must not be empty"
+                                )
+                            }
+                            if (value.kind == LlmWireToolKind.Custom && (text.phase != LlmWireOutputPhase.Unspecified || !text.citations.isEmpty() || !text.annotations.isEmpty() || !text.logprobs.isEmpty())) {
+                                unsupportedRequest("llm.custom_tool_result_metadata_unsupported", "custom tool result input_text cannot replay output metadata")
+                            }
                         case LlmWireToolResultContent.Image(image) => validateBlockShape(LlmWireBlock.Image(image)); validateImageCapability(codec, message, image)
                     } }
                     if (codec.dialect.contract.toolErrorStyle == LlmWireToolErrorStyle.Unsupported && value.isError) {
@@ -389,8 +404,8 @@ func validateStructuredSchema(request: LlmWireRequest): Unit {
 }
 
 func validToolName(value: String): Bool {
+    if (value.size == 0 || value.size > 64) { return false }
     let bytes = value.toArray()
-    if (bytes.isEmpty() || bytes.size > 64) { return false }
     for (byte in bytes) {
         let allowed = (byte >= 65u8 && byte <= 90u8) || (byte >= 97u8 && byte <= 122u8) || (byte >= 48u8 && byte <= 57u8) || byte == 95u8 || byte == 45u8
         if (!allowed) { return false }
@@ -405,7 +420,8 @@ func validateBlockShape(block: LlmWireBlock): Unit {
             match (value.arguments) {
                 case LlmWireToolArguments.Complete(arguments) =>
                     if (arguments.jsonNode().wireKind != WireJsonKind.Object) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId)) }
-                case LlmWireToolArguments.Partial(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be sent as an executable tool call", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId))
+                case LlmWireToolArguments.Text(_) => ()
+                case LlmWireToolArguments.Partial(_) | LlmWireToolArguments.PartialText(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be sent as an executable tool call", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId))
                 case LlmWireToolArguments.InvalidShape(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "invalid-shape tool arguments cannot be sent as an executable tool call", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId))
                 case _ => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_not_executable", "invalid tool arguments cannot be sent as an executable tool call", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId))
             }

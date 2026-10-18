@@ -1,0 +1,50 @@
+{
+  "fixture": "custom-tool-request",
+  "source": {
+    "kind": "schema_derived",
+    "url": "https://developers.openai.com/api/docs/guides/function-calling#custom-tools",
+    "revision": "rolling reference",
+    "checked_at": "2026-10-18",
+    "notes": "Synthetic model, IDs and text; custom input/output and lifecycle independently reconstructed from the official custom tools and streaming event schemas. No live capture."
+  },
+  "live_provider": "not_run",
+  "expected": {
+    "body": {
+      "model": "fixture-model",
+      "max_output_tokens": 256,
+      "input": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "hello"
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "type": "custom",
+          "name": "emit",
+          "description": "Emit text",
+          "format": {
+            "type": "grammar",
+            "syntax": "lark",
+            "definition": "start: \"hello\""
+          }
+        }
+      ]
+    },
+    "headers": [
+      {
+        "name": "content-type",
+        "value": "application/json"
+      },
+      {
+        "name": "accept",
+        "value": "application/json"
+      }
+    ]
+  }
+}

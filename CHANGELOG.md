@@ -4,6 +4,9 @@ All notable changes are recorded here.
 
 ## [0.3.0] - Unreleased
 
+- Promote custom tools and Text/Regex/Lark grammars to the stable package. Tool declarations now expose tagged Function/Custom definitions; preserve raw Text/PartialText inputs and call/result kind through Responses fixed, streamed, WebSocket and continuation paths. Grammar validation remains explicitly unsupported locally.
+- Write transcript snapshot v3 only when custom semantics require it, retain v2 bytes for older semantics, and continue reading v1/v2/v3. Bound complete Responses, Chat and Messages request serialization to 8 MiB and depth 256 before appending output. These are breaking 0.3.0 changes; see the migration guide.
+
 - Extract structured JSON from a selected final answer without repairing text or treating refusal and truncation as success. Return typed parse/schema outcomes with bounded diagnostics and reuse the tool-schema evaluator.
 
 - Validate common JSON Schema bounds, const, and allOf/anyOf/oneOf with exact numbers, Unicode lengths, nested boolean schemas, and a shared work budget. Preflight unused schemas and reject unknown rules instead of certifying a supported subset as valid.

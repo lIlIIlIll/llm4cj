@@ -1,0 +1,724 @@
+{
+  "canonical": {
+    "state": {
+      "kind": "completed",
+      "reply": {
+        "response_id": "resp_custom_fixture",
+        "model": "fixture-model",
+        "raw_stop_reason": "completed",
+        "blocks": [
+          {
+            "kind": "tool_call",
+            "value": {
+              "call_id": "call_custom_fixture",
+              "name": "run",
+              "arguments": {
+                "kind": "text",
+                "value": "run é"
+              },
+              "tool_kind": "custom"
+            }
+          }
+        ],
+        "usage": {
+          "input_tokens": 3,
+          "output_tokens": 2,
+          "reasoning_tokens": 1,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": null,
+          "total_tokens": 5,
+          "web_search_requests": null,
+          "web_fetch_requests": null,
+          "service_tier": null,
+          "source": {
+            "provider": "openai-codex",
+            "dialect": "openai.codex.responses.v1"
+          },
+          "cache_read_availability": "reported",
+          "cache_write_availability": "unknown"
+        },
+        "choices": [
+          {
+            "index": 0,
+            "raw_stop_reason": "completed",
+            "outcome": {
+              "kind": "completed"
+            },
+            "blocks": [
+              {
+                "kind": "tool_call",
+                "value": {
+                  "call_id": "call_custom_fixture",
+                  "name": "run",
+                  "arguments": {
+                    "kind": "text",
+                    "value": "run é"
+                  },
+                  "tool_kind": "custom"
+                }
+              }
+            ],
+            "message_spans": []
+          }
+        ]
+      }
+    },
+    "continuation": {
+      "default": {
+        "kind": "ok",
+        "snapshot": {
+          "format": "llm4cj.transcript",
+          "version": 3,
+          "initial_context": {
+            "instructions": [],
+            "tools": []
+          },
+          "items": [
+            {
+              "kind": "message",
+              "value": {
+                "role": "assistant",
+                "blocks": [
+                  {
+                    "kind": "tool_call",
+                    "value": {
+                      "call_id": "call_custom_fixture",
+                      "name": "run",
+                      "arguments": {
+                        "kind": "text",
+                        "value": "run é"
+                      }
+                    }
+                  }
+                ],
+                "message_spans": []
+              }
+            }
+          ]
+        },
+        "restored_snapshot": {
+          "format": "llm4cj.transcript",
+          "version": 3,
+          "initial_context": {
+            "instructions": [],
+            "tools": []
+          },
+          "items": [
+            {
+              "kind": "message",
+              "value": {
+                "role": "assistant",
+                "blocks": [
+                  {
+                    "kind": "tool_call",
+                    "value": {
+                      "call_id": "call_custom_fixture",
+                      "name": "run",
+                      "arguments": {
+                        "kind": "text",
+                        "value": "run é"
+                      }
+                    }
+                  }
+                ],
+                "message_spans": []
+              }
+            }
+          ]
+        },
+        "encoded": {
+          "body": {
+            "model": "fixture-model",
+            "stream": true,
+            "store": false,
+            "include": [
+              "reasoning.encrypted_content"
+            ],
+            "input": [
+              {
+                "type": "additional_tools",
+                "role": "developer",
+                "tools": [
+                  {
+                    "type": "custom",
+                    "name": "run",
+                    "description": "fixture tool",
+                    "format": {
+                      "type": "text"
+                    }
+                  }
+                ]
+              },
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "input_text",
+                    "text": "hello"
+                  }
+                ],
+                "type": "message"
+              },
+              {
+                "type": "custom_tool_call",
+                "call_id": "call_custom_fixture",
+                "name": "run",
+                "input": "run é"
+              },
+              {
+                "type": "custom_tool_call_output",
+                "call_id": "call_custom_fixture",
+                "output": "done"
+              },
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "input_text",
+                    "text": "next"
+                  }
+                ],
+                "type": "message"
+              }
+            ]
+          },
+          "headers": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "accept",
+              "value": "text/event-stream"
+            }
+          ]
+        }
+      },
+      "choices": [
+        {
+          "index": 0,
+          "result": {
+            "kind": "ok",
+            "snapshot": {
+              "format": "llm4cj.transcript",
+              "version": 3,
+              "initial_context": {
+                "instructions": [],
+                "tools": []
+              },
+              "items": [
+                {
+                  "kind": "message",
+                  "value": {
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "kind": "tool_call",
+                        "value": {
+                          "call_id": "call_custom_fixture",
+                          "name": "run",
+                          "arguments": {
+                            "kind": "text",
+                            "value": "run é"
+                          }
+                        }
+                      }
+                    ],
+                    "message_spans": []
+                  }
+                }
+              ]
+            },
+            "restored_snapshot": {
+              "format": "llm4cj.transcript",
+              "version": 3,
+              "initial_context": {
+                "instructions": [],
+                "tools": []
+              },
+              "items": [
+                {
+                  "kind": "message",
+                  "value": {
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "kind": "tool_call",
+                        "value": {
+                          "call_id": "call_custom_fixture",
+                          "name": "run",
+                          "arguments": {
+                            "kind": "text",
+                            "value": "run é"
+                          }
+                        }
+                      }
+                    ],
+                    "message_spans": []
+                  }
+                }
+              ]
+            },
+            "encoded": {
+              "body": {
+                "model": "fixture-model",
+                "stream": true,
+                "store": false,
+                "include": [
+                  "reasoning.encrypted_content"
+                ],
+                "input": [
+                  {
+                    "type": "additional_tools",
+                    "role": "developer",
+                    "tools": [
+                      {
+                        "type": "custom",
+                        "name": "run",
+                        "description": "fixture tool",
+                        "format": {
+                          "type": "text"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "role": "user",
+                    "content": [
+                      {
+                        "type": "input_text",
+                        "text": "hello"
+                      }
+                    ],
+                    "type": "message"
+                  },
+                  {
+                    "type": "custom_tool_call",
+                    "call_id": "call_custom_fixture",
+                    "name": "run",
+                    "input": "run é"
+                  },
+                  {
+                    "type": "custom_tool_call_output",
+                    "call_id": "call_custom_fixture",
+                    "output": "done"
+                  },
+                  {
+                    "role": "user",
+                    "content": [
+                      {
+                        "type": "input_text",
+                        "text": "next"
+                      }
+                    ],
+                    "type": "message"
+                  }
+                ]
+              },
+              "headers": [
+                {
+                  "name": "content-type",
+                  "value": "application/json"
+                },
+                {
+                  "name": "accept",
+                  "value": "text/event-stream"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "websocket": {
+    "result": {
+      "state": {
+        "kind": "completed",
+        "reply": {
+          "response_id": "resp_custom_fixture",
+          "model": "fixture-model",
+          "raw_stop_reason": "completed",
+          "blocks": [
+            {
+              "kind": "tool_call",
+              "value": {
+                "call_id": "call_custom_fixture",
+                "name": "run",
+                "arguments": {
+                  "kind": "text",
+                  "value": "run é"
+                },
+                "tool_kind": "custom"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 3,
+            "output_tokens": 2,
+            "reasoning_tokens": 1,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": null,
+            "total_tokens": 5,
+            "web_search_requests": null,
+            "web_fetch_requests": null,
+            "service_tier": null,
+            "source": {
+              "provider": "openai-codex",
+              "dialect": "openai.codex.responses.v1"
+            },
+            "cache_read_availability": "reported",
+            "cache_write_availability": "unknown"
+          },
+          "choices": [
+            {
+              "index": 0,
+              "raw_stop_reason": "completed",
+              "outcome": {
+                "kind": "completed"
+              },
+              "blocks": [
+                {
+                  "kind": "tool_call",
+                  "value": {
+                    "call_id": "call_custom_fixture",
+                    "name": "run",
+                    "arguments": {
+                      "kind": "text",
+                      "value": "run é"
+                    },
+                    "tool_kind": "custom"
+                  }
+                }
+              ],
+              "message_spans": []
+            }
+          ]
+        }
+      },
+      "continuation": {
+        "default": {
+          "kind": "ok",
+          "snapshot": {
+            "format": "llm4cj.transcript",
+            "version": 3,
+            "initial_context": {
+              "instructions": [],
+              "tools": []
+            },
+            "items": [
+              {
+                "kind": "message",
+                "value": {
+                  "role": "assistant",
+                  "blocks": [
+                    {
+                      "kind": "tool_call",
+                      "value": {
+                        "call_id": "call_custom_fixture",
+                        "name": "run",
+                        "arguments": {
+                          "kind": "text",
+                          "value": "run é"
+                        }
+                      }
+                    }
+                  ],
+                  "message_spans": []
+                }
+              }
+            ]
+          },
+          "restored_snapshot": {
+            "format": "llm4cj.transcript",
+            "version": 3,
+            "initial_context": {
+              "instructions": [],
+              "tools": []
+            },
+            "items": [
+              {
+                "kind": "message",
+                "value": {
+                  "role": "assistant",
+                  "blocks": [
+                    {
+                      "kind": "tool_call",
+                      "value": {
+                        "call_id": "call_custom_fixture",
+                        "name": "run",
+                        "arguments": {
+                          "kind": "text",
+                          "value": "run é"
+                        }
+                      }
+                    }
+                  ],
+                  "message_spans": []
+                }
+              }
+            ]
+          },
+          "encoded": {
+            "body": {
+              "model": "fixture-model",
+              "stream": true,
+              "store": false,
+              "include": [
+                "reasoning.encrypted_content"
+              ],
+              "input": [
+                {
+                  "type": "additional_tools",
+                  "role": "developer",
+                  "tools": [
+                    {
+                      "type": "custom",
+                      "name": "run",
+                      "description": "fixture tool",
+                      "format": {
+                        "type": "text"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "hello"
+                    }
+                  ],
+                  "type": "message"
+                },
+                {
+                  "type": "custom_tool_call",
+                  "call_id": "call_custom_fixture",
+                  "name": "run",
+                  "input": "run é"
+                },
+                {
+                  "type": "custom_tool_call_output",
+                  "call_id": "call_custom_fixture",
+                  "output": "done"
+                },
+                {
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "next"
+                    }
+                  ],
+                  "type": "message"
+                }
+              ]
+            },
+            "headers": [
+              {
+                "name": "content-type",
+                "value": "application/json"
+              },
+              {
+                "name": "accept",
+                "value": "text/event-stream"
+              }
+            ]
+          }
+        },
+        "choices": [
+          {
+            "index": 0,
+            "result": {
+              "kind": "ok",
+              "snapshot": {
+                "format": "llm4cj.transcript",
+                "version": 3,
+                "initial_context": {
+                  "instructions": [],
+                  "tools": []
+                },
+                "items": [
+                  {
+                    "kind": "message",
+                    "value": {
+                      "role": "assistant",
+                      "blocks": [
+                        {
+                          "kind": "tool_call",
+                          "value": {
+                            "call_id": "call_custom_fixture",
+                            "name": "run",
+                            "arguments": {
+                              "kind": "text",
+                              "value": "run é"
+                            }
+                          }
+                        }
+                      ],
+                      "message_spans": []
+                    }
+                  }
+                ]
+              },
+              "restored_snapshot": {
+                "format": "llm4cj.transcript",
+                "version": 3,
+                "initial_context": {
+                  "instructions": [],
+                  "tools": []
+                },
+                "items": [
+                  {
+                    "kind": "message",
+                    "value": {
+                      "role": "assistant",
+                      "blocks": [
+                        {
+                          "kind": "tool_call",
+                          "value": {
+                            "call_id": "call_custom_fixture",
+                            "name": "run",
+                            "arguments": {
+                              "kind": "text",
+                              "value": "run é"
+                            }
+                          }
+                        }
+                      ],
+                      "message_spans": []
+                    }
+                  }
+                ]
+              },
+              "encoded": {
+                "body": {
+                  "model": "fixture-model",
+                  "stream": true,
+                  "store": false,
+                  "include": [
+                    "reasoning.encrypted_content"
+                  ],
+                  "input": [
+                    {
+                      "type": "additional_tools",
+                      "role": "developer",
+                      "tools": [
+                        {
+                          "type": "custom",
+                          "name": "run",
+                          "description": "fixture tool",
+                          "format": {
+                            "type": "text"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "role": "user",
+                      "content": [
+                        {
+                          "type": "input_text",
+                          "text": "hello"
+                        }
+                      ],
+                      "type": "message"
+                    },
+                    {
+                      "type": "custom_tool_call",
+                      "call_id": "call_custom_fixture",
+                      "name": "run",
+                      "input": "run é"
+                    },
+                    {
+                      "type": "custom_tool_call_output",
+                      "call_id": "call_custom_fixture",
+                      "output": "done"
+                    },
+                    {
+                      "role": "user",
+                      "content": [
+                        {
+                          "type": "input_text",
+                          "text": "next"
+                        }
+                      ],
+                      "type": "message"
+                    }
+                  ]
+                },
+                "headers": [
+                  {
+                    "name": "content-type",
+                    "value": "application/json"
+                  },
+                  {
+                    "name": "accept",
+                    "value": "text/event-stream"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "next_request": {
+      "model": "fixture-model",
+      "store": false,
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "type": "additional_tools",
+          "role": "developer",
+          "tools": [
+            {
+              "type": "custom",
+              "name": "run",
+              "description": "fixture tool",
+              "format": {
+                "type": "text"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "hello"
+            }
+          ],
+          "type": "message"
+        },
+        {
+          "type": "custom_tool_call",
+          "call_id": "call_custom_fixture",
+          "name": "run",
+          "input": "run é"
+        },
+        {
+          "type": "custom_tool_call_output",
+          "call_id": "call_custom_fixture",
+          "output": "done"
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "next"
+            }
+          ],
+          "type": "message"
+        }
+      ],
+      "type": "response.create",
+      "stream_id": "main"
+    }
+  }
+}

@@ -190,7 +190,7 @@ class TranscriptSnapshotTest {
 
     @TestCase
     func unknownLegacyAndMalformedSnapshotsFailExplicitly() {
-        for (snapshot in ["{}", "{\"version\":0}", "{\"version\":3}"]) {
+        for (snapshot in ["{}", "{\"version\":0}", "{\"version\":4}"]) {
             match (LlmWireTranscript.restore(snapshot)) {
                 case LlmWireResult.Err(error) => @Expect(error.code, "llm.transcript_version_unsupported")
                 case _ => @Fail("unsupported version must fail")
