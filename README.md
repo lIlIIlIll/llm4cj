@@ -98,6 +98,7 @@ main(): Int64 {
 - [接入 Codex 订阅](docs/codex-subscription.md)
 - [请求与响应](docs/requests-and-replies.md)
 - [有序 transcript 与动态上下文](docs/ordered-transcript.md)
+- [安全分支与 choice 续接](docs/transcript-branching.md)
 - [从 v0.2 迁移与 Axyndra 消费契约](docs/migrating-from-v0.2.md)
 - [缓存实验与证据边界](docs/cache-experiments.md)
 - [流式与传输](docs/streaming-and-transport.md)

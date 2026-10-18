@@ -77,6 +77,59 @@ public class LlmWireTranscript {
         result.add(item)
         LlmWireTranscript(initialContext, items: result.toArray(), cacheBreakpoints: cacheBreakpointsValue)
     }
+    public func forkAt(itemIndex: Int64): LlmWireResult<LlmWireTranscript> {
+        if (itemIndex < 0 || itemIndex > itemsValue.size) {
+            return LlmWireResult.Err(LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.transcript_index_invalid", "fork boundary must be between zero and the item count", inputItemIndex: itemIndex))
+        }
+        let prefix = ArrayList<LlmWireInputItem>()
+        for (index in 0..itemIndex) { prefix.add(itemsValue[index]) }
+        let result = LlmWireTranscript(initialContext, items: prefix.toArray(), cacheBreakpoints: forkCacheBreakpoints(cacheBreakpointsValue, itemIndex))
+        checkedBranchTranscript(result)
+    }
+    public func appendContinuation(reply: LlmWireReply): LlmWireResult<LlmWireTranscript> {
+        if (reply.choices.size != 1) {
+            return continuationSelectionError(reply, "llm.continuation_choice_required", "multi-choice replies require an explicit choice")
+        }
+        continuationObservedResult(reply, appendContinuationChoice(reply, reply.choices[0]))
+    }
+    public func appendContinuation(reply: LlmWireReply, choiceIndex: Int64): LlmWireResult<LlmWireTranscript> {
+        var selected: ?LlmWireChoice = None
+        for (choice in reply.choices where choice.index == choiceIndex) {
+            if (selected.isSome()) {
+                return continuationSelectionError(reply, "llm.continuation_choice_ambiguous", "reply contains duplicate selected choice indices")
+            }
+            selected = Some(choice)
+        }
+        match (selected) {
+            case Some(choice) => continuationObservedResult(reply, appendContinuationChoice(reply, choice))
+            case None => continuationSelectionError(reply, "llm.continuation_choice_missing", "reply does not contain the selected choice")
+        }
+    }
+    private func appendContinuationChoice(reply: LlmWireReply, choice: LlmWireChoice): LlmWireResult<LlmWireTranscript> {
+        match (checkedBranchTranscript(this)) {
+            case LlmWireResult.Err(error) => return LlmWireResult.Err(error)
+            case _ => ()
+        }
+        match (choice.outcome) {
+            case LlmWireChoiceOutcome.Refused(_) => return LlmWireResult.Err(LlmWireError(LlmWireErrorKind.InvalidState, "llm.continuation_projection_lossy", "refused choices cannot be projected into continuation input"))
+            case _ => ()
+        }
+        let selected = LlmWireReply(responseId: reply.responseId, model: reply.model, usage: reply.usage, choices: [choice])
+        let admission = validateReplyToolInputs(selected, this, mode: LlmWireToolInputValidationMode.Disabled)
+        match (admission) {
+            case LlmWireResult.Err(error) => return LlmWireResult.Err(error)
+            case _ => ()
+        }
+        let messages = match (choice.toContinuationInput()) {
+            case LlmWireResult.Ok(value) => value
+            case LlmWireResult.Err(error) => return LlmWireResult.Err(error)
+        }
+        let combined = ArrayList<LlmWireInputItem>()
+        for (item in itemsValue) { combined.add(item) }
+        for (message in messages) { combined.add(LlmWireInputItem.Message(message)) }
+        let result = LlmWireTranscript(initialContext, items: combined.toArray(), cacheBreakpoints: cacheBreakpointsValue)
+        checkedBranchTranscript(result, allowUnresolvedTail: true)
+    }
     public func snapshot(): LlmWireResult<String> {
         try { LlmWireResult.Ok(writeTranscriptSnapshot(this)) }
         catch (error: LlmWireError) { LlmWireResult.Err(error) }

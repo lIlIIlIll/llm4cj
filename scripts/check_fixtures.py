@@ -21,7 +21,7 @@ FIXTURES = ROOT / "fixtures"
 PROBE = ROOT / "support/provider_probe"
 LEGACY_PROBE = ROOT / "support/protocol_probe"
 MANIFEST = FIXTURES / "manifest.json"
-PUBLIC_CHECK_COMMANDS = frozenset({"check-schema", "check-structured", "check-cache", "check-audio"})
+PUBLIC_CHECK_COMMANDS = frozenset({"check-schema", "check-structured", "check-cache", "check-audio", "check-transcript-branches"})
 DIALECTS = {
     "openai.responses.v1": "openai-responses",
     "openai.codex.responses.v1": "openai-codex-responses",
@@ -342,6 +342,9 @@ def verify_public_checks(executable: Path, manifest: dict) -> int:
             ]
         elif command == "check-audio":
             arguments = [sys.executable, str(ROOT / "support/provider_probe/check_audio.py"), str(executable), str(fixture)]
+        elif command == "check-transcript-branches":
+            arguments = [sys.executable, str(ROOT / "scripts/check_transcript_branch_fixtures.py"),
+                         "--probe", str(executable), "--fixture", str(fixture)]
         else:
             arguments = [str(executable), command, str(fixture)]
         subprocess.run(arguments, cwd=ROOT, check=True)

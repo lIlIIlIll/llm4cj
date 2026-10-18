@@ -3,6 +3,18 @@
   "live_provider": "not_run",
   "public_checks": [
     {
+      "id": "transcript-branches",
+      "fixture": "transcript-branches.json",
+      "command": "check-transcript-branches",
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/docs/guides/tools-tool-search#add-tools-at-a-specific-point-in-the-input",
+        "revision": "existing native transcript fixture references",
+        "checked_at": "2026-10-01",
+        "notes": "Independent prefix and continuation oracles derived from the three sourced Responses, Anthropic and Kimi transcript fixtures. Compare complete public wire plans, headers, prefix snapshots and restored forks. Offline helper semantics, not a live capture."
+      }
+    },
+    {
       "id": "openai-chat-audio",
       "fixture": "audio/openai-chat.json",
       "command": "check-audio",
