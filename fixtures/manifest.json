@@ -1,6 +1,20 @@
 {
   "version": 1,
   "live_provider": "not_run",
+  "public_checks": [
+    {
+      "id": "schema-validation",
+      "fixture": "schema-validation.json",
+      "command": "check-schema",
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://json-schema.org/draft/2020-12/json-schema-validation",
+        "revision": "2020-12",
+        "checked_at": "2026-10-18",
+        "notes": "Hand-reviewed exact-value and validation oracles. Unknown-rule precedence follows the documented llm4cj fail-closed subset policy. No live capture."
+      }
+    }
+  ],
   "dialects": [
     {
       "id": "openai.responses.v1",

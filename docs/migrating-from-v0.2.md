@@ -63,6 +63,8 @@ OpenAI Responses 与 Codex wire 接受缺失或 null phase、`commentary`、`fin
 
 schema 的 `integer` 现在按数学值判断：`1`、`1.0`、`10e-1` 都是整数。`enum` 对象忽略键顺序、数组保持顺序，数值使用精确十进制比较；布尔值与数值不同。无需将大整数或指数转成浮点数。`Disabled` 仍只关闭 schema 校验。
 
+`ValidateSupportedSubset` 不再忽略未知规则后返回成功。它只在已知约束能证明失败时返回 schema 违例，否则含未知规则的 schema 返回 `llm.tool_schema_unsupported`。`Strict` 还会预检未使用的 properties、items、定义和组合分支。处理结果时应分别处理 Unsupported、schema 违例和 LimitExceeded，不能把 Unsupported 当作已验证。`validateReplyToolInputs` 新增可选 `limits:`，用于降低整次调用的深度和工作预算。
+
 在截断终态中，最终工具参数若是完整 JSON object 则为 `Complete`，合法非对象为 `InvalidShape`，非法或未闭合 JSON 为 `InvalidJson`；choice 仍为 `Incomplete`。只有有效 identity 加 `Complete` 参数能进入 continuation。应用执行工具前仍需按自己的终态策略及 `validateReplyToolInputs` 结果作决定。
 
 ## 固定依赖版本

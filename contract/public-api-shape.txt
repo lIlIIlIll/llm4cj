@@ -334,6 +334,9 @@ LlmWireResponsesWebSocketSession member public func push ( message : Array < Byt
 LlmWireResult cases Ok ( T ) | Err ( LlmWireError )
 LlmWireResult member public func isOk ( ) : Bool
 LlmWireRole cases User | Assistant
+LlmWireSchemaValidationLimits member public init ( maxDepth ! : Int64 = 2 5 6 , maxWork ! : Int64 = 6 7 1 0 8 8 6 4 )
+LlmWireSchemaValidationLimits member public let maxDepth : Int64
+LlmWireSchemaValidationLimits member public let maxWork : Int64
 LlmWireServiceTier cases ProviderDefault | Auto | Default | StandardOnly | Flex | Priority | Fast | Ultrafast
 LlmWireSseLimits member public init ( maxEventBytes ! : Int64 = 8 3 8 8 6 0 8 , maxLineBytes ! : Int64 = 1 0 4 8 5 7 6 , maxBufferedBytes ! : Int64 = 1 6 7 7 7 2 1 6 , maxEventsPerPush ! : Int64 = 1 0 2 4 , maxOutputBytesPerPush ! : Int64 = 1 6 7 7 7 2 1 6 , maxErrorBodyBytes ! : Int64 = 8 3 8 8 6 0 8 )
 LlmWireSseLimits member public let maxBufferedBytes : Int64
@@ -483,6 +486,7 @@ public class LlmWireReply
 public class LlmWireRequest
 public class LlmWireRequestBuilder
 public class LlmWireResponsesWebSocketSession
+public class LlmWireSchemaValidationLimits
 public class LlmWireSseLimits
 public class LlmWireStreamDecoder
 public class LlmWireStreamLimits
@@ -546,6 +550,6 @@ public func parseRetryAfterMillis ( value : String , nowEpochMillis : Int64 ) : 
 public func parseSseRetryMillis ( value : String ) : ? Int64
 public func readLlmHttpBody ( stream : InputStream , declaredSize : ? Int64 , maxBytes : Int64 ) : LlmWireResult < Array < Byte > >
 public func sseDataLine ( line : String ) : ? String
-public func validateReplyToolInputs ( reply : LlmWireReply , transcript : LlmWireTranscript , mode ! : LlmWireToolInputValidationMode = LlmWireToolInputValidationMode . ValidateSupportedSubset ) : LlmWireResult < Unit >
+public func validateReplyToolInputs ( reply : LlmWireReply , transcript : LlmWireTranscript , mode ! : LlmWireToolInputValidationMode = LlmWireToolInputValidationMode . ValidateSupportedSubset , limits ! : LlmWireSchemaValidationLimits = LlmWireSchemaValidationLimits ( ) ) : LlmWireResult < Unit >
 public interface LlmWireDialect
 public interface LlmWireRequirementResolver
