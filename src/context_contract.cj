@@ -40,6 +40,9 @@ public class LlmWireContextUpdateContract {
             case LlmWireContextUpdateStyle.KimiSystemTools => LlmWireContextUpdateCapabilities(appendSystemInstruction: true, toolDeclaration: true)
         }
     }
+    internal init(style: LlmWireContextUpdateStyle, capabilities: LlmWireContextUpdateCapabilities) {
+        this.style = style; this.version = 1; this.capabilities = capabilities
+    }
     public prop requiredHeaders: Array<LlmWireHeader> { get() {
         match (style) {
             case LlmWireContextUpdateStyle.AnthropicToolReferences => [LlmWireHeader("anthropic-beta", "mid-conversation-tool-changes-2026-07-01")]

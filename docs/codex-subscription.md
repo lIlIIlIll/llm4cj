@@ -71,7 +71,7 @@ python3 scripts/codex_example.py accounts
 | HTTP/SSE | Bearer POST `https://api.openai.com/v1/responses`，body 来自 `encodeRequest(request, streaming: true).materialize()`；网络分片进入 HTTP stream decoder | 完整请求校验、SSE framing、Responses 终态协调 |
 | WebSocket | Bearer upgrade `wss://api.openai.com/v1/responses`；发送 `session.prepare(request).body`，完整 text message 进入 `session.push` | `response.create`、一条活动响应、同连接续轮检查点与 Responses JSON 状态机 |
 
-不发送 `chatgpt-account-id`。HTTP 请求固定 `store: false`，禁止 `maxOutputTokens` 和 prompt cache 控制。System instruction 只能有一条且在所有 Developer instructions 之前；function tools 使用 developer `additional_tools`。OpenAI wire phase 只接受缺失或 null、`commentary`、`final_answer`；通过 continuation 保留 spans，避免把两个相邻 assistant message 合并。模型能力需由应用声明，未知字段不能通过 native JSON 绕过校验。
+不发送 `chatgpt-account-id`。HTTP 请求固定 `store: false`，禁止 `maxOutputTokens` 和 prompt cache 控制。初始 System instruction 只能有一条且在所有 Developer instructions 之前，编码为顶层 `instructions`；transcript 仅支持 Developer instruction updates，profile 也不能启用 System updates，因为该路由拒绝 `role: system` input items。function tools 使用 developer `additional_tools`。OpenAI wire phase 只接受缺失或 null、`commentary`、`final_answer`；通过 continuation 保留 spans，避免把两个相邻 assistant message 合并。模型能力需由应用声明，未知字段不能通过 native JSON 绕过校验。
 
 首版支持文本、受约束 encrypted reasoning 和 function tools。custom tools、非空 tool namespace、文本 annotations/logprobs 等不在可回放范围内，明确返回错误。单条请求/WS JSON message 限 8 MiB；decoder 的事件、语义和 retained state 限额由 `LlmWireStreamLimits` 配置。`{detail: ...}` HTTP 错误与 WS `error` 保留有界 diagnostic 和实际状态，见 [API reference](api-reference.md)。
 

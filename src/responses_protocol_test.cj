@@ -256,7 +256,7 @@ class ResponsesProtocolTest {
     @TestCase
     func codexTemporalToolsKeepTheirPositionAndProfileGate() {
         let endpoint = LlmWireEndpointProfile("codex.fixture", "model", "openai.codex.responses.v1", "https://example.test/responses", 1,
-            LlmWireContextUpdateContract(style: LlmWireContextUpdateStyle.ResponsesAdditionalTools).capabilities, "offline-protocol-fixture", "2026-10-18")
+            openAiCodexResponsesDialect().contract.contextUpdates.capabilities, "offline-protocol-fixture", "2026-10-18")
         let codec = openAiCodexResponsesCodec(openAiCodexResponsesModelProfile("model", capabilities: allCapabilities(), endpoint: endpoint.endpoint, endpointProfile: Some(endpoint)))
         let call = LlmWireBlock.ToolCall(LlmWireToolCallBlock("call_temporal", "echo", LlmWireToolArguments.Complete(responsesResult(LlmWireJson.parse("{}")))))
         let transcript = LlmWireTranscript(items: [LlmWireInputItem.Message(codexText("first")),
