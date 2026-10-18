@@ -503,7 +503,11 @@ func decodeResponsesResponse(codec: LlmWireCodec, root: JsonNode, resolvedPhases
     if (status == "completed" || status == "incomplete") {
         let _ = match (wireOptionalArray(root, "output", provider: codec.provider)) { case Some(value) => value; case None => invalidWire("llm.field_missing", "terminal Responses response is missing output", provider: codec.provider) }
     }
-    let reply = responsesReply(codec, root, resolvedPhases: resolvedPhases, completedCustomInputs: completedCustomInputs)
+    let reply = try {
+        responsesReply(codec, root, resolvedPhases: resolvedPhases, completedCustomInputs: completedCustomInputs)
+    } catch (error: LlmWireError) {
+        throw withObservedUsage(error, observedWireUsage(decodeResponsesUsage(codec, root)))
+    }
     match (status) {
         case "queued" => LlmWireResponseState.Pending(LlmWirePendingReply.Queued(reply))
         case "in_progress" => LlmWireResponseState.Pending(LlmWirePendingReply.InProgress(reply))
@@ -528,6 +532,8 @@ func replyWithChoiceOutcome(reply: LlmWireReply, outcome: LlmWireChoiceOutcome):
 func responsesReply(codec: LlmWireCodec, root: JsonNode, resolvedPhases!: Array<LlmWireOutputPhase> = [], completedCustomInputs!: Array<Int64> = []): LlmWireReply {
     let blocks = ArrayList<LlmWireOutputBlock>()
     let spans = ArrayList<LlmWireAssistantMessageSpan>()
+    let toolCallIds = HashSet<String>()
+    let customCallIds = HashSet<String>()
     match (wireOptionalArray(root, "output", provider: codec.provider)) {
         case Some(items) => for (itemIndex in 0..items.size) {
             let raw = items[itemIndex]
@@ -547,15 +553,25 @@ func responsesReply(codec: LlmWireCodec, root: JsonNode, resolvedPhases!: Array<
                     spans.add(LlmWireAssistantMessageSpan(blockStart, blocks.size - blockStart, phase: phase))
                 case "function_call" =>
                     let rawArguments = wireRequiredString(item, "arguments", provider: codec.provider)
-                    blocks.add(LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(wireRequiredString(item, "call_id", provider: codec.provider), wireRequiredString(item, "name", provider: codec.provider), classifyToolArguments(rawArguments))))
+                    let callId = wireRequiredString(item, "call_id", provider: codec.provider)
+                    if (customCallIds.contains(callId)) {
+                        invalidWire("llm.tool_call_id_duplicate", "Responses output repeats a tool call ID", provider: codec.provider)
+                    }
+                    let _ = toolCallIds.add(callId)
+                    blocks.add(LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(callId, wireRequiredString(item, "name", provider: codec.provider), classifyToolArguments(rawArguments))))
                 case "custom_tool_call" =>
                     requireResponsesCustomTool(codec, item, itemIndex)
+                    let callId = wireRequiredString(item, "call_id", provider: codec.provider)
+                    if (!toolCallIds.add(callId)) {
+                        invalidWire("llm.tool_call_id_duplicate", "Responses output repeats a tool call ID", provider: codec.provider)
+                    }
+                    let _ = customCallIds.add(callId)
                     let rawInput = wireRequiredString(item, "input", provider: codec.provider)
                     let status = wireOptionalString(item, "status", provider: codec.provider)
                     if (status.isSome() && status != Some("completed") && status != Some("incomplete") && status != Some("in_progress")) { invalidWire("llm.responses_custom_status_invalid", "custom tool call has an invalid status", provider: codec.provider) }
                     let complete = wireRequiredString(root, "status", provider: codec.provider) == "completed" || status == Some("completed") || completedCustomInputs.contains(itemIndex)
                     if (complete && status.isSome() && status != Some("completed")) { invalidWire("llm.responses_custom_status_mismatch", "custom input completion conflicts with item status", provider: codec.provider) }
-                    blocks.add(LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(wireRequiredString(item, "call_id", provider: codec.provider), wireRequiredString(item, "name", provider: codec.provider), if (complete) { LlmWireToolArguments.Text(rawInput) } else { LlmWireToolArguments.PartialText(rawInput) })))
+                    blocks.add(LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(callId, wireRequiredString(item, "name", provider: codec.provider), if (complete) { LlmWireToolArguments.Text(rawInput) } else { LlmWireToolArguments.PartialText(rawInput) })))
                 case "reasoning" => blocks.add(LlmWireOutputBlock.NativeReplay(nativeFromNative(codec, item, kind, responsesReasoningDisplay(item, codec.provider), optionalStringOrNone(root, "model", codec.provider), blocks.size)))
                 case _ => unsupportedSemantic(codec, kind, item, "llm.responses_block_unsupported", blockIndex: itemIndex)
             }
@@ -784,7 +800,20 @@ func rejectResponsesItemSemantic(codec: LlmWireCodec, item: JsonNode, blockIndex
 }
 
 func requireResponsesCustomTool(codec: LlmWireCodec, item: JsonNode, blockIndex: Int64): Unit {
+    if (item.field("created_by").isSome()) {
+        throw LlmWireError(
+            LlmWireErrorKind.Unsupported, "llm.custom_tool_semantic_unsupported",
+            "custom tool actor metadata cannot be represented safely", provider: codec.provider,
+            diagnosticJson: Some("{\"native_type\":\"created_by\"}"), phase: Some(LlmTransportPhase.SemanticAssembly),
+            protocol: Some(codec.protocol), dialectId: codec.dialect.compatibilityId, blockIndex: blockIndex
+        )
+    }
     if (codec.dialect.contract.customToolFormats.isEmpty()) { unsupportedSemantic(codec, "custom_tool_call", item, "llm.custom_tool_unsupported", blockIndex: blockIndex) }
+    let callId = wireRequiredString(item, "call_id", provider: codec.provider)
+    let name = wireRequiredString(item, "name", provider: codec.provider)
+    if (callId == "" || !validToolName(name)) {
+        invalidWire("llm.tool_call_incomplete", "custom tool call requires an id and a valid name", provider: codec.provider)
+    }
     match (item.field("async")) {
         case Some(value) =>
             if (value.wireKind != WireJsonKind.Boolean) { invalidWire("llm.field_type_invalid", "async must be a boolean", provider: codec.provider) }
