@@ -4,13 +4,13 @@ import std.collection.*
 import std.convert.*
 import yjson.*
 
-func encodeWireRequest(codec: LlmWireCodec, request: LlmWireRequest, streaming: Bool): LlmWirePreparedRequest {
+func encodeWireRequest(codec: LlmWireCodec, request: LlmWireRequest, streaming: Bool, cachePlan!: ResolvedCachePlan = ResolvedCachePlan()): LlmWirePreparedRequest {
     let headers = ArrayList<LlmWireHeader>()
     let requirements = ArrayList<LlmWireFeatureRequirement>()
     let body = match (codec.protocol) {
         case LlmWireProtocol.Responses => encodeResponsesRequest(codec, request, requirements, streaming)
         case LlmWireProtocol.ChatCompletions => encodeChatRequest(codec, request, requirements, streaming)
-        case LlmWireProtocol.Messages => encodeMessagesRequest(codec, request, headers, requirements, streaming)
+        case LlmWireProtocol.Messages => encodeMessagesRequest(codec, request, headers, requirements, streaming, cachePlan: cachePlan)
     }
     LlmWirePreparedRequest(body, requiredHeaders: headers.toArray(), featureRequirements: requirements.toArray(), streaming: streaming)
 }
@@ -25,7 +25,7 @@ internal func encodeAnthropicCachePrewarm(codec: LlmWireCodec, request: LlmWireR
     }
     match (request.promptCache) {
         case LlmWirePromptCache.Automatic(_) => ()
-        case _ => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.cache_prewarm_cache_missing", "cache pre-warm requires automatic prompt caching")
+        case _ => if (request.transcript.cacheBreakpoints.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.cache_prewarm_cache_missing", "cache pre-warm requires automatic or explicit prompt caching") }
     }
     if (request.thinkingMode != LlmWireThinkingMode.ProviderDefault || request.reasoningEffort != LlmWireReasoningEffort.ProviderDefault) {
         throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.cache_prewarm_thinking_unsupported", "cache pre-warm cannot enable thinking or effort")
@@ -37,8 +37,8 @@ internal func encodeAnthropicCachePrewarm(codec: LlmWireCodec, request: LlmWireR
     if (request.toolChoice == LlmWireToolChoice.Required) {
         throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.cache_prewarm_tool_choice_unsupported", "cache pre-warm cannot require a tool")
     }
-    validateWireRequest(codec, request, allowCachePrewarm: true)
-    encodeWireRequest(codec, request, false)
+    let cachePlan = validateWireRequest(codec, request, allowCachePrewarm: true)
+    encodeWireRequest(codec, request, false, cachePlan: cachePlan)
 }
 
 func outputTokenName(value: LlmWireOutputTokenField): String {
@@ -100,11 +100,12 @@ func encodeChatRequest(codec: LlmWireCodec, request: LlmWireRequest, requirement
     writeBoundedRequestJson(root, "llm.request_too_large", "Chat request exceeds the JSON byte or depth limit")
 }
 
-func encodeMessagesRequest(codec: LlmWireCodec, request: LlmWireRequest, headers: ArrayList<LlmWireHeader>, requirements: ArrayList<LlmWireFeatureRequirement>, streaming: Bool): String {
+func encodeMessagesRequest(codec: LlmWireCodec, request: LlmWireRequest, headers: ArrayList<LlmWireHeader>, requirements: ArrayList<LlmWireFeatureRequirement>, streaming: Bool, cachePlan!: ResolvedCachePlan = ResolvedCachePlan()): String {
     let root = baseRequest(codec, request, streaming); encodeThinking(codec, root, request.thinkingMode, request.reasoningEffort)
     if (!request.transcript.initialContext.instructions.isEmpty()) {
         let system = wireJsonArray([])
-        for (instruction in request.transcript.initialContext.instructions) { system.add(wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(instruction.text))])) }
+        let instructions = request.transcript.initialContext.instructions
+        for (index in 0..instructions.size) { system.add(cachePlan.decorate(LlmWireCachePosition.InitialInstruction(index), wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(instructions[index].text))]))) }
         root.put("system", system)
     }
     if (request.serviceTier != LlmWireServiceTier.ProviderDefault) { root.put("service_tier", wireJsonString(serviceTierName(request.serviceTier))) }
@@ -136,8 +137,8 @@ func encodeMessagesRequest(codec: LlmWireCodec, request: LlmWireRequest, headers
     }
     encodePromptCache(codec, root, request.promptCache, requirements)
     if (requestHasFileImage(request)) { headers.add(LlmWireHeader("anthropic-beta", "files-api-2025-04-14")) }
-    root.put("messages", encodeMessagesTranscript(codec, request.transcript, headers))
-    addMessagesInitialTools(root, request.transcript)
+    root.put("messages", encodeMessagesTranscript(codec, request.transcript, headers, cachePlan: cachePlan))
+    addMessagesInitialTools(root, request.transcript, cachePlan: cachePlan)
     writeBoundedRequestJson(root, "llm.request_too_large", "Messages request exceeds the JSON byte or depth limit")
 }
 

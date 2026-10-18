@@ -91,6 +91,7 @@ main(args: Array<String>): Int64 {
     if (args.size == 2 && args[0] == "check-structured") { return checkStructuredFixture(args[1]) }
     if (args.size < 3) { return 2 }
     match (args[0]) {
+        case "inspect-cache" => inspectCache(args[1], args[2])
         case "encode" => encode(args[1], args[2], true)
         case "encode-fixture" => encode(args[1], args[2], false)
         case "encode-custom-fixture" => encodeCustomFixture(args[1], args[2])

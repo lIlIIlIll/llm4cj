@@ -8,6 +8,7 @@ import datetime
 import json
 import re
 import subprocess
+import sys
 import tempfile
 from decimal import Decimal
 from pathlib import Path
@@ -20,6 +21,7 @@ FIXTURES = ROOT / "fixtures"
 PROBE = ROOT / "support/provider_probe"
 LEGACY_PROBE = ROOT / "support/protocol_probe"
 MANIFEST = FIXTURES / "manifest.json"
+PUBLIC_CHECK_COMMANDS = frozenset({"check-schema", "check-structured", "check-cache"})
 DIALECTS = {
     "openai.responses.v1": "openai-responses",
     "openai.codex.responses.v1": "openai-codex-responses",
@@ -224,7 +226,7 @@ def validate_manifest() -> dict:
         if not re.fullmatch(r"[a-z0-9_-]+", identifier) or identifier in identifiers:
             raise ValueError("duplicate or invalid public fixture check")
         identifiers.add(identifier)
-        if check["command"] not in {"check-schema", "check-structured"}:
+        if check["command"] not in PUBLIC_CHECK_COMMANDS:
             raise ValueError("unknown public fixture check command")
         fixture_path(check["fixture"])
         validate_source(check["source"], identifier)
@@ -326,6 +328,24 @@ def verify_custom_requests(executable: Path, manifest: dict) -> int:
     return len(entries)
 
 
+def verify_public_checks(executable: Path, manifest: dict) -> int:
+    checks = manifest.get("public_checks", [])
+    for check in checks:
+        command = check["command"]
+        if command not in PUBLIC_CHECK_COMMANDS:
+            raise ValueError("unknown public fixture check command")
+        fixture = fixture_path(check["fixture"])
+        if command == "check-cache":
+            arguments = [
+                sys.executable, str(ROOT / "scripts/check_cache_fixtures.py"),
+                "--probe", str(executable), "--fixture", str(fixture),
+            ]
+        else:
+            arguments = [str(executable), command, str(fixture)]
+        subprocess.run(arguments, cwd=ROOT, check=True)
+    return len(checks)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--validate-only", action="store_true", help="validate provenance and inventory without Cangjie")
@@ -356,9 +376,7 @@ def main() -> None:
     requests = verify_requests(executable, manifest) if not options.cases else 0
     custom_requests = verify_custom_requests(executable, manifest) if not options.cases else 0
     if not options.cases:
-        for check in manifest.get("public_checks", []):
-            subprocess.run([str(executable), check["command"], str(fixture_path(check["fixture"]))],
-                           cwd=ROOT, check=True)
+        verify_public_checks(executable, manifest)
     print(f"public fixture semantics verified: {len(chosen)} scenarios, {count} decode comparisons, "
           f"{requests} requests, {custom_requests} custom requests, live provider not_run")
 

@@ -45,7 +45,9 @@ python3 scripts/check_contract.py --write-api-shape
 python3 scripts/check_contract.py
 ```
 
-`scripts/check.sh` 调用 `python3 scripts/check_fixtures.py`，覆盖八个命名 dialect。`fixtures/manifest.json` 保存来源、场景、dialect 和独立手写 oracle；fixed 与 stream 分别对照完整 oracle 后，再比较两条路径，随后核对 continuation、snapshot version 2、restore 与 encode。流式样本覆盖整包、1/3/7 字节分片、CRLF 与尾 CR。oracle 必须按来源审阅后手工更新，没有自动接受当前输出的更新命令；来源和离线回归不代表 live provider 已运行。
+`scripts/check.sh` 调用 `python3 scripts/check_fixtures.py`，覆盖八个命名 dialect。`fixtures/manifest.json` 保存来源、场景、dialect 和独立手写 oracle；fixed 与 stream 分别对照完整 oracle 后，再比较两条路径，随后核对 continuation、适用的 snapshot version、restore 与 encode。流式样本覆盖整包、1/3/7 字节分片、CRLF 与尾 CR。oracle 必须按来源审阅后手工更新，没有自动接受当前输出的更新命令；来源和离线回归不代表 live provider 已运行。
+
+同一 manifest 的 `public_checks` 注册 schema、structured output 与显式缓存 fixture，全部纳入精确 fixture digest。`check-cache` 固定调用 `scripts/check_cache_fixtures.py` 并复用刚构建的公共 probe；20 个缓存场景各自比较 direct、restore、builder 与独立完整 oracle，共 60 次比较，再核对路径一致性。runner 不接受任意命令或脚本路径。
 
 发布使用手动 `Release` workflow：输入已存在的 tag 和同一 candidate SHA 的成功 Provider Smoke run ID。下载 artifact 前，workflow 会通过 GitHub API 验证 run 来自固定 `provider-smoke.yml`、事件为 `workflow_dispatch`、分支为 `main`、head SHA 等于 tag candidate、状态为成功，并验证六个 artifact 的 run identity 与 SHA-256 digest。run ID、workflow ID、workflow path 和 artifact digest 会写入 release manifest。工作流随后运行 candidate release gate，并分别从候选 commit 和远端 tag 安装稳定包及 `llm4cj.experimental` 外部 consumer。稳定 API 会与最新发布 tag 比较并生成 `api-compatibility.json`；实验包参与构建和覆盖率，但明确排除在稳定 API 兼容承诺之外。`api-compatibility.json`、`release-manifest.json` 与 `SHA256SUMS` 会作为 GitHub Release assets 上传。若同名 GitHub Release 已存在，workflow 会失败，不覆盖原有证据。创建 tag/release 仍是显式发布动作，不由普通 CI 自动执行。
 

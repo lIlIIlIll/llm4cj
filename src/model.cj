@@ -340,6 +340,9 @@ func nativeReplayFromPayload(
 }
 
 func validateNativeReplayPayload(protocol: LlmWireProtocol, dialectId: String, nativeType: String, payload: JsonNode): Unit {
+    if (protocol == LlmWireProtocol.Messages && payload.field("cache_control").isSome()) {
+        throw LlmWireError(LlmWireErrorKind.Unsupported, "llm.native_replay_cache_control_unsupported", "thinking replay cannot carry a cache breakpoint")
+    }
     let allowed = match ((protocol, dialectId, nativeType)) {
         case (LlmWireProtocol.Messages, "anthropic.messages.v1", "thinking") |
              (LlmWireProtocol.Messages, "anthropic.messages.v1", "redacted_thinking") |

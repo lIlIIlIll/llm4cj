@@ -7,6 +7,7 @@ public class LlmWireRequestBuilder {
     private let model: String
     private var initialContext = LlmWireInitialContext()
     private var items = ArrayList<LlmWireInputItem>()
+    private var cacheBreakpoints: Array<LlmWireCacheBreakpoint> = []
     private var thinkingMode = LlmWireThinkingMode.ProviderDefault
     private var reasoningEffort = LlmWireReasoningEffort.ProviderDefault
     private var maxOutputTokens: ?Int64 = None
@@ -25,6 +26,7 @@ public class LlmWireRequestBuilder {
         try { validateInitialShape(context) }
         catch (error: LlmWireError) { throw withCodecContext(error, codec, LlmTransportPhase.Encode) }
         let candidate = LlmWireInitialContext(instructions: context.instructions, tools: context.tools)
+        validateCacheBreakpointStructure(candidate, [], cacheBreakpoints)
         initialContext = candidate
     }
     public func setTranscript(value: LlmWireTranscript): Unit {
@@ -40,6 +42,7 @@ public class LlmWireRequestBuilder {
         for (item in candidateItems) { candidate.add(item) }
         initialContext = candidateContext
         items = candidate
+        cacheBreakpoints = value.cacheBreakpoints
     }
     public func append(item: LlmWireInputItem): Unit {
         validateItemShape(item, items.size)
@@ -105,12 +108,17 @@ public class LlmWireRequestBuilder {
         match (routingKey) { case Some(key) => if (key == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.prompt_cache_routing_key_invalid", "prompt cache routing key must not be empty") }; case None => () }
         promptCache = value; promptCacheRoutingKey = routingKey
     }
+    public func setCacheBreakpoints(values: Array<LlmWireCacheBreakpoint>): Unit {
+        try { validateCacheBreakpointStructure(initialContext, items.toArray(), values) }
+        catch (error: LlmWireError) { throw withCodecContext(error, codec, LlmTransportPhase.Encode) }
+        cacheBreakpoints = copyValues(values)
+    }
     public func setToolChoice(value: LlmWireToolChoice): Unit { toolChoice = value }
     public func setStructuredOutput(value: LlmWireStructuredOutput): Unit { structuredOutput = value }
 
     public func build(): LlmWireResult<LlmWireRequest> {
         let request = LlmWireRequest(
-            model, LlmWireTranscript(initialContext, items: items.toArray()),
+            model, LlmWireTranscript(initialContext, items: items.toArray(), cacheBreakpoints: cacheBreakpoints),
             thinkingMode: thinkingMode, reasoningEffort: reasoningEffort, maxOutputTokens: maxOutputTokens,
             parallelToolCalls: parallelToolCalls, serviceTier: serviceTier, generationSpeed: generationSpeed,
             promptCache: promptCache, promptCacheRoutingKey: promptCacheRoutingKey,
@@ -123,6 +131,7 @@ public class LlmWireRequestBuilder {
     public func reset(): Unit {
         initialContext = LlmWireInitialContext()
         items = ArrayList<LlmWireInputItem>()
+        cacheBreakpoints = []
         thinkingMode = LlmWireThinkingMode.ProviderDefault; reasoningEffort = LlmWireReasoningEffort.ProviderDefault
         maxOutputTokens = None; parallelToolCalls = None; serviceTier = LlmWireServiceTier.ProviderDefault
         generationSpeed = LlmWireGenerationSpeed.ProviderDefault; promptCache = LlmWirePromptCache.ProviderDefault

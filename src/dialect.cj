@@ -264,9 +264,11 @@ public class LlmWireOutputCapabilities {
 
 public class LlmWireCacheCapabilities {
     private let lifetimesValue: Array<LlmWirePromptCacheLifetime>
-    public init(lifetimes!: Array<LlmWirePromptCacheLifetime> = []) {
+    public let explicitBreakpoints: Bool
+    public init(lifetimes!: Array<LlmWirePromptCacheLifetime> = [], explicitBreakpoints!: Bool = false) {
         if (hasDuplicate(lifetimes)) { throw IllegalArgumentException("cache capabilities must not contain duplicate lifetimes") }
         this.lifetimesValue = copyValues(lifetimes)
+        this.explicitBreakpoints = explicitBreakpoints
     }
     public prop lifetimes: Array<LlmWirePromptCacheLifetime> { get() { copyValues(lifetimesValue) } }
 }
@@ -385,7 +387,7 @@ public class LlmWireCodec {
         this.protocol = protocol; this.dialect = FrozenWireDialect(frozen); this.capabilities = capabilities; this.provider = provider; this.modelProfile = modelProfile
     }
     public func encodeRequest(request: LlmWireRequest, streaming!: Bool = false): LlmWirePreparedRequest {
-        try { validateWireRequest(this, request); encodeWireRequest(this, request, streaming) }
+        try { let cachePlan = validateWireRequest(this, request); encodeWireRequest(this, request, streaming, cachePlan: cachePlan) }
         catch (error: LlmWireError) { throw withCodecContext(error, this, LlmTransportPhase.Encode) }
     }
     public func newRequestBuilder(model!: String = ""): LlmWireRequestBuilder {
