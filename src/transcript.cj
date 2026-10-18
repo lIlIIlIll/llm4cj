@@ -38,6 +38,10 @@ public class LlmWireInitialContext {
     }
     public prop instructions: Array<LlmWireInstruction> { get() { copyValues(instructionsValue) } }
     public prop tools: Array<LlmWireToolDeclaration> { get() { copyValues(toolsValue) } }
+    func chargeInspection(checks: RequestCheckSink): Unit {
+        for (value in instructionsValue) { checks.charge(bytes: value.text.size) }
+        for (value in toolsValue) { chargeDeclarationInspection(checks, value) }
+    }
 }
 
 public enum LlmWireInputItem {
@@ -70,6 +74,11 @@ public class LlmWireTranscript {
     public prop items: Array<LlmWireInputItem> { get() { copyTranscriptItems(itemsValue) } }
     public prop cacheBreakpoints: Array<LlmWireCacheBreakpoint> { get() { copyValues(cacheBreakpointsValue) } }
     func itemCount(): Int64 { itemsValue.size }
+    func chargeInspection(checks: RequestCheckSink): Unit {
+        initialContext.chargeInspection(checks)
+        checks.charge(count: cacheBreakpointsValue.size)
+        for (item in itemsValue) { chargeItemInspection(checks, item) }
+    }
     public prop effectiveTools: Array<LlmWireToolDefinition> { get() { replayTranscript(this).activeTools } }
     public func append(item: LlmWireInputItem): LlmWireTranscript {
         let result = ArrayList<LlmWireInputItem>()

@@ -8,6 +8,8 @@
 
 `LlmWireCodec.encodeRequest` 返回 opaque `LlmWirePreparedRequest`。调用 `materialize` 后才得到 `LlmWireMaterializedRequest`。后者公开 UTF-8 `body` bytes 和合并后的 headers。未解析的 feature requirement、冲突 header 或不安全 header 会返回 `LlmWireResult.Err`。
 
+`inspectRequestCapabilities(codec, request, streaming: false)` 返回 `LlmWireRequestCapabilityReport`，使用 codec 已绑定的 endpoint profile。`LlmWireCapabilityDiagnostic` 的 `LlmWireCapabilityDiagnosticKind` 为 Requirement、Unsupported 或 Invalid，并保留 featureId、code、安全 message、输入项/block 位置及可选 requirementState。报告有界、确定性排序；`complete` 表示静态检查完成，不提供发送许可。用法、限额及 materialize 边界见[请求能力预检](request-capabilities.md)。
+
 `LlmWireHttpResponse` 保存 status、headers 和有界读取后的 body bytes。`decodeResponse(LlmWireHttpResponse)` 返回 `LlmWireResult<LlmWireResponseState>`。2xx body 进入协议 decoder；非 2xx provider 错误保持为 `Terminal(ProviderFailed)`，并保留 status、`Retry-After` 和 provider request ID。
 
 ## 请求、block 与响应

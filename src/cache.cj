@@ -81,62 +81,100 @@ class ResolvedCachePlan {
 
 class CachePlanResolver {
     private let values: Array<LlmWireCacheBreakpoint>
+    private let lifetimesValid: Array<Bool>
+    private let checks: RequestCheckSink
     private let ordered = ArrayList<LlmWireCacheBreakpoint>()
     private var last: ?LlmWireCachePosition = None
-    init(values: Array<LlmWireCacheBreakpoint>) { this.values = values }
+    private var valid = true
+    init(values: Array<LlmWireCacheBreakpoint>, lifetimesValid: Array<Bool>, checks: RequestCheckSink) {
+        this.values = values; this.lifetimesValid = lifetimesValid; this.checks = checks
+    }
     func observe(position: LlmWireCachePosition, eligible: Bool): Unit {
+        checks.charge()
         if (eligible) { last = Some(position) }
-        for (value in values where value.position == position) {
-            if (!eligible) { cachePositionError("llm.cache_target_invalid", "cache position does not identify an eligible emitted block", position) }
-            ordered.add(value)
+        for (index in 0..values.size where values[index].position == position) {
+            let accepted = checkCachePosition(checks, "cache.target", position, { =>
+                if (!eligible) { cachePositionError("llm.cache_target_invalid", "cache position does not identify an eligible emitted block", position) }
+            })
+            if (!accepted) { valid = false }
+            if (accepted && lifetimesValid[index]) { ordered.add(values[index]) }
         }
     }
     func finish(automatic: ?LlmWirePromptCacheLifetime): Unit {
         var shortSeen = false
         for (value in ordered) {
+            checks.charge()
             let lifetime = effectiveCacheLifetime(value.lifetime)
             if (lifetime == LlmWirePromptCacheLifetime.FiveMinutes) { shortSeen = true }
-            else if (shortSeen) { cachePositionError("llm.cache_ttl_order_invalid", "one-hour cache breakpoints must precede five-minute breakpoints", value.position) }
+            else if (shortSeen) {
+                if (!checkCachePosition(checks, "cache.order", value.position, { =>
+                    cachePositionError("llm.cache_ttl_order_invalid", "one-hour cache breakpoints must precede five-minute breakpoints", value.position)
+                })) { valid = false }
+            }
         }
         match ((automatic, last)) {
             case (Some(lifetime), Some(position)) =>
-                for (value in values where value.position == position) {
-                    if (effectiveCacheLifetime(value.lifetime) != effectiveCacheLifetime(lifetime)) {
-                        cachePositionError("llm.cache_ttl_conflict", "automatic and explicit cache TTLs conflict at the final eligible block", position)
-                    }
+                for (value in ordered where value.position == position) {
+                    if (!checkCachePosition(checks, "cache.automatic", position, { =>
+                        if (effectiveCacheLifetime(value.lifetime) != effectiveCacheLifetime(lifetime)) {
+                            cachePositionError("llm.cache_ttl_conflict", "automatic and explicit cache TTLs conflict at the final eligible block", position)
+                        }
+                    })) { valid = false }
                     return
                 }
                 if (shortSeen && effectiveCacheLifetime(lifetime) == LlmWirePromptCacheLifetime.OneHour) {
-                    cachePositionError("llm.cache_ttl_order_invalid", "automatic one-hour cache cannot follow a five-minute breakpoint", position)
+                    if (!checkCachePosition(checks, "cache.automatic", position, { =>
+                        cachePositionError("llm.cache_ttl_order_invalid", "automatic one-hour cache cannot follow a five-minute breakpoint", position)
+                    })) { valid = false }
                 }
             case _ => ()
         }
     }
+    func isValid(): Bool { valid }
+}
+
+func checkCachePosition(checks: RequestCheckSink, feature: String, position: LlmWireCachePosition, body: () -> Unit): Bool {
+    let (item, block) = match (position) {
+        case LlmWireCachePosition.MessageBlock(item, block) => (item, block)
+        case LlmWireCachePosition.Item(item) => (item, -1)
+        case _ => (-1, -1)
+    }
+    checks.check(feature, body, itemIndex: item, blockIndex: block)
 }
 
 func resolveCachePlan(codec: LlmWireCodec, request: LlmWireRequest): ResolvedCachePlan {
+    checkCachePlan(codec, request, RequestCheckSink()).getOrThrow()
+}
+
+func checkCachePlan(codec: LlmWireCodec, request: LlmWireRequest, checks: RequestCheckSink, replayValid!: Bool = true): ?ResolvedCachePlan {
     let values = request.transcript.cacheBreakpoints
-    if (values.isEmpty()) { return ResolvedCachePlan() }
-    if (codec.dialect.compatibilityId != "anthropic.messages.v1" || codec.dialect.contract.promptCacheStyle != LlmWirePromptCacheStyle.Anthropic || !codec.capabilities.cache.explicitBreakpoints) {
-        unsupportedRequest("llm.cache_explicit_unsupported", "explicit cache breakpoints require the built-in Anthropic contract and model capability")
-    }
+    if (values.isEmpty()) { return if (replayValid) { Some(ResolvedCachePlan()) } else { None } }
+    var valid = checks.check("cache.explicit", { =>
+        if (codec.dialect.compatibilityId != "anthropic.messages.v1" || codec.dialect.contract.promptCacheStyle != LlmWirePromptCacheStyle.Anthropic || !codec.capabilities.cache.explicitBreakpoints) {
+            unsupportedRequest("llm.cache_explicit_unsupported", "explicit cache breakpoints require the built-in Anthropic contract and model capability")
+        }
+    })
     let automatic: ?LlmWirePromptCacheLifetime = match (request.promptCache) { case LlmWirePromptCache.Automatic(lifetime) => Some(lifetime); case _ => None }
     // Automatic caching reserves a slot even when its final placement is a no-op.
-    if (automatic.isSome() && values.size > 3) {
+    if (!checks.check("cache.slots", { => if (automatic.isSome() && values.size > 3) {
         throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.cache_breakpoint_limit", "automatic caching leaves at most three explicit breakpoint slots")
-    }
+    } })) { valid = false }
+    let lifetimesValid = ArrayList<Bool>()
     for (value in values) {
-        let lifetime = value.lifetime
-        var contract = false; for (candidate in codec.dialect.contract.promptCacheLifetimes where candidate == lifetime) { contract = true }
-        var capability = false; for (candidate in codec.capabilities.cache.lifetimes where candidate == lifetime) { capability = true }
-        if (!contract || !capability || (effectiveCacheLifetime(lifetime) != LlmWirePromptCacheLifetime.FiveMinutes && lifetime != LlmWirePromptCacheLifetime.OneHour)) {
-            unsupportedRequest("llm.cache_lifetime_unsupported", "explicit cache TTL is not supported by this dialect and model")
-        }
+        let accepted = checkCachePosition(checks, "cache.lifetime", value.position, { =>
+            if (!cacheLifetimeSupported(codec, value.lifetime) || (effectiveCacheLifetime(value.lifetime) != LlmWirePromptCacheLifetime.FiveMinutes && value.lifetime != LlmWirePromptCacheLifetime.OneHour)) {
+                unsupportedRequest("llm.cache_lifetime_unsupported", "explicit cache TTL is not supported by this dialect and model")
+            }
+        })
+        lifetimesValid.add(accepted)
+        if (!accepted) { valid = false }
     }
-    let resolver = CachePlanResolver(values)
+    if (!replayValid) { return None }
+    let resolver = CachePlanResolver(values, lifetimesValid.toArray(), checks)
     let context = request.transcript.initialContext
     let tools = context.tools; let seen = HashSet<String>()
     for (index in 0..tools.size) {
+        checks.charge(bytes: tools[index].tool.name.size)
         let tool = tools[index]
         let emitted = seen.add(tool.tool.name)
         resolver.observe(LlmWireCachePosition.InitialTool(index), emitted && !tool.deferred && tool.tool.kind == LlmWireToolKind.Function)
@@ -146,7 +184,7 @@ func resolveCachePlan(codec: LlmWireCodec, request: LlmWireRequest): ResolvedCac
         resolver.observe(LlmWireCachePosition.InitialInstruction(index), instructions[index].role == LlmWireInstructionRole.System && instructions[index].text != "")
     }
     let items = request.transcript.items
-    for (index in 0..items.size) { match (items[index]) {
+    for (index in 0..items.size) { checks.charge(); match (items[index]) {
         case LlmWireInputItem.Message(message) =>
             resolver.observe(LlmWireCachePosition.Item(index), false)
             for (block in 0..message.blocks.size) {
@@ -162,8 +200,12 @@ func resolveCachePlan(codec: LlmWireCodec, request: LlmWireRequest): ResolvedCac
             resolver.observe(LlmWireCachePosition.Item(index), true)
         case _ => resolver.observe(LlmWireCachePosition.Item(index), false)
     } }
-    resolver.finish(automatic)
-    ResolvedCachePlan(values: values)
+    let validAutomatic: ?LlmWirePromptCacheLifetime = match (automatic) {
+        case Some(lifetime) => if (cacheLifetimeSupported(codec, lifetime)) { automatic } else { None }
+        case None => None
+    }
+    resolver.finish(validAutomatic)
+    if (valid && resolver.isValid()) { Some(ResolvedCachePlan(values: values)) } else { None }
 }
 
 func snapshotCacheBreakpoint(value: LlmWireCacheBreakpoint): JsonNode {

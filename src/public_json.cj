@@ -174,6 +174,18 @@ public class LlmWireJson {
 
     public func stringify(): String { canonical }
 
+    func chargeInspection(checks: RequestCheckSink): Unit {
+        if (!checks.collecting) { return }
+        checks.charge(bytes: canonical.size)
+        chargeJsonInspection(checks, cached)
+    }
+
+    func chargeCanonicalComparison(checks: RequestCheckSink): Unit {
+        if (!checks.collecting) { return }
+        checks.charge(bytes: canonical.size)
+        chargeJsonOrdering(checks, cached)
+    }
+
     func jsonNode(): JsonNode { parseWireJson(canonical) }
 }
 

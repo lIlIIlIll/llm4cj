@@ -1,6 +1,5 @@
 package llm4cj
 
-import std.collection.*
 import std.convert.*
 import yjson.*
 
@@ -78,193 +77,234 @@ func wireRequiredInt(value: JsonNode, name: String, provider!: String = ""): Int
 }
 
 func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCachePrewarm!: Bool = false): ResolvedCachePlan {
-    if (codec.protocol == LlmWireProtocol.Responses) { validateResponsesInputSize(request, codec.dialect.compatibilityId == "openai.codex.responses.v1") }
-    if (request.model == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.model_missing", "model must not be empty") }
-    match (codec.modelProfile) {
-        case Some(profile) =>
-            if (request.model != profile.model) {
-                throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.model_profile_mismatch", "request model must match the codec model profile")
-            }
-        case None => ()
+    checkWireRequest(codec, request, RequestCheckSink(), allowCachePrewarm: allowCachePrewarm).getOrThrow()
+}
+
+func checkWireRequest(codec: LlmWireCodec, request: LlmWireRequest, checks: RequestCheckSink, allowCachePrewarm!: Bool = false): ?ResolvedCachePlan {
+    if (codec.protocol == LlmWireProtocol.Responses) {
+        checks.check("request.size", { => validateResponsesInputSize(request, codec.dialect.compatibilityId == "openai.codex.responses.v1") })
     }
-    match (request.maxOutputTokens) {
-        case Some(value) =>
-            if (value <= 0 && !(allowCachePrewarm && value == 0)) {
-                throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.max_output_tokens_invalid", "maxOutputTokens must be positive")
-            }
-        case None => ()
-    }
-    if (codec.dialect.contract.requireMaxOutputTokens && request.maxOutputTokens.isNone()) {
-        throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.max_output_tokens_required", "this dialect requires maxOutputTokens")
-    }
-    let view = replayTranscript(request.transcript)
-    validateTranscriptPositions(codec, request.transcript)
-    validateTranscriptCapabilities(codec, request)
-    for (instruction in request.transcript.initialContext.instructions) {
-        if (instruction.text.trimAscii() == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.instruction_empty", "instruction text must not be empty") }
-        if (codec.protocol == LlmWireProtocol.Messages && instruction.role == LlmWireInstructionRole.Developer) {
-            unsupportedRequest("llm.developer_instruction_unsupported", "Messages does not represent developer instructions")
+    checks.check("request.model", { =>
+        if (request.model == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.model_missing", "model must not be empty") }
+    })
+    checks.check("request.model_profile", { => match (codec.modelProfile) {
+        case Some(profile) => if (request.model != profile.model) {
+            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.model_profile_mismatch", "request model must match the codec model profile")
         }
+        case None => ()
+    } })
+    checks.check("output.max_tokens", { => match (request.maxOutputTokens) {
+        case Some(value) => if (value <= 0 && !(allowCachePrewarm && value == 0)) {
+            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.max_output_tokens_invalid", "maxOutputTokens must be positive")
+        }
+        case None => ()
+    } })
+    checks.check("output.max_tokens", { =>
+        if (codec.dialect.contract.requireMaxOutputTokens && request.maxOutputTokens.isNone()) {
+            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.max_output_tokens_required", "this dialect requires maxOutputTokens")
+        }
+    })
+    let view = checks.value("transcript.structure", { => replayTranscript(request.transcript, checks: checks) }, prerequisite: true)
+    if (view.isSome()) {
+        checks.check("context.position", { => validateTranscriptPositions(codec, request.transcript, checks: checks) }, prerequisite: true)
+        validateTranscriptCapabilities(codec, request, checks: checks)
     }
-    let transcriptItems = request.transcript.items
-    for (itemIndex in 0..transcriptItems.size) { match (transcriptItems[itemIndex]) {
-        case LlmWireInputItem.InstructionUpdate(instruction) =>
-            if (instruction.text.trimAscii() == "") { throw transcriptError("llm.instruction_empty", "instruction updates must not be empty", itemIndex) }
+    for (instruction in request.transcript.initialContext.instructions) {
+        checks.check("input.instruction", { =>
+            if (instruction.text.trimAscii() == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.instruction_empty", "instruction text must not be empty") }
+            if (codec.protocol == LlmWireProtocol.Messages && instruction.role == LlmWireInstructionRole.Developer) {
+                checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.developer_instruction_unsupported", "Messages does not represent developer instructions"))
+            }
+        })
+    }
+    let items = request.transcript.items
+    for (index in 0..items.size) { checks.charge(); match (items[index]) {
+        case LlmWireInputItem.InstructionUpdate(instruction) => checks.check("input.instruction", { =>
+            if (instruction.text.trimAscii() == "") { throw transcriptError("llm.instruction_empty", "instruction updates must not be empty", index) }
+        }, itemIndex: index)
         case _ => ()
     } }
-    match (codec.protocol) {
+    checks.check("input.messages", { => match (codec.protocol) {
         case LlmWireProtocol.Responses =>
-            if (request.transcript.items.isEmpty() && request.transcript.initialContext.instructions.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.responses_input_required", "Responses requires input items or instructions") }
-        case LlmWireProtocol.ChatCompletions =>
-            if (view.messages.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.chat_messages_required", "Chat Completions requires at least one message") }
-        case LlmWireProtocol.Messages =>
-            if (view.messages.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.messages_required", "Messages requires at least one message") }
+            if (items.isEmpty() && request.transcript.initialContext.instructions.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.responses_input_required", "Responses requires input items or instructions") }
+        case LlmWireProtocol.ChatCompletions | LlmWireProtocol.Messages => match (view) {
+            case Some(value) => if (value.messages.isEmpty()) {
+                let code = if (codec.protocol == LlmWireProtocol.Messages) { "llm.messages_required" } else { "llm.chat_messages_required" }
+                throw LlmWireError(LlmWireErrorKind.InvalidRequest, code, "the protocol requires messages")
+            }
+            case None => ()
+        }
+    } })
+    checks.check("thinking", { => validateThinking(codec, request, checks: checks) })
+    checks.check("request.combination", { => validateRequestCombinations(codec, request, checks: checks) })
+    match (request.structuredOutput) {
+        case LlmWireStructuredOutput.JsonSchema(value) =>
+            checks.charge(bytes: value.name.size); checks.charge(bytes: value.description.size); value.schema.chargeInspection(checks)
+        case LlmWireStructuredOutput.JsonSchemaDocument(value) => value.chargeInspection(checks)
+        case _ => ()
     }
-    validateThinking(codec, request)
-    validateRequestCombinations(codec, request)
-    validateStructuredSchema(request)
-    var usesTools = !view.declaredTools.isEmpty()
-    for (message in view.messages) { for (block in message.blocks) { match (block) { case LlmWireBlock.ToolCall(_) | LlmWireBlock.ToolResult(_) => usesTools = true; case _ => () } } }
-    match (request.toolChoice) { case LlmWireToolChoice.ProviderDefault => (); case _ => usesTools = true }
-    if (usesTools && (!codec.dialect.contract.tools || !codec.capabilities.tools.enabled)) { unsupportedRequest("llm.tools_unsupported", "tools require an explicit dialect and model capability") }
-    for (declaration in view.declaredTools) { validateCustomToolCapability(codec, declaration.tool) }
-    if ((request.toolChoice == LlmWireToolChoice.Required || request.toolChoice == LlmWireToolChoice.Auto) && view.activeTools.isEmpty()) {
-        throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_choice_without_tools", "toolChoice requires at least one declared tool")
+    checks.check("structured_output.schema", { => validateStructuredSchema(request) })
+    match (view) {
+        case Some(value) =>
+            var usesTools = !value.declaredTools.isEmpty()
+            for (message in value.messages) { for (block in message.blocks) { checks.charge(); match (block) {
+                case LlmWireBlock.ToolCall(_) | LlmWireBlock.ToolResult(_) => usesTools = true
+                case _ => ()
+            } } }
+            match (request.toolChoice) { case LlmWireToolChoice.ProviderDefault => (); case _ => usesTools = true }
+            let toolCapabilityRequired = usesTools
+            checks.check("tools", { =>
+                if (toolCapabilityRequired && (!codec.dialect.contract.tools || !codec.capabilities.tools.enabled)) { unsupportedRequest("llm.tools_unsupported", "tools require an explicit dialect and model capability") }
+            })
+        case None => ()
     }
-    validateStructuredOutput(codec, request.structuredOutput)
+    validateCustomToolRequestChecks(codec, request, checks)
+    checks.check("tools.choice", { => match (view) {
+        case Some(value) => if ((request.toolChoice == LlmWireToolChoice.Required || request.toolChoice == LlmWireToolChoice.Auto) && value.activeTools.isEmpty()) {
+            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_choice_without_tools", "toolChoice requires active tools")
+        }
+        case None => ()
+    } })
+    checks.check("structured_output", { => validateStructuredOutput(codec, request.structuredOutput, checks: checks) })
     match (request.parallelToolCalls) {
         case Some(_) =>
-            if (view.activeTools.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.parallel_tools_without_tools", "parallel tool calls require active tools") }
-            if (codec.dialect.contract.parallelToolStyle == LlmWireParallelToolStyle.Unsupported || !codec.capabilities.tools.parallelCalls) { unsupportedRequest("llm.parallel_tools_unsupported", "parallel tool calls are not supported by this dialect and model") }
+            checks.check("tools.parallel", { => match (view) {
+                case Some(value) => if (value.activeTools.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.parallel_tools_without_tools", "parallel tool calls require active tools") }
+                case None => ()
+            } })
+            checks.check("tools.parallel", { =>
+                if (codec.dialect.contract.parallelToolStyle == LlmWireParallelToolStyle.Unsupported || !codec.capabilities.tools.parallelCalls) { unsupportedRequest("llm.parallel_tools_unsupported", "parallel tool calls are not supported") }
+            })
         case None => ()
     }
-    validateServiceTier(codec, request.serviceTier)
-    validateGenerationSpeed(codec, request.generationSpeed)
-    validatePromptCache(codec, request.promptCache, request.promptCacheRoutingKey)
-    validateAudioRequest(codec, request, false, anyOutputMode: true)
-    for (itemIndex in 0..transcriptItems.size) { match (transcriptItems[itemIndex]) {
+    checks.check("service_tier", { => validateServiceTier(codec, request.serviceTier) })
+    checks.check("generation_speed", { => validateGenerationSpeed(codec, request.generationSpeed) })
+    match (request.promptCacheRoutingKey) { case Some(value) => checks.charge(bytes: value.size); case None => () }
+    checks.check("cache", { => validatePromptCache(codec, request.promptCache, request.promptCacheRoutingKey, checks: checks) })
+    validateAudioRequest(codec, request, false, anyOutputMode: true, checks: checks)
+    for (index in 0..items.size) { checks.charge(); match (items[index]) {
         case LlmWireInputItem.Message(message) =>
-        try {
-        let blocks = message.blocks
-        validateMessagePhaseMetadata(codec, message)
-        var deepSeekReasoningBlocks: Int64 = 0
-        if (!messageHasContent(message)) {
-            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.message_empty", "canonical messages must contain at least one non-empty block")
-        }
-        for (blockIndex in 0..blocks.size) {
-            validateBlockForReplay(codec, request, message, blocks[blockIndex], blockIndex)
-            validateBlockShape(blocks[blockIndex])
-            match (blocks[blockIndex]) {
-                case LlmWireBlock.Image(value) => validateImageCapability(codec, message, value)
-                case LlmWireBlock.NativeReplay(value) =>
-                    if (chatHasReplayReasoning(codec) && value.nativeType == "reasoning_content") {
-                        deepSeekReasoningBlocks++
-                        if (deepSeekReasoningBlocks > 1) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_cardinality_invalid", "Chat assistant turns may contain only one reasoning_content replay block") }
-                    }
-                case LlmWireBlock.ToolResult(value) =>
-                    if (value.kind == LlmWireToolKind.Function && value.content.isEmpty()) {
-                        throw LlmWireError(
-                            LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty",
-                            "tool results require at least one content part"
-                        )
-                    }
-                    for (part in value.content) { match (part) {
-                        case LlmWireToolResultContent.Text(text) =>
-                            if (value.kind == LlmWireToolKind.Function && text.text == "") {
-                                throw LlmWireError(
-                                    LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty",
-                                    "tool-result text must not be empty"
-                                )
-                            }
-                            if (value.kind == LlmWireToolKind.Custom && (text.phase != LlmWireOutputPhase.Unspecified || !text.citations.isEmpty() || !text.annotations.isEmpty() || !text.logprobs.isEmpty())) {
-                                unsupportedRequest("llm.custom_tool_result_metadata_unsupported", "custom tool result input_text cannot replay output metadata")
-                            }
-                        case LlmWireToolResultContent.Image(image) => validateBlockShape(LlmWireBlock.Image(image)); validateImageCapability(codec, message, image)
-                    } }
-                    if (codec.dialect.contract.toolErrorStyle == LlmWireToolErrorStyle.Unsupported && value.isError) {
-                        unsupportedRequest("llm.tool_result_error_semantics_unsupported", "this dialect does not declare tool-result error semantics")
-                    }
-                case _ => ()
-            }
-        }
-        } catch (error: LlmWireError) { throw withInputItemContext(error, itemIndex) }
+            try { validateMessageRequestChecks(codec, request, message, index, checks) }
+            catch (error: LlmWireError) { throw withInputItemContext(error, index) }
         case _ => ()
     } }
-    resolveCachePlan(codec, request)
+    checkCachePlan(codec, request, checks, replayValid: view.isSome())
 }
 
-func validateMessagePhaseMetadata(codec: LlmWireCodec, message: LlmWireMessage): Unit {
-    let spans = message.messageSpans
-    validateMessageSpanLayout(spans, message.blocks.size, { index => isResponsesMessageContent(message.blocks[index]) })
-    if (!spans.isEmpty()) {
-        if (message.role != LlmWireRole.Assistant) { unsupportedRequest("llm.responses_phase_role_unsupported", "assistant message spans cannot be attached to user messages") }
-        if (codec.protocol != LlmWireProtocol.Responses) { unsupportedRequest("llm.responses_phase_unsupported", "this protocol cannot represent Responses assistant message boundaries") }
-        for (span in spans) {
-            let _ = outputPhaseName(span.phase)
-            for (index in span.blockStart..span.blockStart + span.blockCount) { match (message.blocks[index]) {
-                case LlmWireBlock.Text(value) =>
-                    if (value.phase != LlmWireOutputPhase.Unspecified && value.phase != span.phase) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.responses_phase_mismatch", "text phase conflicts with its assistant message span") }
-                case _ => ()
-            } }
+func validateMessageRequestChecks(codec: LlmWireCodec, request: LlmWireRequest, message: LlmWireMessage, itemIndex: Int64, checks: RequestCheckSink): Unit {
+    validateMessagePhaseMetadata(codec, message, checks: checks, itemIndex: itemIndex)
+    checks.check("input.message", { => if (!messageHasContent(message)) {
+        throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.message_empty", "canonical messages require content")
+    } }, itemIndex: itemIndex)
+    var reasoningBlocks: Int64 = 0
+    for (index in 0..message.blocks.size) {
+        checks.charge()
+        let block = message.blocks[index]
+        checks.check("input.replay", { => validateBlockForReplay(codec, request, message, block, index, checks: checks) }, itemIndex: itemIndex, blockIndex: index)
+        checks.check("input.shape", { => validateBlockShape(block, checks: checks) }, itemIndex: itemIndex, blockIndex: index)
+        match (block) {
+            case LlmWireBlock.Image(value) => checks.check("input.image", { => validateImageCapability(codec, message, value, checks: checks) }, itemIndex: itemIndex, blockIndex: index)
+            case LlmWireBlock.NativeReplay(value) =>
+                if (chatHasReplayReasoning(codec) && value.nativeType == "reasoning_content") {
+                    reasoningBlocks++
+                    let duplicateReasoning = reasoningBlocks > 1
+                    checks.check("input.replay", { => if (duplicateReasoning) {
+                        throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_cardinality_invalid", "Chat permits one reasoning_content replay block")
+                    } }, itemIndex: itemIndex, blockIndex: index)
+                }
+            case LlmWireBlock.ToolResult(value) =>
+                checks.check("tools.result", { => if (value.kind == LlmWireToolKind.Function && value.content.isEmpty()) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty", "tool results require content") } }, itemIndex: itemIndex, blockIndex: index)
+                for (part in value.content) { checks.charge(); match (part) {
+                    case LlmWireToolResultContent.Text(text) =>
+                        checks.check("tools.result", { => if (value.kind == LlmWireToolKind.Function && text.text == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_result_content_empty", "tool-result text must not be empty") } }, itemIndex: itemIndex, blockIndex: index)
+                        checks.check("tools.result_metadata", { => if (value.kind == LlmWireToolKind.Custom && (text.phase != LlmWireOutputPhase.Unspecified || !text.citations.isEmpty() || !text.annotations.isEmpty() || !text.logprobs.isEmpty())) {
+                            unsupportedRequest("llm.custom_tool_result_metadata_unsupported", "custom tool result input_text cannot replay output metadata")
+                        } }, itemIndex: itemIndex, blockIndex: index)
+                    case LlmWireToolResultContent.Image(image) =>
+                        checks.check("input.shape", { => validateBlockShape(LlmWireBlock.Image(image), checks: checks) }, itemIndex: itemIndex, blockIndex: index)
+                        checks.check("input.image", { => validateImageCapability(codec, message, image, checks: checks) }, itemIndex: itemIndex, blockIndex: index)
+                } }
+                checks.check("tools.result", { => if (codec.dialect.contract.toolErrorStyle == LlmWireToolErrorStyle.Unsupported && value.isError) { unsupportedRequest("llm.tool_result_error_semantics_unsupported", "this dialect does not declare tool-result error semantics") } }, itemIndex: itemIndex, blockIndex: index)
+            case _ => ()
         }
     }
-    for (block in message.blocks) { match (block) {
+}
+
+func validateMessagePhaseMetadata(codec: LlmWireCodec, message: LlmWireMessage, checks!: RequestCheckSink = RequestCheckSink(), itemIndex!: Int64 = -1): Unit {
+    let spans = message.messageSpans
+    let layoutValid = checks.check("input.phase_layout", { =>
+        validateMessageSpanLayout(spans, message.blocks.size, { index => isResponsesMessageContent(message.blocks[index]) })
+    }, itemIndex: itemIndex, prerequisite: true)
+    if (!spans.isEmpty()) {
+        checks.check("input.phase_role", { => if (message.role != LlmWireRole.Assistant) { unsupportedRequest("llm.responses_phase_role_unsupported", "assistant message spans require assistant messages") } }, itemIndex: itemIndex)
+        checks.check("input.phase_protocol", { => if (codec.protocol != LlmWireProtocol.Responses) { unsupportedRequest("llm.responses_phase_unsupported", "this protocol cannot represent Responses message boundaries") } }, itemIndex: itemIndex)
+        if (layoutValid) { for (span in spans) { checks.charge()
+            checks.check("input.phase", { => let _ = outputPhaseName(span.phase) }, itemIndex: itemIndex, blockIndex: span.blockStart)
+            for (index in span.blockStart..span.blockStart + span.blockCount) { checks.charge(); match (message.blocks[index]) {
+                case LlmWireBlock.Text(value) => checks.check("input.phase", { =>
+                    if (value.phase != LlmWireOutputPhase.Unspecified && value.phase != span.phase) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.responses_phase_mismatch", "text phase conflicts with its message span") }
+                }, itemIndex: itemIndex, blockIndex: index)
+                case _ => ()
+            } }
+        } }
+    }
+    for (index in 0..message.blocks.size) { checks.charge(); match (message.blocks[index]) {
         case LlmWireBlock.Text(value) => if (value.phase != LlmWireOutputPhase.Unspecified) {
-            if (message.role != LlmWireRole.Assistant) {
+            checks.check("input.phase_role", { => if (message.role != LlmWireRole.Assistant) {
                 unsupportedRequest(if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.OpenAiCodexResponses) { "llm.codex_phase_role_unsupported" } else { "llm.responses_phase_role_unsupported" }, "phase belongs to assistant messages")
-            }
-            if (codec.protocol != LlmWireProtocol.Responses) { unsupportedRequest("llm.responses_phase_unsupported", "this protocol cannot represent assistant message phase") }
-            let _ = outputPhaseName(value.phase)
+            } }, itemIndex: itemIndex, blockIndex: index)
+            checks.check("input.phase_protocol", { => if (codec.protocol != LlmWireProtocol.Responses) { unsupportedRequest("llm.responses_phase_unsupported", "this protocol cannot represent assistant message phase") } }, itemIndex: itemIndex, blockIndex: index)
+            checks.check("input.phase", { => let _ = outputPhaseName(value.phase) }, itemIndex: itemIndex, blockIndex: index)
         }
         case _ => ()
     } }
 }
 
-func validateRequestCombinations(codec: LlmWireCodec, request: LlmWireRequest): Unit {
+func validateRequestCombinations(codec: LlmWireCodec, request: LlmWireRequest, checks!: RequestCheckSink = RequestCheckSink()): Unit {
     if (request.thinkingMode == LlmWireThinkingMode.Disabled && request.reasoningEffort != LlmWireReasoningEffort.ProviderDefault) {
-        unsupportedRequest("llm.reasoning_effort_mode_unsupported", "disabled thinking cannot use a reasoning effort")
+        checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.reasoning_effort_mode_unsupported", "disabled thinking cannot use a reasoning effort"))
     }
     match (codec.dialect.contract.requestStyle) {
         case LlmWireRequestStyle.AnthropicMessages =>
             if (let LlmWireThinkingMode.Budget(_) <- request.thinkingMode) {
                 if (request.toolChoice == LlmWireToolChoice.Required) {
-                    unsupportedRequest("llm.thinking_tool_choice_unsupported", "manual Anthropic thinking supports only automatic or disabled tool choice")
+                    checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.thinking_tool_choice_unsupported", "manual Anthropic thinking supports only automatic or disabled tool choice"))
                 }
             }
             if (request.reasoningEffort != LlmWireReasoningEffort.ProviderDefault && request.thinkingMode != LlmWireThinkingMode.Adaptive) {
-                unsupportedRequest("llm.reasoning_effort_mode_unsupported", "Anthropic reasoning effort requires adaptive thinking")
+                checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.reasoning_effort_mode_unsupported", "Anthropic reasoning effort requires adaptive thinking"))
             }
         case LlmWireRequestStyle.DeepSeekChat =>
             match (request.thinkingMode) {
                 case LlmWireThinkingMode.Enabled =>
                     if (request.toolChoice != LlmWireToolChoice.ProviderDefault) {
-                        unsupportedRequest("llm.thinking_tool_choice_unsupported", "DeepSeek Chat thinking mode does not accept an explicit tool_choice")
+                        checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.thinking_tool_choice_unsupported", "DeepSeek Chat thinking mode does not accept an explicit tool_choice"))
                     }
                 case _ => ()
             }
             if (request.reasoningEffort != LlmWireReasoningEffort.ProviderDefault && request.thinkingMode != LlmWireThinkingMode.Enabled) {
-                unsupportedRequest("llm.reasoning_effort_mode_unsupported", "DeepSeek Chat reasoning effort requires enabled thinking")
+                checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.reasoning_effort_mode_unsupported", "DeepSeek Chat reasoning effort requires enabled thinking"))
             }
         case LlmWireRequestStyle.DeepSeekMessages =>
             if (request.reasoningEffort != LlmWireReasoningEffort.ProviderDefault && request.thinkingMode != LlmWireThinkingMode.Enabled) {
-                unsupportedRequest("llm.reasoning_effort_mode_unsupported", "DeepSeek Messages reasoning effort requires enabled thinking")
+                checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.reasoning_effort_mode_unsupported", "DeepSeek Messages reasoning effort requires enabled thinking"))
             }
         case _ => ()
     }
 }
 
-func validateImageCapability(codec: LlmWireCodec, message: LlmWireMessage, value: LlmWireImageBlock): Unit {
+func validateImageCapability(codec: LlmWireCodec, message: LlmWireMessage, value: LlmWireImageBlock, checks!: RequestCheckSink = RequestCheckSink()): Unit {
     var supported = false
     for (modality in codec.capabilities.input.modalities where modality == LlmWireInputModality.Image) { supported = true }
-    if (!supported) { unsupportedRequest("llm.image_input_unsupported", "image input requires an explicit model capability") }
+    if (!supported) { checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.image_input_unsupported", "image input requires an explicit model capability")) }
     let deepSeek = match (codec.dialect.contract.requestStyle) {
         case LlmWireRequestStyle.DeepSeekResponses | LlmWireRequestStyle.DeepSeekChat | LlmWireRequestStyle.DeepSeekMessages => true
         case _ => false
     }
-    if (deepSeek && message.role != LlmWireRole.User) { unsupportedRequest("llm.image_role_unsupported", "DeepSeek image input is supported only in user messages") }
+    if (deepSeek && message.role != LlmWireRole.User) { checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.image_role_unsupported", "DeepSeek image input is supported only in user messages")) }
     if (deepSeek) { match (value.sourceKind) {
         case LlmWireImageSourceKind.Base64 =>
-            if (!supportedDeepSeekImageMediaType(value.mediaType)) { unsupportedRequest("llm.image_media_type_unsupported", "DeepSeek image input supports JPEG, PNG, GIF, and WebP") }
+            if (!supportedDeepSeekImageMediaType(value.mediaType)) { checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.image_media_type_unsupported", "DeepSeek image input supports JPEG, PNG, GIF, and WebP")) }
         case _ => ()
     } }
 }
@@ -273,23 +313,23 @@ func supportedDeepSeekImageMediaType(value: String): Bool {
     value == "image/jpeg" || value == "image/png" || value == "image/gif" || value == "image/webp"
 }
 
-func validateThinking(codec: LlmWireCodec, request: LlmWireRequest): Unit {
+func validateThinking(codec: LlmWireCodec, request: LlmWireRequest, checks!: RequestCheckSink = RequestCheckSink()): Unit {
     if (request.thinkingMode != LlmWireThinkingMode.ProviderDefault &&
         (!supportsThinkingMode(codec.dialect.contract.thinkingModes, request.thinkingMode) || !supportsThinkingMode(codec.capabilities.thinking.modes, request.thinkingMode))) {
-        unsupportedRequest("llm.thinking_unsupported", "thinking mode is not supported by the supplied dialect and capabilities")
+        checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.thinking_unsupported", "thinking mode is not supported by the supplied dialect and capabilities"))
     }
     if (request.reasoningEffort != LlmWireReasoningEffort.ProviderDefault &&
         (!supportsReasoningEffort(codec.dialect.contract.reasoningEfforts, request.reasoningEffort) || !supportsReasoningEffort(codec.capabilities.thinking.efforts, request.reasoningEffort))) {
-        unsupportedRequest("llm.reasoning_effort_unsupported", "reasoning effort is not supported by the supplied dialect and capabilities")
+        checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.reasoning_effort_unsupported", "reasoning effort is not supported by the supplied dialect and capabilities"))
     }
     match (request.thinkingMode) {
         case LlmWireThinkingMode.Budget(tokens) =>
-            if (tokens < 1024) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.thinking_budget_invalid", "thinking budget must be at least 1024 tokens") }
-            match (request.maxOutputTokens) { case Some(maximum) => if (tokens >= maximum) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.thinking_budget_exceeds_output", "thinking budget must be smaller than maxOutputTokens") }; case None => () }
+            if (tokens < 1024) { checks.reject(LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.thinking_budget_invalid", "thinking budget must be at least 1024 tokens")) }
+            match (request.maxOutputTokens) { case Some(maximum) => if (tokens >= maximum) { checks.reject(LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.thinking_budget_exceeds_output", "thinking budget must be smaller than maxOutputTokens")) }; case None => () }
         case _ => ()
     }
     if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.AnthropicMessages && request.thinkingMode == LlmWireThinkingMode.Enabled) {
-        unsupportedRequest("llm.thinking_not_representable", "Anthropic enabled thinking requires an explicit budget or adaptive mode")
+        checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.thinking_not_representable", "Anthropic enabled thinking requires an explicit budget or adaptive mode"))
     }
 }
 
@@ -321,15 +361,15 @@ func structuredMode(value: LlmWireStructuredOutput): ?LlmWireStructuredOutputMod
     }
 }
 
-func validateStructuredOutput(codec: LlmWireCodec, value: LlmWireStructuredOutput): Unit {
+func validateStructuredOutput(codec: LlmWireCodec, value: LlmWireStructuredOutput, checks!: RequestCheckSink = RequestCheckSink()): Unit {
     match (structuredMode(value)) {
         case None => ()
-        case Some(mode) => if (!supportsStructuredMode(codec.dialect.contract.structuredOutputModes, mode) || !supportsStructuredMode(codec.capabilities.output.structuredModes, mode)) { unsupportedRequest("llm.structured_output_unsupported", "structured output mode is not supported by this dialect and model") }
+        case Some(mode) => if (!supportsStructuredMode(codec.dialect.contract.structuredOutputModes, mode) || !supportsStructuredMode(codec.capabilities.output.structuredModes, mode)) { checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.structured_output_unsupported", "structured output mode is not supported by this dialect and model")) }
     }
     match ((codec.dialect.contract.requestStyle, value)) {
-        case (LlmWireRequestStyle.AnthropicMessages, LlmWireStructuredOutput.JsonSchema(_)) => unsupportedRequest("llm.structured_output_metadata_unsupported", "Anthropic output_config.format cannot represent OpenAI schema name, description, or strict metadata")
+        case (LlmWireRequestStyle.AnthropicMessages, LlmWireStructuredOutput.JsonSchema(_)) => checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.structured_output_metadata_unsupported", "Anthropic output_config.format cannot represent OpenAI schema name, description, or strict metadata"))
         case (LlmWireRequestStyle.AnthropicMessages, LlmWireStructuredOutput.JsonSchemaDocument(_)) => ()
-        case (_, LlmWireStructuredOutput.JsonSchemaDocument(_)) => unsupportedRequest("llm.structured_output_document_unsupported", "this dialect requires a named JSON schema specification")
+        case (_, LlmWireStructuredOutput.JsonSchemaDocument(_)) => checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.structured_output_document_unsupported", "this dialect requires a named JSON schema specification"))
         case _ => ()
     }
 }
@@ -349,19 +389,23 @@ func validateGenerationSpeed(codec: LlmWireCodec, value: LlmWireGenerationSpeed)
     if (!contract || !capability) { unsupportedRequest("llm.generation_speed_unsupported", "generation speed is not supported by this dialect and model") }
 }
 
-func validatePromptCache(codec: LlmWireCodec, value: LlmWirePromptCache, routingKey: ?String): Unit {
+func validatePromptCache(codec: LlmWireCodec, value: LlmWirePromptCache, routingKey: ?String, checks!: RequestCheckSink = RequestCheckSink()): Unit {
     match (routingKey) {
-        case Some(key) => if (key == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.prompt_cache_routing_key_invalid", "prompt cache routing key must not be empty") } else if (!codec.dialect.contract.promptCacheRoutingKey) { unsupportedRequest("llm.prompt_cache_routing_unsupported", "prompt cache routing is not supported by this dialect") }
+        case Some(key) => if (key == "") { checks.reject(LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.prompt_cache_routing_key_invalid", "prompt cache routing key must not be empty")) } else if (!codec.dialect.contract.promptCacheRoutingKey) { checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.prompt_cache_routing_unsupported", "prompt cache routing is not supported by this dialect")) }
         case None => ()
     }
     match (value) {
         case LlmWirePromptCache.ProviderDefault => ()
         case LlmWirePromptCache.Automatic(lifetime) =>
-            if (codec.dialect.contract.promptCacheStyle == LlmWirePromptCacheStyle.Unsupported) { unsupportedRequest("llm.cache_unsupported", "automatic prompt caching is not supported") }
-            var contract = false; for (candidate in codec.dialect.contract.promptCacheLifetimes where candidate == lifetime) { contract = true }
-            var capability = false; for (candidate in codec.capabilities.cache.lifetimes where candidate == lifetime) { capability = true }
-            if (!contract || !capability) { unsupportedRequest("llm.cache_lifetime_unsupported", "prompt cache lifetime is not supported") }
+            if (codec.dialect.contract.promptCacheStyle == LlmWirePromptCacheStyle.Unsupported) { checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.cache_unsupported", "automatic prompt caching is not supported")) }
+            if (!cacheLifetimeSupported(codec, lifetime)) { checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.cache_lifetime_unsupported", "prompt cache lifetime is not supported")) }
     }
+}
+
+func cacheLifetimeSupported(codec: LlmWireCodec, lifetime: LlmWirePromptCacheLifetime): Bool {
+    var contract = false; for (candidate in codec.dialect.contract.promptCacheLifetimes where candidate == lifetime) { contract = true }
+    var capability = false; for (candidate in codec.capabilities.cache.lifetimes where candidate == lifetime) { capability = true }
+    contract && capability
 }
 
 func unsupportedRequest(code: String, message: String): Nothing {
@@ -372,17 +416,17 @@ func unsupportedWire(code: String, message: String, provider!: String = ""): Not
     throw LlmWireError(LlmWireErrorKind.Unsupported, code, message, provider: provider, phase: Some(LlmTransportPhase.WireDecode))
 }
 
-func validateBlockForReplay(codec: LlmWireCodec, request: LlmWireRequest, message: LlmWireMessage, block: LlmWireBlock, blockIndex: Int64): Unit {
+func validateBlockForReplay(codec: LlmWireCodec, request: LlmWireRequest, message: LlmWireMessage, block: LlmWireBlock, blockIndex: Int64, checks!: RequestCheckSink = RequestCheckSink()): Unit {
     match (block) {
         case LlmWireBlock.NativeReplay(value) =>
-            if (message.role != LlmWireRole.Assistant) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_role_invalid", "native replay state must remain in an assistant turn") }
-            if (value.completion != LlmWireOpaqueCompletion.Complete) { unsupportedRequest("llm.native_replay_incomplete", "partial native state cannot be replayed") }
-            if (value.protocol != codec.protocol || value.dialectId != codec.dialect.compatibilityId) { unsupportedRequest("llm.native_replay_dialect_mismatch", "native state can only be replayed by the same protocol and dialect compatibility ID") }
-            match (value.modelConstraint) { case Some(model) => if (model != request.model) { unsupportedRequest("llm.native_replay_model_mismatch", "native state is constrained to another model") }; case None => () }
-            if (value.scope == LlmWireNativeReplayScope.AssistantTurn && value.blockOrder != blockIndex) { unsupportedRequest("llm.native_replay_order_mismatch", "native state must retain its block order inside the assistant turn") }
-        case LlmWireBlock.Opaque(_) => unsupportedRequest("llm.opaque_diagnostic_only", "unknown native diagnostics cannot be replayed")
-        case LlmWireBlock.Reasoning(_) => unsupportedRequest("llm.reasoning_display_only", "display reasoning is not request-encodable")
-        case LlmWireBlock.Refusal(_) => unsupportedRequest("llm.refusal_display_only", "refusal output is not request-encodable")
+            if (message.role != LlmWireRole.Assistant) { checks.reject(LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.native_replay_role_invalid", "native replay state must remain in an assistant turn")) }
+            if (value.completion != LlmWireOpaqueCompletion.Complete) { checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.native_replay_incomplete", "partial native state cannot be replayed")) }
+            if (value.protocol != codec.protocol || value.dialectId != codec.dialect.compatibilityId) { checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.native_replay_dialect_mismatch", "native state can only be replayed by the same protocol and dialect compatibility ID")) }
+            match (value.modelConstraint) { case Some(model) => if (model != request.model) { checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.native_replay_model_mismatch", "native state is constrained to another model")) }; case None => () }
+            if (value.scope == LlmWireNativeReplayScope.AssistantTurn && value.blockOrder != blockIndex) { checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.native_replay_order_mismatch", "native state must retain its block order inside the assistant turn")) }
+        case LlmWireBlock.Opaque(_) => checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.opaque_diagnostic_only", "unknown native diagnostics cannot be replayed"))
+        case LlmWireBlock.Reasoning(_) => checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.reasoning_display_only", "display reasoning is not request-encodable"))
+        case LlmWireBlock.Refusal(_) => checks.reject(LlmWireError(LlmWireErrorKind.Unsupported, "llm.refusal_display_only", "refusal output is not request-encodable"))
         case _ => ()
     }
 }
@@ -415,22 +459,22 @@ func validToolName(value: String): Bool {
     true
 }
 
-func validateBlockShape(block: LlmWireBlock): Unit {
+func validateBlockShape(block: LlmWireBlock, checks!: RequestCheckSink = RequestCheckSink()): Unit {
     match (block) {
         case LlmWireBlock.ToolCall(value) =>
-            if (!validToolName(value.name)) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_name_invalid", "tool call names must use the tool-name grammar", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId)) }
+            if (!validToolName(value.name)) { checks.reject(LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_call_name_invalid", "tool call names must use the tool-name grammar", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId))) }
             match (value.arguments) {
                 case LlmWireToolArguments.Complete(arguments) =>
-                    if (arguments.jsonNode().wireKind != WireJsonKind.Object) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId)) }
+                    if (arguments.jsonNode().wireKind != WireJsonKind.Object) { checks.reject(LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "complete tool arguments must be a JSON object", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId))) }
                 case LlmWireToolArguments.Text(_) => ()
-                case LlmWireToolArguments.Partial(_) | LlmWireToolArguments.PartialText(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be sent as an executable tool call", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId))
-                case LlmWireToolArguments.InvalidShape(_) => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "invalid-shape tool arguments cannot be sent as an executable tool call", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId))
-                case _ => throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_not_executable", "invalid tool arguments cannot be sent as an executable tool call", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId))
+                case LlmWireToolArguments.Partial(_) | LlmWireToolArguments.PartialText(_) => checks.reject(LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_partial", "partial tool arguments cannot be sent as an executable tool call", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId)))
+                case LlmWireToolArguments.InvalidShape(_) => checks.reject(LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_shape_invalid", "invalid-shape tool arguments cannot be sent as an executable tool call", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId)))
+                case _ => checks.reject(LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_arguments_not_executable", "invalid tool arguments cannot be sent as an executable tool call", toolName: value.name, toolCallId: boundedTranscriptEvidence(value.callId)))
             }
         case LlmWireBlock.Image(value) => match (value.sourceKind) {
-            case LlmWireImageSourceKind.Url => if (value.data.trimAscii() == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.image_url_invalid", "image URL must not be empty") }
-            case LlmWireImageSourceKind.Base64 => if (value.data == "" || value.mediaType == "" || !value.mediaType.contains("/")) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.image_base64_invalid", "base64 images require data and a media type") }
-            case LlmWireImageSourceKind.File => if (value.data.trimAscii() == "") { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.image_file_invalid", "file images require a file ID") }
+            case LlmWireImageSourceKind.Url => if (value.data.trimAscii() == "") { checks.reject(LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.image_url_invalid", "image URL must not be empty")) }
+            case LlmWireImageSourceKind.Base64 => if (value.data == "" || value.mediaType == "" || !value.mediaType.contains("/")) { checks.reject(LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.image_base64_invalid", "base64 images require data and a media type")) }
+            case LlmWireImageSourceKind.File => if (value.data.trimAscii() == "") { checks.reject(LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.image_file_invalid", "file images require a file ID")) }
         }
         case _ => ()
     }

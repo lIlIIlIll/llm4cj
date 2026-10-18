@@ -57,7 +57,17 @@ internal func canonicalToolSchemaValue(value: JsonNode): JsonNode {
     }
 }
 
-internal func sameToolDeclaration(left: LlmWireToolDeclaration, right: LlmWireToolDeclaration): Bool {
+internal func sameToolDeclaration(left: LlmWireToolDeclaration, right: LlmWireToolDeclaration, checks!: RequestCheckSink = RequestCheckSink()): Bool {
+    checks.charge(bytes: left.version.size + right.version.size + left.tool.description.size + right.tool.description.size)
+    match ((left.tool, right.tool)) {
+        case (LlmWireToolDefinition.Function(a), LlmWireToolDefinition.Function(b)) =>
+            a.inputSchema.chargeCanonicalComparison(checks); b.inputSchema.chargeCanonicalComparison(checks)
+        case (LlmWireToolDefinition.Custom(a), LlmWireToolDefinition.Custom(b)) => match ((a.format, b.format)) {
+            case (LlmWireCustomToolFormat.Grammar(x), LlmWireCustomToolFormat.Grammar(y)) => checks.charge(bytes: x.definition.size + y.definition.size)
+            case _ => ()
+        }
+        case _ => ()
+    }
     left.version == right.version && sameToolDefinition(left.tool, right.tool)
 }
 
@@ -75,7 +85,7 @@ internal class TranscriptToolState {
     private let order = ArrayList<String>()
     private let active = HashSet<String>()
 
-    internal func declare(value: LlmWireToolDeclaration, itemIndex: Int64): Unit {
+    internal func declare(value: LlmWireToolDeclaration, itemIndex: Int64, checks!: RequestCheckSink = RequestCheckSink()): Unit {
         if (!validToolName(value.tool.name)) {
             throw transcriptError("llm.tool_name_invalid", "tool names must use the tool-name grammar", itemIndex, toolName: value.tool.name, toolVersion: value.version)
         }
@@ -86,7 +96,7 @@ internal class TranscriptToolState {
         catch (error: LlmWireError) { throw withInputItemContext(error, itemIndex) }
         match (declared.get(value.tool.name)) {
             case Some(previous) =>
-                if (!sameToolDeclaration(previous, value)) {
+                if (!sameToolDeclaration(previous, value, checks: checks)) {
                     throw transcriptError("llm.tool_definition_conflict", "a tool name cannot refer to different definitions or versions", itemIndex, toolName: value.tool.name, toolVersion: value.version)
                 }
                 // Repeating a declaration never changes its visibility. A
@@ -136,13 +146,15 @@ internal class TranscriptToolState {
         }
     }
 
-    internal func activeTools(): Array<LlmWireToolDefinition> {
+    internal func activeTools(checks!: RequestCheckSink = RequestCheckSink()): Array<LlmWireToolDefinition> {
+        checks.charge(count: order.size)
         let tools = ArrayList<LlmWireToolDefinition>()
         for (name in order where active.contains(name)) { tools.add(declared[name].tool) }
         tools.toArray()
     }
 
-    internal func declaredTools(): Array<LlmWireToolDeclaration> {
+    internal func declaredTools(checks!: RequestCheckSink = RequestCheckSink()): Array<LlmWireToolDeclaration> {
+        checks.charge(count: order.size)
         let tools = ArrayList<LlmWireToolDeclaration>()
         for (name in order) { tools.add(declared[name]) }
         tools.toArray()
@@ -151,18 +163,19 @@ internal class TranscriptToolState {
 
 // The state transition and the call check happen in one pass. End-of-transcript
 // visibility is never used to judge a historical call.
-internal func replayTranscript(transcript: LlmWireTranscript, allowUnresolvedTail!: Bool = false): LlmWireTranscriptView {
+internal func replayTranscript(transcript: LlmWireTranscript, allowUnresolvedTail!: Bool = false, checks!: RequestCheckSink = RequestCheckSink()): LlmWireTranscriptView {
     let state = TranscriptToolState()
     let messages = ArrayList<LlmWireMessage>()
     let items = transcript.items
     let known = HashSet<String>()
     let pending = HashMap<String, LlmWireToolDeclaration>()
-    for (declaration in transcript.initialContext.tools) { state.declare(declaration, -1) }
+    for (declaration in transcript.initialContext.tools) { checks.charge(); state.declare(declaration, -1, checks: checks) }
     for (itemIndex in 0..items.size) {
+        checks.charge()
         match (items[itemIndex]) {
-            case LlmWireInputItem.ToolDeclaration(value) => state.declare(value, itemIndex)
-            case LlmWireInputItem.ToolActivation(identity) => state.activate(identity, itemIndex)
-            case LlmWireInputItem.ToolDeactivation(identity) => state.deactivate(identity, itemIndex)
+            case LlmWireInputItem.ToolDeclaration(value) => state.declare(value, itemIndex, checks: checks)
+            case LlmWireInputItem.ToolActivation(identity) => checks.charge(bytes: identity.name.size * 3); state.activate(identity, itemIndex)
+            case LlmWireInputItem.ToolDeactivation(identity) => checks.charge(bytes: identity.name.size * 3); state.deactivate(identity, itemIndex)
             case LlmWireInputItem.InstructionUpdate(_) => ()
             case LlmWireInputItem.Message(message) =>
                 let blocks = message.blocks
@@ -174,6 +187,7 @@ internal func replayTranscript(transcript: LlmWireTranscript, allowUnresolvedTai
                     }
                 }
                 for (blockIndex in 0..blocks.size) {
+                    checks.charge()
                     if (hadPending) { match (blocks[blockIndex]) {
                         case LlmWireBlock.ToolResult(_) =>
                             if (ordinaryUserContent) { throw transcriptError("llm.tool_conversation_out_of_phase", "tool results must precede ordinary user content", itemIndex, blockIndex: blockIndex) }
@@ -183,6 +197,7 @@ internal func replayTranscript(transcript: LlmWireTranscript, allowUnresolvedTai
                     } }
                     match (blocks[blockIndex]) {
                     case LlmWireBlock.ToolCall(call) =>
+                        checks.charge(bytes: call.callId.size * 4 + call.name.size)
                         try { validateBlockShape(blocks[blockIndex]) }
                         catch (error: LlmWireError) { throw withInputItemContext(error, itemIndex) }
                         if (message.role != LlmWireRole.Assistant) {
@@ -194,6 +209,7 @@ internal func replayTranscript(transcript: LlmWireTranscript, allowUnresolvedTai
                         let definition = state.requireActive(call, itemIndex, blockIndex)
                         known.add(call.callId); pending[call.callId] = definition
                     case LlmWireBlock.ToolResult(result) =>
+                        checks.charge(bytes: result.callId.size * 4)
                         if (message.role != LlmWireRole.User) {
                             throw transcriptError("llm.tool_result_role_invalid", "tool results must belong to user messages", itemIndex, blockIndex: blockIndex, toolCallId: result.callId)
                         }
@@ -215,25 +231,27 @@ internal func replayTranscript(transcript: LlmWireTranscript, allowUnresolvedTai
     if (!allowUnresolvedTail && !pending.isEmpty()) {
         throw transcriptError("llm.tool_call_unresolved", "every tool call must have exactly one later result", items.size - 1)
     }
-    LlmWireTranscriptView(messages.toArray(), state.activeTools(), state.declaredTools())
+    checks.charge(count: messages.size)
+    LlmWireTranscriptView(messages.toArray(), state.activeTools(checks: checks), state.declaredTools(checks: checks))
 }
 
 // Anthropic system updates belong after a user message and before an assistant
 // message (or at the request end). Consecutive typed changes form one update
 // group; it cannot split tool_use from tool_result.
-internal func validateTranscriptPositions(codec: LlmWireCodec, transcript: LlmWireTranscript): Unit {
+internal func validateTranscriptPositions(codec: LlmWireCodec, transcript: LlmWireTranscript, checks!: RequestCheckSink = RequestCheckSink()): Unit {
     if (codec.dialect.contract.contextUpdates.style != LlmWireContextUpdateStyle.AnthropicToolReferences) { return }
     let pending = HashSet<String>()
     let items = transcript.items
     let declared = HashMap<String, LlmWireToolDeclaration>()
-    for (declaration in transcript.initialContext.tools) { declared[declaration.tool.name] = declaration }
+    for (declaration in transcript.initialContext.tools) { checks.charge(); declared[declaration.tool.name] = declaration }
     var previousRole: ?LlmWireRole = None
     var updateStart: Int64 = -1
     for (itemIndex in 0..items.size) {
+        checks.charge()
         match (items[itemIndex]) {
             case LlmWireInputItem.ToolDeclaration(declaration) =>
                 match (declared.get(declaration.tool.name)) {
-                    case Some(previous) => if (sameToolDeclaration(previous, declaration)) { continue }
+                    case Some(previous) => if (sameToolDeclaration(previous, declaration, checks: checks)) { continue }
                     case None => declared[declaration.tool.name] = declaration
                 }
             case _ => ()
@@ -244,9 +262,9 @@ internal func validateTranscriptPositions(codec: LlmWireCodec, transcript: LlmWi
                 throw transcriptError("llm.context_update_position_invalid", "Anthropic context updates must precede an assistant message or the request end", updateStart)
             }
             updateStart = -1
-            for (block in message.blocks) { match (block) {
-                case LlmWireBlock.ToolCall(call) => pending.add(call.callId)
-                case LlmWireBlock.ToolResult(result) => pending.remove(result.callId)
+            for (block in message.blocks) { checks.charge(); match (block) {
+                case LlmWireBlock.ToolCall(call) => checks.charge(bytes: call.callId.size); pending.add(call.callId)
+                case LlmWireBlock.ToolResult(result) => checks.charge(bytes: result.callId.size); pending.remove(result.callId)
                 case _ => ()
             } }
             previousRole = Some(message.role)

@@ -1,0 +1,72 @@
+{
+  "format": "llm4cj.request-capabilities",
+  "version": 1,
+  "sources": [
+    {"kind":"schema_derived","url":"https://developers.openai.com/api/reference/resources/responses/streaming-events","revision":"rolling reference","checked_at":"2026-10-18","notes":"Typed request and replay shapes reuse the independently sourced protocol fixtures. Diagnostic order, capability declarations and budgets are hand-reviewed llm4cj policy, not service capability claims."},
+    {"kind":"schema_derived","url":"https://platform.claude.com/docs/en/build-with-claude/prompt-caching","revision":"rolling reference","checked_at":"2026-10-18","notes":"Synthetic cache positions and TTLs exercise the local fail-closed policy. No provider capture or network request."},
+    {"kind":"schema_derived","url":"https://developers.openai.com/api/reference/resources/chat/subresources/completions","revision":"rolling reference","checked_at":"2026-10-18","notes":"Synthetic closed audio replay exercises explicit materialization time. Static completeness does not prove clocks, resolver results, headers or actual body bytes."}
+  ],
+  "oracle": "Hand-written expected report tuples are [kind, featureId, code, inputItemIndex, blockIndex, requirementState]. Expected results were not generated from the implementation.",
+  "cases": [
+    {"id":"multiple-independent-conflicts","scenario":"multiple","dialects":["openai-responses"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[
+        ["Unsupported","thinking","llm.thinking_unsupported",-1,-1,null],
+        ["Unsupported","thinking","llm.reasoning_effort_unsupported",-1,-1,null],
+        ["Invalid","thinking","llm.thinking_budget_invalid",-1,-1,null],
+        ["Invalid","thinking","llm.thinking_budget_exceeds_output",-1,-1,null],
+        ["Unsupported","tools","llm.tools_unsupported",-1,-1,null],
+        ["Unsupported","structured_output","llm.structured_output_unsupported",-1,-1,null],
+        ["Unsupported","tools.parallel","llm.parallel_tools_unsupported",-1,-1,null],
+        ["Unsupported","service_tier","llm.service_tier_unsupported",-1,-1,null],
+        ["Unsupported","generation_speed","llm.generation_speed_unsupported",-1,-1,null],
+        ["Unsupported","cache","llm.cache_lifetime_unsupported",-1,-1,null],
+        ["Unsupported","thinking.representation","llm.thinking_not_representable",-1,-1,null],
+        ["Unsupported","context.tool_declaration","llm.context_update_unsupported",0,-1,null]
+      ]},"strict_code":"llm.context_update_unsupported","resolved_code":"llm.context_update_unsupported","clock_code":"llm.context_update_unsupported"}},
+    {"id":"malformed-replay-skips-dependent-view","scenario":"malformed","dialects":["openai-responses"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":false,"truncated":false,"diagnostics":[
+        ["Unsupported","thinking","llm.thinking_unsupported",-1,-1,null],
+        ["Unsupported","thinking","llm.reasoning_effort_unsupported",-1,-1,null],
+        ["Invalid","thinking","llm.thinking_budget_invalid",-1,-1,null],
+        ["Unsupported","structured_output","llm.structured_output_unsupported",-1,-1,null],
+        ["Unsupported","tools.parallel","llm.parallel_tools_unsupported",-1,-1,null],
+        ["Unsupported","cache","llm.cache_lifetime_unsupported",-1,-1,null],
+        ["Unsupported","thinking.representation","llm.thinking_not_representable",-1,-1,null],
+        ["Invalid","transcript.structure","llm.tool_reference_unknown",0,-1,null]
+      ]},"strict_code":"llm.tool_reference_unknown","resolved_code":"llm.tool_reference_unknown","clock_code":"llm.tool_reference_unknown"}},
+    {"id":"external-requirement-stays-unknown","scenario":"unknown","dialects":["anthropic-messages"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[["Requirement","anthropic.fast_mode","llm.feature_requirement_unresolved",-1,-1,"Unknown"]]},
+      "strict_code":"llm.feature_requirement_unresolved","resolved_code":"ok","clock_code":"llm.feature_requirement_unresolved"}},
+    {"id":"undeclared-capability-is-unsupported","scenario":"undeclared","dialects":["openai-responses"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[
+        ["Unsupported","thinking","llm.thinking_unsupported",-1,-1,null],["Unsupported","thinking.representation","llm.thinking_not_representable",-1,-1,null]
+      ]},"strict_code":"llm.thinking_unsupported","resolved_code":"llm.thinking_unsupported","clock_code":"llm.thinking_unsupported"}},
+    {"id":"cache-errors-keep-original-positions","scenario":"cache","dialects":["anthropic-messages"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[
+        ["Invalid","cache.slots","llm.cache_breakpoint_limit",-1,-1,null],
+        ["Invalid","cache.target","llm.cache_target_invalid",0,0,null],
+        ["Invalid","cache.order","llm.cache_ttl_order_invalid",0,2,null],
+        ["Invalid","cache.automatic","llm.cache_ttl_conflict",0,3,null]
+      ]},"strict_code":"llm.cache_breakpoint_limit","resolved_code":"llm.cache_breakpoint_limit","clock_code":"llm.cache_breakpoint_limit"}},
+    {"id":"audio-static-conflicts-remain-independent","scenario":"audio","dialects":["openai-responses"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[
+        ["Unsupported","structured_output","llm.structured_output_unsupported",-1,-1,null],
+        ["Unsupported","audio.output_dialect","llm.audio_dialect_unsupported",-1,-1,null],
+        ["Unsupported","audio.output_format","llm.audio_output_format_unsupported",-1,-1,null],
+        ["Unsupported","audio.output_voice","llm.audio_voice_unsupported",-1,-1,null],
+        ["Unsupported","audio.output_combination","llm.audio_structured_output_unsupported",-1,-1,null],
+        ["Unsupported","audio.dialect","llm.audio_dialect_unsupported",0,0,null],
+        ["Unsupported","audio.input_role","llm.audio_input_role_invalid",0,0,null],
+        ["Unsupported","audio.input_modality","llm.audio_input_capability_missing",0,0,null],
+        ["Unsupported","audio.input_format","llm.audio_input_capability_missing",0,0,null]
+      ]},"strict_code":"llm.structured_output_unsupported","resolved_code":"llm.structured_output_unsupported","clock_code":"llm.structured_output_unsupported"}},
+    {"id":"audio-clock-is-not-a-resolver-requirement","scenario":"audio-clock","dialects":["openai-chat"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[]},
+      "strict_code":"llm.audio_replay_clock_required","resolved_code":"llm.audio_replay_clock_required","clock_code":"ok"}},
+    {"id":"temporal-custom-format-uses-bound-profile","scenario":"custom","dialects":["openai-responses"],"expected":{
+      "report":{"profile_id":"fixture.capabilities","contract_version":1,"complete":true,"truncated":false,"diagnostics":[["Unsupported","tools.custom_format","llm.custom_tool_format_unsupported",0,-1,null]]},
+      "strict_code":"llm.custom_tool_format_unsupported","resolved_code":"llm.custom_tool_format_unsupported","clock_code":"llm.custom_tool_format_unsupported"}},
+    {"id":"supported-requests-across-all-dialects","scenario":"valid","dialects":["openai-responses","openai-codex-responses","openai-chat","anthropic-messages","deepseek-responses","deepseek-chat","deepseek-messages","kimi-chat"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[]},"strict_code":"ok","resolved_code":"ok","clock_code":"ok"}}
+  ]
+}

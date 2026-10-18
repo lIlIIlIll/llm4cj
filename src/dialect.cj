@@ -219,6 +219,10 @@ public class LlmWireDialectContract {
     public prop generationSpeeds: Array<LlmWireGenerationSpeed> { get() { copyValues(generationSpeedsValue) } }
     public prop promptCacheLifetimes: Array<LlmWirePromptCacheLifetime> { get() { copyValues(promptCacheLifetimesValue) } }
     public prop customToolFormats: Array<LlmWireCustomToolFormatKind> { get() { copyValues(customToolFormatsValue) } }
+    func chargeInspection(checks: RequestCheckSink): Unit {
+        checks.charge(count: thinkingModesValue.size + reasoningEffortsValue.size + structuredOutputModesValue.size +
+            serviceTiersValue.size + generationSpeedsValue.size + promptCacheLifetimesValue.size + customToolFormatsValue.size)
+    }
 }
 
 public class LlmWireInputCapabilities {
@@ -228,6 +232,7 @@ public class LlmWireInputCapabilities {
         this.modalitiesValue = copyValues(modalities)
     }
     public prop modalities: Array<LlmWireInputModality> { get() { copyValues(modalitiesValue) } }
+    func chargeInspection(checks: RequestCheckSink): Unit { checks.charge(count: modalitiesValue.size) }
 }
 
 public class LlmWireThinkingCapabilities {
@@ -239,6 +244,7 @@ public class LlmWireThinkingCapabilities {
     }
     public prop modes: Array<LlmWireThinkingMode> { get() { copyValues(modesValue) } }
     public prop efforts: Array<LlmWireReasoningEffort> { get() { copyValues(effortsValue) } }
+    func chargeInspection(checks: RequestCheckSink): Unit { checks.charge(count: modesValue.size + effortsValue.size) }
 }
 
 public class LlmWireToolCapabilities {
@@ -252,6 +258,7 @@ public class LlmWireToolCapabilities {
         this.customFormatsValue = copyValues(customFormats)
     }
     public prop customFormats: Array<LlmWireCustomToolFormatKind> { get() { copyValues(customFormatsValue) } }
+    func chargeInspection(checks: RequestCheckSink): Unit { checks.charge(count: customFormatsValue.size) }
 }
 
 public class LlmWireOutputCapabilities {
@@ -268,6 +275,9 @@ public class LlmWireOutputCapabilities {
     public prop structuredModes: Array<LlmWireStructuredOutputMode> { get() { copyValues(structuredModesValue) } }
     public prop serviceTiers: Array<LlmWireServiceTier> { get() { copyValues(serviceTiersValue) } }
     public prop generationSpeeds: Array<LlmWireGenerationSpeed> { get() { copyValues(generationSpeedsValue) } }
+    func chargeInspection(checks: RequestCheckSink): Unit {
+        checks.charge(count: structuredModesValue.size + serviceTiersValue.size + generationSpeedsValue.size)
+    }
 }
 
 public class LlmWireCacheCapabilities {
@@ -279,6 +289,7 @@ public class LlmWireCacheCapabilities {
         this.explicitBreakpoints = explicitBreakpoints
     }
     public prop lifetimes: Array<LlmWirePromptCacheLifetime> { get() { copyValues(lifetimesValue) } }
+    func chargeInspection(checks: RequestCheckSink): Unit { checks.charge(count: lifetimesValue.size) }
 }
 
 public class LlmWireCapabilities {
@@ -297,6 +308,10 @@ public class LlmWireCapabilities {
         audio!: LlmWireAudioCapabilities = LlmWireAudioCapabilities()
     ) {
         this.input = input; this.thinking = thinking; this.tools = tools; this.output = output; this.cache = cache; this.audio = audio
+    }
+    func chargeInspection(checks: RequestCheckSink): Unit {
+        input.chargeInspection(checks); thinking.chargeInspection(checks); tools.chargeInspection(checks)
+        output.chargeInspection(checks); cache.chargeInspection(checks); audio.chargeInspection(checks)
     }
 }
 

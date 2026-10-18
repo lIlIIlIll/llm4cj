@@ -5,7 +5,7 @@ import std.convert.*
 import yjson.*
 
 func encodeWireRequest(codec: LlmWireCodec, request: LlmWireRequest, streaming: Bool, cachePlan!: ResolvedCachePlan = ResolvedCachePlan()): LlmWirePreparedRequest {
-    validateAudioRequest(codec, request, streaming)
+    validateEncodingRequestChecks(codec, request, streaming, RequestCheckSink())
     let headers = ArrayList<LlmWireHeader>()
     let requirements = ArrayList<LlmWireFeatureRequirement>()
     let body = match (codec.protocol) {
@@ -120,7 +120,7 @@ func encodeMessagesRequest(codec: LlmWireCodec, request: LlmWireRequest, headers
         root.put("speed", wireJsonString(generationSpeedName(request.generationSpeed)))
         if (request.generationSpeed == LlmWireGenerationSpeed.Fast) {
             headers.add(LlmWireHeader("anthropic-beta", "fast-mode-2026-02-01"))
-            requirements.add(LlmWireFeatureRequirement("anthropic.fast_mode", LlmWireRequirementState.Unknown("fast mode requires a supported model, platform, and account")))
+            for (requirement in generationFeatureRequirements(codec, request.generationSpeed)) { requirements.add(requirement) }
         }
     }
     var toolChoice: ?JsonNode = match (request.toolChoice) {
@@ -204,17 +204,17 @@ func putReasoningEffort(root: JsonNode, field: String, effort: LlmWireReasoningE
 }
 
 func encodePromptCache(codec: LlmWireCodec, root: JsonNode, value: LlmWirePromptCache, requirements: ArrayList<LlmWireFeatureRequirement>): Unit {
+    for (requirement in cacheFeatureRequirements(codec, value)) { requirements.add(requirement) }
     match (value) {
         case LlmWirePromptCache.ProviderDefault => ()
         case LlmWirePromptCache.Automatic(lifetime) => match (codec.dialect.contract.promptCacheStyle) {
             case LlmWirePromptCacheStyle.OpenAi =>
                 if (lifetime != LlmWirePromptCacheLifetime.ProviderDefault) { root.put("prompt_cache_options", wireJsonObject([WireJsonField("ttl", wireJsonString(cacheLifetimeName(lifetime)))])) }
-                else { requirements.add(LlmWireFeatureRequirement("openai.prompt_cache_automatic", LlmWireRequirementState.Satisfied)) }
             case LlmWirePromptCacheStyle.Anthropic =>
                 let cacheControl = wireJsonObject([WireJsonField("type", wireJsonString("ephemeral"))])
                 if (lifetime == LlmWirePromptCacheLifetime.OneHour) { cacheControl.put("ttl", wireJsonString("1h")) }
                 root.put("cache_control", cacheControl)
-            case LlmWirePromptCacheStyle.ProviderAutomatic => requirements.add(LlmWireFeatureRequirement("provider.prompt_cache_automatic", LlmWireRequirementState.Satisfied))
+            case LlmWirePromptCacheStyle.ProviderAutomatic => ()
             case LlmWirePromptCacheStyle.Unsupported => unsupportedRequest("llm.cache_unsupported", "automatic prompt caching is not supported")
         }
     }

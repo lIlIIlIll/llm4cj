@@ -7,11 +7,12 @@ class CodexRequestBudget {
     private var size: Int64 = 0
     private let codex: Bool
     init(codex: Bool) { this.codex = codex }
-    func add(value: String): Unit {
-        if (value.size > LLM_JSON_MAX_BYTES - size) {
+    func add(value: String): Unit { addBytes(value.size) }
+    func addBytes(bytes: Int64): Unit {
+        if (bytes > LLM_JSON_MAX_BYTES - size) {
             throw LlmWireError(LlmWireErrorKind.BodyLimit, if (codex) { "llm.codex_request_too_large" } else { "llm.request_too_large" }, if (codex) { "Codex request input exceeds 8 MiB" } else { "Responses request input exceeds 8 MiB" })
         }
-        size += value.size
+        size += bytes
     }
 }
 
@@ -36,7 +37,7 @@ func validateResponsesInputSize(request: LlmWireRequest, codex: Bool): Unit {
             match (block) {
                 case LlmWireBlock.Text(value) => add(value.text)
                 case LlmWireBlock.Image(value) => add(value.data)
-                case LlmWireBlock.NativeReplay(value) => add(value.payload().stringify())
+                case LlmWireBlock.NativeReplay(value) => budget.addBytes(value.inspectionBytes())
                 case LlmWireBlock.ToolCall(value) => add(value.callId); add(value.name); add(toolArgumentsRaw(value.arguments))
                 case LlmWireBlock.ToolResult(value) =>
                     add(value.callId)
@@ -59,8 +60,7 @@ func writeCodexRequestJson(value: JsonNode, limitMessage: String): String {
 
 // SIWC is a distinct Responses dialect, not a configurable backend URL.
 func encodeCodexRequest(codec: LlmWireCodec, request: LlmWireRequest, requirements: ArrayList<LlmWireFeatureRequirement>, streaming: Bool): String {
-    if (!streaming) { unsupportedRequest("llm.codex_stream_required", "Codex HTTP requests require streaming: true") }
-    if (request.maxOutputTokens.isSome()) { unsupportedRequest("llm.codex_max_output_tokens_unsupported", "SIWC does not accept max_output_tokens") }
+    validateCodexEncodingShape(request, streaming, RequestCheckSink())
     let root = baseRequest(codec, request, true)
     root.put("store", wireJsonBool(false))
     root.put("include", wireJsonArray([wireJsonString("reasoning.encrypted_content")]))
@@ -71,14 +71,9 @@ func encodeCodexRequest(codec: LlmWireCodec, request: LlmWireRequest, requiremen
         case LlmWireStructuredOutput.JsonSchema(spec) => root.put("text", wireJsonObject([WireJsonField("format", encodeResponsesJsonSchemaFormat(spec))]))
         case _ => ()
     }
-    var systemSeen = false
-    var developerSeen = false
     for (instruction in request.transcript.initialContext.instructions) {
         if (instruction.role == LlmWireInstructionRole.System) {
-            if (systemSeen || developerSeen) { unsupportedRequest("llm.codex_instruction_order_unsupported", "Codex represents one System instruction preceding all Developer instructions") }
-            systemSeen = true; root.put("instructions", wireJsonString(instruction.text))
-        } else {
-            developerSeen = true
+            root.put("instructions", wireJsonString(instruction.text))
         }
     }
     root.put("input", encodeResponsesTranscript(codec, request.transcript))

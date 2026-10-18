@@ -21,7 +21,7 @@ FIXTURES = ROOT / "fixtures"
 PROBE = ROOT / "support/provider_probe"
 LEGACY_PROBE = ROOT / "support/protocol_probe"
 MANIFEST = FIXTURES / "manifest.json"
-PUBLIC_CHECK_COMMANDS = frozenset({"check-schema", "check-structured", "check-cache", "check-audio", "check-transcript-branches"})
+PUBLIC_CHECK_COMMANDS = frozenset({"check-schema", "check-structured", "check-cache", "check-audio", "check-transcript-branches", "check-capabilities"})
 DIALECTS = {
     "openai.responses.v1": "openai-responses",
     "openai.codex.responses.v1": "openai-codex-responses",

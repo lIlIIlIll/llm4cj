@@ -88,6 +88,7 @@ func encodeCustomFixture(name: String, formatName: String): Int64 {
 }
 
 main(args: Array<String>): Int64 {
+    if (args.size == 2 && args[0] == "check-capabilities") { return checkCapabilityFixture(args[1]) }
     if (args.size == 2 && args[0] == "inspect-transcript-branches") { return inspectTranscriptBranches(args[1]) }
     if (args.size == 2 && args[0] == "check-schema") { return checkSchemaFixture(args[1]) }
     if (args.size == 2 && args[0] == "check-structured") { return checkStructuredFixture(args[1]) }
