@@ -44,6 +44,17 @@ func validateCodexInputSize(request: LlmWireRequest): Unit {
     } }
 }
 
+func writeCodexRequestJson(value: JsonNode, limitMessage: String): String {
+    let output = WireJsonOutput()
+    try {
+        value.writeJson(output, options: JsonWriteOptions(maxOutputBytes: LLM_JSON_MAX_BYTES, maxDepth: LLM_JSON_MAX_DEPTH))
+    } catch (error: JsonException) {
+        if (error.code != "output_too_large" && error.code != "max_depth") { throw error }
+        throw LlmWireError(LlmWireErrorKind.BodyLimit, "llm.codex_request_too_large", limitMessage)
+    }
+    output.text()
+}
+
 // SIWC is a distinct Responses dialect, not a configurable backend URL.
 func encodeCodexRequest(codec: LlmWireCodec, request: LlmWireRequest, requirements: ArrayList<LlmWireFeatureRequirement>, streaming: Bool): String {
     if (!streaming) { unsupportedRequest("llm.codex_stream_required", "Codex HTTP requests require streaming: true") }
@@ -69,9 +80,7 @@ func encodeCodexRequest(codec: LlmWireCodec, request: LlmWireRequest, requiremen
         }
     }
     root.put("input", encodeResponsesTranscript(codec, request.transcript))
-    let body = root.stringify()
-    if (body.size > LLM_JSON_MAX_BYTES) { throw LlmWireError(LlmWireErrorKind.BodyLimit, "llm.codex_request_too_large", "Codex request exceeds the 8 MiB JSON limit") }
-    body
+    writeCodexRequestJson(root, "Codex request exceeds the 8 MiB JSON limit")
 }
 
 func outputPhaseName(value: LlmWireOutputPhase): String {
@@ -149,10 +158,7 @@ public class LlmWireResponsesWebSocketSession {
         if (incremental) {
             frame.put("previous_response_id", wireJsonString(checkpointId))
         }
-        let body = frame.stringify().toArray()
-        if (body.size > LLM_JSON_MAX_BYTES) {
-            throw LlmWireError(LlmWireErrorKind.BodyLimit, "llm.codex_request_too_large", "WebSocket request exceeds the 8 MiB JSON limit")
-        }
+        let body = writeCodexRequestJson(frame, "WebSocket request exceeds the 8 MiB JSON limit").toArray()
         checkRetained(currentInput, currentConfig)
         pendingInput = currentInput; pendingConfig = currentConfig
         clearCheckpoint()
