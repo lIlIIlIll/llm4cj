@@ -151,7 +151,7 @@ internal class TranscriptToolState {
 
 // The state transition and the call check happen in one pass. End-of-transcript
 // visibility is never used to judge a historical call.
-internal func replayTranscript(transcript: LlmWireTranscript): LlmWireTranscriptView {
+internal func replayTranscript(transcript: LlmWireTranscript, allowUnresolvedTail!: Bool = false): LlmWireTranscriptView {
     let state = TranscriptToolState()
     let messages = ArrayList<LlmWireMessage>()
     let items = transcript.items
@@ -212,7 +212,7 @@ internal func replayTranscript(transcript: LlmWireTranscript): LlmWireTranscript
                 messages.add(message)
         }
     }
-    if (!pending.isEmpty()) {
+    if (!allowUnresolvedTail && !pending.isEmpty()) {
         throw transcriptError("llm.tool_call_unresolved", "every tool call must have exactly one later result", items.size - 1)
     }
     LlmWireTranscriptView(messages.toArray(), state.activeTools(), state.declaredTools())

@@ -48,7 +48,7 @@ func readTranscriptSnapshot(source: String): JsonNode {
     }
 }
 
-// Version 3 distinguishes raw custom inputs, definitions, and explicit cache
+// Version 3 distinguishes custom tools, typed audio, and explicit cache
 // metadata. Legacy semantic values retain their exact version 2 encoding.
 func transcriptSnapshotVersion(transcript: LlmWireTranscript): Int64 {
     if (transcriptHasAudio(transcript)) { return 3 }

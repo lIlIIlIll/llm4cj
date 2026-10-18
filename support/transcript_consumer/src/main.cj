@@ -25,6 +25,12 @@ main(): Int64 {
             LlmWireBlock.ToolResult(LlmWireToolResultBlock("old", [LlmWireToolResultContent.Text(LlmWireTextBlock("old result"))]))
         ]))
     ])
+    let prefix = match (before.forkAt(0)) { case LlmWireResult.Ok(value) => value; case LlmWireResult.Err(error) => throw error }
+    let next = LlmWireReply(choices: [LlmWireChoice(7, [LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock("branch", "lookup", LlmWireToolArguments.Complete(json("{}"))))], LlmWireChoiceOutcome.Completed)])
+    let waiting = match (prefix.appendContinuation(next, 7)) { case LlmWireResult.Ok(value) => value; case LlmWireResult.Err(error) => throw error }
+    let closed = waiting.append(LlmWireInputItem.Message(LlmWireMessage(LlmWireRole.User, [LlmWireBlock.ToolResult(LlmWireToolResultBlock("branch", [LlmWireToolResultContent.Text(LlmWireTextBlock("branch result"))]))])))
+    let forked = match (closed.forkAt(2)) { case LlmWireResult.Ok(value) => value; case LlmWireResult.Err(error) => throw error }
+    if (before.items.size != 2 || prefix.items.size != 0 || waiting.items.size != 1 || forked.items.size != 2) { return 1 }
     let after = before.append(LlmWireInputItem.ToolDeactivation(LlmWireToolDefinitionIdentity("lookup", version: "1")))
     if (before.effectiveTools.size != 1 || after.effectiveTools.size != 0) { return 1 }
     let endpoint = "https://fixture.invalid/v1/messages"

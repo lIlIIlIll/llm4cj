@@ -495,6 +495,9 @@ LlmWireToolResultBlock member public let isError : Bool
 LlmWireToolResultBlock member public let kind : LlmWireToolKind
 LlmWireToolResultContent cases Text ( LlmWireTextBlock ) | Image ( LlmWireImageBlock )
 LlmWireTranscript member public func append ( item : LlmWireInputItem ) : LlmWireTranscript
+LlmWireTranscript member public func appendContinuation ( reply : LlmWireReply ) : LlmWireResult < LlmWireTranscript >
+LlmWireTranscript member public func appendContinuation ( reply : LlmWireReply , choiceIndex : Int64 ) : LlmWireResult < LlmWireTranscript >
+LlmWireTranscript member public func forkAt ( itemIndex : Int64 ) : LlmWireResult < LlmWireTranscript >
 LlmWireTranscript member public func snapshot ( ) : LlmWireResult < String >
 LlmWireTranscript member public init ( initialContext : LlmWireInitialContext , items ! : Array < LlmWireInputItem > = [ ] , cacheBreakpoints ! : Array < LlmWireCacheBreakpoint > = [ ] )
 LlmWireTranscript member public init ( items ! : Array < LlmWireInputItem > = [ ] , cacheBreakpoints ! : Array < LlmWireCacheBreakpoint > = [ ] )

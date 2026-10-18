@@ -1,0 +1,115 @@
+{
+  "source_fixtures": ["transcripts/openai-responses.json", "transcripts/anthropic-messages.json", "transcripts/kimi-chat.json"],
+  "live_provider": "not_run",
+  "fork_index": 3,
+  "cases": [
+    {
+      "name": "openai-responses",
+      "prefix_items": [
+        {"kind":"message","value":{"role":"user","blocks":[{"kind":"text","value":{"text":"History","citations":[],"annotations":[],"logprobs":[],"phase":"unspecified"}}],"message_spans":[]}},
+        {"kind":"tool_declaration","value":{"name":"C","description":"Tool C","schema":{"type":"object","properties":{}},"version":"1","deferred":false}},
+        {"kind":"instruction_update","value":{"role":"developer","text":"Updated instruction"}}
+      ],
+      "prefix_body": {
+        "model":"gpt-6-sol","max_output_tokens":32,
+        "input":[
+          {"role":"system","content":[{"type":"input_text","text":"Initial instruction"}]},
+          {"role":"user","content":[{"type":"input_text","text":"History"}]},
+          {"type":"additional_tools","role":"developer","tools":[{"type":"function","name":"C","description":"Tool C","parameters":{"type":"object","properties":{}}}]},
+          {"role":"developer","content":[{"type":"input_text","text":"Updated instruction"}]}
+        ],
+        "tools":[
+          {"type":"function","name":"A","description":"Tool A","parameters":{"type":"object","properties":{}}},
+          {"type":"function","name":"B","description":"Tool B","parameters":{"type":"object","properties":{}}}
+        ]
+      },
+      "continuation_body": {
+        "model":"gpt-6-sol","max_output_tokens":32,
+        "input":[
+          {"role":"system","content":[{"type":"input_text","text":"Initial instruction"}]},
+          {"role":"user","content":[{"type":"input_text","text":"History"}]},
+          {"type":"additional_tools","role":"developer","tools":[{"type":"function","name":"C","description":"Tool C","parameters":{"type":"object","properties":{}}}]},
+          {"role":"developer","content":[{"type":"input_text","text":"Updated instruction"}]},
+          {"role":"assistant","content":[{"type":"input_text","text":"branch continuation"}]}
+        ],
+        "tools":[
+          {"type":"function","name":"A","description":"Tool A","parameters":{"type":"object","properties":{}}},
+          {"type":"function","name":"B","description":"Tool B","parameters":{"type":"object","properties":{}}}
+        ]
+      },
+      "headers":[{"name":"content-type","value":"application/json"},{"name":"accept","value":"application/json"}]
+    },
+    {
+      "name": "anthropic-messages",
+      "prefix_items": [
+        {"kind":"message","value":{"role":"user","blocks":[{"kind":"text","value":{"text":"History","citations":[],"annotations":[],"logprobs":[],"phase":"unspecified"}}],"message_spans":[]}},
+        {"kind":"tool_activation","value":{"name":"B","version":"1"}},
+        {"kind":"instruction_update","value":{"role":"system","text":"Updated instruction"}}
+      ],
+      "prefix_body": {
+        "model":"claude-opus-5-5","max_tokens":32,
+        "system":[{"type":"text","text":"Initial instruction"}],
+        "messages":[
+          {"role":"user","content":[{"type":"text","text":"History"}]},
+          {"role":"system","content":[{"type":"tool_addition","tool":{"type":"tool_reference","name":"B"}}]},
+          {"role":"system","content":[{"type":"text","text":"Updated instruction"}]}
+        ],
+        "tools":[
+          {"name":"A","description":"Tool A","input_schema":{"type":"object","properties":{}}},
+          {"name":"B","description":"Tool B","input_schema":{"type":"object","properties":{}},"defer_loading":true}
+        ]
+      },
+      "continuation_body": {
+        "model":"claude-opus-5-5","max_tokens":32,
+        "system":[{"type":"text","text":"Initial instruction"}],
+        "messages":[
+          {"role":"user","content":[{"type":"text","text":"History"}]},
+          {"role":"system","content":[{"type":"tool_addition","tool":{"type":"tool_reference","name":"B"}}]},
+          {"role":"system","content":[{"type":"text","text":"Updated instruction"}]},
+          {"role":"assistant","content":[{"type":"text","text":"branch continuation"}]}
+        ],
+        "tools":[
+          {"name":"A","description":"Tool A","input_schema":{"type":"object","properties":{}}},
+          {"name":"B","description":"Tool B","input_schema":{"type":"object","properties":{}},"defer_loading":true}
+        ]
+      },
+      "headers":[{"name":"content-type","value":"application/json"},{"name":"accept","value":"application/json"},{"name":"anthropic-beta","value":"mid-conversation-tool-changes-2026-07-01"}]
+    },
+    {
+      "name": "kimi-chat",
+      "prefix_items": [
+        {"kind":"message","value":{"role":"user","blocks":[{"kind":"text","value":{"text":"History","citations":[],"annotations":[],"logprobs":[],"phase":"unspecified"}}],"message_spans":[]}},
+        {"kind":"tool_declaration","value":{"name":"C","description":"Tool C","schema":{"type":"object","properties":{}},"version":"1","deferred":false}},
+        {"kind":"instruction_update","value":{"role":"system","text":"Updated instruction"}}
+      ],
+      "prefix_body": {
+        "model":"kimi-k3","max_completion_tokens":32,
+        "messages":[
+          {"role":"system","content":"Initial instruction"},
+          {"role":"user","content":"History"},
+          {"role":"system","tools":[{"type":"function","function":{"name":"C","description":"Tool C","parameters":{"type":"object","properties":{}}}}]},
+          {"role":"system","content":"Updated instruction"}
+        ],
+        "tools":[
+          {"type":"function","function":{"name":"A","description":"Tool A","parameters":{"type":"object","properties":{}}}},
+          {"type":"function","function":{"name":"B","description":"Tool B","parameters":{"type":"object","properties":{}}}}
+        ]
+      },
+      "continuation_body": {
+        "model":"kimi-k3","max_completion_tokens":32,
+        "messages":[
+          {"role":"system","content":"Initial instruction"},
+          {"role":"user","content":"History"},
+          {"role":"system","tools":[{"type":"function","function":{"name":"C","description":"Tool C","parameters":{"type":"object","properties":{}}}}]},
+          {"role":"system","content":"Updated instruction"},
+          {"role":"assistant","content":"branch continuation"}
+        ],
+        "tools":[
+          {"type":"function","function":{"name":"A","description":"Tool A","parameters":{"type":"object","properties":{}}}},
+          {"type":"function","function":{"name":"B","description":"Tool B","parameters":{"type":"object","properties":{}}}}
+        ]
+      },
+      "headers":[{"name":"content-type","value":"application/json"},{"name":"accept","value":"application/json"}]
+    }
+  ]
+}

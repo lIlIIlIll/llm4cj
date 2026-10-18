@@ -74,6 +74,7 @@ llm.codex_text_metadata_unsupported
 llm.context_contract_version_unsupported
 llm.context_update_position_invalid
 llm.context_update_unsupported
+llm.continuation_choice_ambiguous
 llm.continuation_choice_missing
 llm.continuation_choice_required
 llm.continuation_projection_lossy
@@ -304,6 +305,7 @@ llm.tool_schema_unsupported
 llm.tool_stop_without_call
 llm.tool_version_invalid
 llm.tools_unsupported
+llm.transcript_index_invalid
 llm.transcript_snapshot_invalid
 llm.transcript_snapshot_limit_exceeded
 llm.transcript_version_unsupported

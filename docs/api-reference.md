@@ -54,6 +54,10 @@ usage 来源以 `LlmWireUsageSource.Unknown` 或 ProviderReported(provider, dial
 
 多 choice 按显式 index 选择；只提取唯一 Final message，没有 Final 时接受唯一 Unspecified message。候选内部按顺序拼接文本，不修复 JSON 或移除代码围栏。默认文本上限为 8 MiB，schema 使用同一 `LlmWireSchemaValidationLimits`。Disabled、Text 和 ProviderDefault 格式不适用。完成的混合 tool/audio choice 会明确拒绝；语法错误仅包含安全消息、choice 和已知的 UTF-8 字节位置。用法见[结构化输出](structured-output.md)。
 
+## Transcript 分支
+
+`LlmWireTranscript.forkAt(itemIndex: Int64)` 返回 `[0, itemIndex)` 的闭合前缀；边界允许零和完整 item 数量。`appendContinuation(reply: LlmWireReply)` 要求单个 choice，`appendContinuation(reply: LlmWireReply, choiceIndex: Int64)` 按公开 choice index 选择。三个方法返回 `LlmWireResult<LlmWireTranscript>`，失败保持输入不变。工具闭合、replay 完整性及缓存断点规则见[安全分支与续接](transcript-branching.md)。
+
 ## 音频
 
 `LlmWireAudioFormat`、`LlmWireAudioVoice`、`LlmWireAudioCompletion`、`LlmWireAudioInputBlock`、`LlmWireAudioOutputOptions`、`LlmWireAudioCapabilities`、`LlmWireResponseContext`、`LlmWireAudioOutputBlock`、`LlmWireAssistantAudioReplayBlock`、`LlmWireAudioChunk`。

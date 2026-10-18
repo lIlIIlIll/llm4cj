@@ -731,12 +731,12 @@ class FixtureOracleTests(unittest.TestCase):
         fixtures, manifest = self.manifest()
         checks = []
         for command, name in [("check-cache", "cache"), ("check-audio", "audio"), ("check-schema", "schema"),
-                              ("check-structured", "structured")]:
+                              ("check-structured", "structured"), ("check-transcript-branches", "branches")]:
             (fixtures / f"{name}.json").write_text("{}\n")
             checks.append({"command": command, "fixture": f"{name}.json"})
         executable = fixtures.parent / "public-probe"
         with patch.object(check_fixtures.subprocess, "run") as run:
-            self.assertEqual(check_fixtures.verify_public_checks(executable, {"public_checks": checks}), 4)
+            self.assertEqual(check_fixtures.verify_public_checks(executable, {"public_checks": checks}), 5)
             arguments = [call.args[0] for call in run.call_args_list]
             self.assertIn([sys.executable, str(check_fixtures.ROOT / "scripts/check_cache_fixtures.py"),
                            "--probe", str(executable), "--fixture", str(fixtures / "cache.json")], arguments)
@@ -744,6 +744,8 @@ class FixtureOracleTests(unittest.TestCase):
                            str(executable), str(fixtures / "audio.json")], arguments)
             self.assertIn([str(executable), "check-schema", str(fixtures / "schema.json")], arguments)
             self.assertIn([str(executable), "check-structured", str(fixtures / "structured.json")], arguments)
+            self.assertIn([sys.executable, str(check_fixtures.ROOT / "scripts/check_transcript_branch_fixtures.py"),
+                           "--probe", str(executable), "--fixture", str(fixtures / "branches.json")], arguments)
             run.reset_mock()
             with self.assertRaisesRegex(ValueError, "unknown public fixture check command"):
                 check_fixtures.verify_public_checks(executable, {"public_checks": [

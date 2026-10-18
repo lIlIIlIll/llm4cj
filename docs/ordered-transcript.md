@@ -1,5 +1,7 @@
 # 有序 transcript 与动态上下文
 
+要从历史前缀分支或将选定 reply choice 接入历史，使用[安全分支与续接](transcript-branching.md)。helper 保留闭合工具依赖和完整 replay message，返回独立 transcript。
+
 v0.3.0 的请求以 `LlmWireTranscript` 保存一份输入事实。`LlmWireInitialContext` 保存初始 instructions 和工具声明池，`LlmWireInputItem` 按顺序保存 Message、InstructionUpdate、ToolDeclaration、ToolActivation、ToolDeactivation。`LlmWireRequest(model, transcript, ...)` 不再接受独立 messages/instructions/tools。builder 先设 initial context 或整个 transcript，再 append 输入项；静态输入使用相同模型。
 
 `LlmWireToolDeclaration` 保存完整 `LlmWireTool`、显式 version 和 deferred 标记。`LlmWireToolDefinitionIdentity` 用名称及版本引用定义。deferred 声明先加入池但不进入 active 视图；激活后才可调用。首次声明、激活、撤销分别要求能力，声明后再调用的时序不能省略。重复同定义声明保持幂等；同名不同定义确定失败。定义替换和池扩展在当前内置契约中不支持。
