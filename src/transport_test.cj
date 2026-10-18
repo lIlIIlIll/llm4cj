@@ -2444,7 +2444,7 @@ class Llm4CjV02Tests {
         let citationReply = succeededReply(messages.decodeResponse("""
         {"id":"msg","type":"message","role":"assistant","model":"claude","content":[
           {"type":"text","text":"grass","citations":[{"type":"char_location","cited_text":"grass","document_index":0,"document_title":"Doc","start_char_index":0,"end_char_index":5}]}
-        ],"stop_reason":"end_turn","stop_details":null,"usage":{"input_tokens":4,"output_tokens":1,"server_tool_use":{"web_search_requests":2,"web_fetch_requests":1}},"service_tier":"standard"}
+        ],"stop_reason":"end_turn","stop_details":null,"usage":{"input_tokens":4,"output_tokens":1,"server_tool_use":{"web_search_requests":2,"web_fetch_requests":1},"service_tier":"standard"}}
         """))
         match (citationReply.blocks[0]) {
             case LlmWireOutputBlock.Text(value) =>

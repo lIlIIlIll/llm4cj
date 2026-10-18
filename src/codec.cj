@@ -1019,7 +1019,15 @@ func decodeChatUsage(codec: LlmWireCodec, root: JsonNode): LlmWireUsage {
     }
 }
 
+func rejectMessagesUsageFieldPlacement(codec: LlmWireCodec, root: JsonNode): Unit {
+    match (root.field("service_tier")) {
+        case Some(value) => unsupportedSemantic(codec, "service_tier", value, "llm.messages_usage_field_unsupported")
+        case None => ()
+    }
+}
+
 func decodeMessagesUsage(codec: LlmWireCodec, root: JsonNode): LlmWireUsage {
+    rejectMessagesUsageFieldPlacement(codec, root)
     match (wireOptionalObject(root, "usage", provider: codec.provider)) {
         case None => LlmWireUsage()
         case Some(usage) =>
@@ -1028,7 +1036,7 @@ func decodeMessagesUsage(codec: LlmWireCodec, root: JsonNode): LlmWireUsage {
                 inputTokens: wireOptionalUsageInt(usage, "input_tokens", codec.provider), outputTokens: wireOptionalUsageInt(usage, "output_tokens", codec.provider),
                 cacheReadTokens: wireOptionalUsageInt(usage, "cache_read_input_tokens", codec.provider), cacheWriteTokens: wireOptionalUsageInt(usage, "cache_creation_input_tokens", codec.provider),
                 webSearchRequests: wireOptionalUsageInt(serverTools, "web_search_requests", codec.provider), webFetchRequests: wireOptionalUsageInt(serverTools, "web_fetch_requests", codec.provider),
-                serviceTier: wireOptionalString(root, "service_tier", provider: codec.provider),
+                serviceTier: wireOptionalString(usage, "service_tier", provider: codec.provider),
                 source: LlmWireUsageSource.ProviderReported(codec.provider, codec.dialect.compatibilityId)
             )
     }

@@ -1,5 +1,7 @@
 # 流式与传输
 
+Messages 的 `message_delta.usage` 按累计值完整合并 input/output、cache 和 server-tool 计数。缺失字段保留上次观测，显式零仍为零，重复累计值不相加。正常停止、取消、provider failure 和缺少终态都保留最新完整接受的 usage；非法更新不会部分替换状态。
+
 Chat 的 fixed/stream 路径都保留每个 choice 的 text/refusal token logprobs，使用相同字段校验并限制累计状态。多个 chunk 按原始 token 顺序合并；畸形 metadata 不会被忽略。
 
 `length` 或 `content_filter` 保持 choice 为 `Incomplete`，工具参数仍按实际 JSON 分类：完整对象为 `Complete`，合法非对象为 `InvalidShape`，非法或未闭合 JSON 为 `InvalidJson`。只有完整对象及合法调用 identity 能进入 continuation；允许续轮不会将截断状态改成成功。
