@@ -1,5 +1,7 @@
 # 流式与传输
 
+SSE `retry` 和 HTTP `Retry-After` 数值在溢出后仍验证全部剩余字符。纯数字超限值保持饱和；带非数字后缀的值无效，且不会覆盖此前有效的 SSE retry。两种入口保留各自的空白处理规则。
+
 Messages 的 `message_delta.usage` 按累计值完整合并 input/output、cache 和 server-tool 计数。缺失字段保留上次观测，显式零仍为零，重复累计值不相加。正常停止、取消、provider failure 和缺少终态都保留最新完整接受的 usage；非法更新不会部分替换状态。
 
 Chat 的 fixed/stream 路径都保留每个 choice 的 text/refusal token logprobs，使用相同字段校验并限制累计状态。多个 chunk 按原始 token 顺序合并；畸形 metadata 不会被忽略。

@@ -320,10 +320,15 @@ public func readLlmHttpBody(stream: InputStream, declaredSize: ?Int64, maxBytes:
 func parseUnsignedDecimal(text: String): ?Int64 {
     if (text == "") { return None }
     var result: Int64 = 0
+    let maxBeforeDigit = Int64.Max / 10
+    let maxLastDigit = Int64.Max % 10
     for (byte in text.toArray()) {
         if (byte < 48 || byte > 57) { return None }
         let digit = Int64(byte - 48)
-        if (result > (Int64.Max - digit) / 10) { return Some(Int64.Max) }
+        if (result > maxBeforeDigit || (result == maxBeforeDigit && digit > maxLastDigit)) {
+            result = Int64.Max
+            continue
+        }
         result = result * 10 + digit
     }
     Some(result)
