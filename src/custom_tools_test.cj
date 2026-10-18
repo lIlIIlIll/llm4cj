@@ -278,8 +278,8 @@ class CustomToolsTest {
         let codec = customCodec(); let item = customItem()
         for ((bad, code) in [
             (item.replace("\"input\":\"run é\"", "\"input\":7"), "llm.field_type_invalid"),
-            (item.replace("\"call_id\":\"call_1\"", "\"call_id\":\"\""), "llm.tool_call_id_missing"),
-            (item.replace("\"name\":\"run\"", "\"name\":\"bad name\""), "llm.tool_call_name_invalid"),
+            (item.replace("\"call_id\":\"call_1\"", "\"call_id\":\"\""), "llm.tool_call_incomplete"),
+            (item.replace("\"name\":\"run\"", "\"name\":\"bad name\""), "llm.tool_call_incomplete"),
             (item.replace("\"input\":\"run é\"", "\"input\":\"run é\",\"async\":true"), "llm.custom_tool_semantic_unsupported"),
             (item.replace("\"input\":\"run é\"", "\"input\":\"run é\",\"async\":\"true\""), "llm.field_type_invalid"),
             (item.replace("\"input\":\"run é\"", "\"input\":\"run é\",\"caller\":{\"type\":\"program\",\"tool_id\":\"p\"}"), "llm.custom_tool_semantic_unsupported"),
