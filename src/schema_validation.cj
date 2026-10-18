@@ -298,7 +298,13 @@ internal class SchemaEvaluator {
         }
         if (value.wireKind == WireJsonKind.Object) {
             var properties: ?JsonNode = None
-            match (schema.field("properties")) { case Some(node) => if (form("properties", node)) { properties = Some(node) }; case None => () }
+            var propertiesKnown = true
+            match (schema.field("properties")) {
+                case Some(node) =>
+                    propertiesKnown = form("properties", node)
+                    if (propertiesKnown) { properties = Some(node) }
+                case None => ()
+            }
             match (properties) {
                 case Some(declared) =>
                     for (name in toolSchemaObjectNames(declared, budget: Some(budget))) {
@@ -317,7 +323,9 @@ internal class SchemaEvaluator {
             }
             match (schema.field("additionalProperties")) {
                 case Some(policy) =>
-                    if (schema.field("patternProperties").isNone() && form("additionalProperties", policy)) {
+                    // Unsupported property declarations cannot establish which
+                    // instance keys are additional. Independent bounds still apply.
+                    if (propertiesKnown && schema.field("patternProperties").isNone() && form("additionalProperties", policy)) {
                         for (name in toolSchemaObjectNames(value, budget: Some(budget))) {
                             budget.charge(name.size + 1)
                             var declared = false
