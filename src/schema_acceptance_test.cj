@@ -24,6 +24,21 @@ private func schemaAcceptanceCode(schema: String, instance: String,
 @Test
 class SchemaIndependentAcceptanceTest {
     @TestCase
+    func unsupportedDeclarationsCannotProveAdditionalPropertyViolations() {
+        let subset = LlmWireToolInputValidationMode.ValidateSupportedSubset
+        for (properties in ["[]", "null", "false", "1", "\"unknown\""]) {
+            for (policy in ["false", "{\"minimum\":2}"]) {
+                let schema = "{\"properties\":" + properties + ",\"additionalProperties\":" + policy + "}"
+                @Expect(schemaAcceptanceCode(schema, #"{"x":1}"#, mode: subset), "llm.tool_schema_unsupported")
+                @Expect(schemaAcceptanceCode(schema, #"{"x":1}"#), "llm.tool_schema_unsupported")
+            }
+        }
+        @Expect(schemaAcceptanceCode(#"{"properties":[],"additionalProperties":false,"maxProperties":0}"#, #"{"x":1}"#, mode: subset), "llm.tool_arguments_schema_violation")
+        @Expect(schemaAcceptanceCode(#"{"properties":{},"additionalProperties":false}"#, #"{"x":1}"#, mode: subset), "llm.tool_arguments_schema_violation")
+        @Expect(schemaAcceptanceCode(#"{"oneOf":[false,{"properties":[],"additionalProperties":false}]}"#, #"{"x":1}"#, mode: subset), "llm.tool_schema_unsupported")
+    }
+
+    @TestCase
     func preflightIncludesAbsentPropertiesAndBranches() {
         @Expect(schemaAcceptanceCode(#"{"properties":{"absent":{"pattern":"x"}}}"#, "{}"), "llm.tool_schema_unsupported")
         @Expect(schemaAcceptanceCode(#"{"anyOf":[true,{"pattern":"x"}]}"#, "{}"), "llm.tool_schema_unsupported")
