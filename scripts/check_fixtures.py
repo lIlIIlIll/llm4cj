@@ -33,6 +33,7 @@ DIALECTS = {
 SOURCE_HOSTS = {
     "platform.openai.com", "developers.openai.com", "docs.anthropic.com",
     "platform.claude.com", "api-docs.deepseek.com", "platform.kimi.ai",
+    "json-schema.org",
 }
 
 
@@ -185,6 +186,15 @@ def validate_manifest() -> dict:
         raise ValueError("the three native transcript provenance fixtures must remain present")
     for relative in manifest["requests"] + manifest["transcripts"]:
         fixture_path(relative)
+    for check in manifest.get("public_checks", []):
+        identifier = check["id"]
+        if not re.fullmatch(r"[a-z0-9_-]+", identifier) or identifier in identifiers:
+            raise ValueError("duplicate or invalid public fixture check")
+        identifiers.add(identifier)
+        if check["command"] not in {"check-schema"}:
+            raise ValueError("unknown public fixture check command")
+        fixture_path(check["fixture"])
+        validate_source(check["source"], identifier)
     return manifest
 
 
@@ -192,6 +202,7 @@ def fixture_inventory(manifest: dict | None = None) -> list[Path]:
     """Exact contract input set; unrelated untracked artifacts are never adopted."""
     manifest = validate_manifest() if manifest is None else manifest
     relatives = {"manifest.json", *manifest["requests"], *manifest["transcripts"]}
+    relatives.update(check["fixture"] for check in manifest.get("public_checks", []))
     for case in manifest["cases"]:
         relatives.add(case["expected"])
         relatives.update(value for key, value in case["wire"].items() if key != "cancel")
@@ -299,6 +310,10 @@ def main() -> None:
         for case in chosen:
             count += verify_case(executable, case, Path(raw))
     requests = verify_requests(executable, manifest) if not options.cases else 0
+    if not options.cases:
+        for check in manifest.get("public_checks", []):
+            subprocess.run([str(executable), check["command"], str(fixture_path(check["fixture"]))],
+                           cwd=ROOT, check=True)
     print(f"public fixture semantics verified: {len(chosen)} scenarios, {count} decode comparisons, "
           f"{requests} requests, live provider not_run")
 

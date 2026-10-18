@@ -72,6 +72,7 @@ func decodeStream(name: String, path: String, chunkBytes: Int64): Int64 {
 }
 
 main(args: Array<String>): Int64 {
+    if (args.size == 2 && args[0] == "check-schema") { return checkSchemaFixture(args[1]) }
     if (args.size < 3) { return 2 }
     match (args[0]) {
         case "encode" => encode(args[1], args[2], true)

@@ -181,6 +181,8 @@ llm.responses_terminal_output_mismatch
 llm.responses_terminal_output_missing
 llm.responses_text_mismatch
 llm.responses_value_done_duplicate
+llm.schema_validation_limit
+llm.schema_validation_limits_invalid
 llm.service_tier_unsupported
 llm.sse_buffer_too_large
 llm.sse_closed

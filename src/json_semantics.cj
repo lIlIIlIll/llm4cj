@@ -109,13 +109,45 @@ func wireJsonNumberIsInteger(literal: String): Bool {
     number.digits == "0" || number.exponent[0] != b'-'
 }
 
-func wireJsonEquivalent(left: JsonNode, right: JsonNode): Bool {
+// Compare decimal order without converting the exponent or expanding zeroes.
+private func wireSignedCompare(left: String, right: String): Int64 {
+    let aNegative = left[0] == b'-'; let bNegative = right[0] == b'-'
+    if (aNegative != bNegative) { return if (aNegative) { -1 } else { 1 } }
+    let a = if (aNegative) { String.fromUtf8(left.toArray()[1..]) } else { left }
+    let b = if (bNegative) { String.fromUtf8(right.toArray()[1..]) } else { right }
+    let order = wireUnsignedCompare(a, b)
+    if (aNegative) { -order } else { order }
+}
+
+func wireJsonNumberCompare(left: String, right: String, budget: SchemaBudget): Int64 {
+    budget.charge(8 * (left.size + right.size) + 1)
+    let a = wireDecimal(left); let b = wireDecimal(right)
+    if (a.digits == "0" && b.digits == "0") { return 0 }
+    if (a.negative != b.negative) { return if (a.negative) { -1 } else { 1 } }
+    if (a.digits == "0") { return -1 }
+    if (b.digits == "0") { return 1 }
+    var order = wireSignedCompare(wireSignedExponent(a.exponent, a.digits.size), wireSignedExponent(b.exponent, b.digits.size))
+    if (order == 0) {
+        for (index in 0..max(a.digits.size, b.digits.size)) {
+            let x = if (index < a.digits.size) { a.digits[index] } else { b'0' }
+            let y = if (index < b.digits.size) { b.digits[index] } else { b'0' }
+            if (x != y) { order = if (x < y) { -1 } else { 1 }; break }
+        }
+    }
+    if (a.negative) { -order } else { order }
+}
+
+func wireJsonEquivalent(left: JsonNode, right: JsonNode, budget!: ?SchemaBudget = None): Bool {
+    match (budget) { case Some(value) => value.charge(1); case None => () }
     if (left.wireKind != right.wireKind) { return false }
     match (left.wireKind) {
         case WireJsonKind.Null => true
         case WireJsonKind.Boolean => left.bool == right.bool
-        case WireJsonKind.Text => left.text == right.text
+        case WireJsonKind.Text =>
+            match (budget) { case Some(value) => value.charge(left.text.size + right.text.size); case None => () }
+            left.text == right.text
         case WireJsonKind.Number =>
+            match (budget) { case Some(value) => value.charge(8 * (left.numberText.size + right.numberText.size)); case None => () }
             let a = wireDecimal(left.numberText)
             let b = wireDecimal(right.numberText)
             a.negative == b.negative && a.digits == b.digits && a.exponent == b.exponent
@@ -123,15 +155,16 @@ func wireJsonEquivalent(left: JsonNode, right: JsonNode): Bool {
             let a = left.asArray(); let b = right.asArray()
             if (a.size() != b.size()) { return false }
             for (index in 0..a.size()) {
-                if (!wireJsonEquivalent(a.get(index).getOrThrow(), b.get(index).getOrThrow())) { return false }
+                if (!wireJsonEquivalent(a.get(index).getOrThrow(), b.get(index).getOrThrow(), budget: budget)) { return false }
             }
             true
         case WireJsonKind.Object =>
             let a = left.asObject(); let b = right.asObject()
             if (a.size() != b.size()) { return false }
             for (index in 0..a.size()) {
+                match (budget) { case Some(value) => value.charge(a.nameAt(index).size); case None => () }
                 match (b.get(a.nameAt(index))) {
-                    case Some(value) => if (!wireJsonEquivalent(a.valueAt(index), value)) { return false }
+                    case Some(value) => if (!wireJsonEquivalent(a.valueAt(index), value, budget: budget)) { return false }
                     case None => return false
                 }
             }

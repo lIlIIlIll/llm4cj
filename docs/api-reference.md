@@ -24,7 +24,11 @@ usage 来源以 `LlmWireUsageSource.Unknown` 或 ProviderReported(provider, dial
 
 `LlmWireDialectContract.toolErrorStyle` 声明工具失败语义的编码策略：`NativeField`（Anthropic Messages，发送原生 `is_error` 字段）、`ContentMarker`（DeepSeek Messages，失败结果在 `content` 前插入固定 text block `[tool_error]`，并不再发送被 provider 忽略的 `is_error`，属于有损兼容）或 `Unsupported`（Messages dialect 默认，`isError=true` 会以 `llm.tool_result_error_semantics_unsupported` 拒绝）。
 
-`validateReplyToolInputs(reply, transcript, mode:)` 在 wire-valid reply 与工具执行之间提供协议无关的输入契约屏障。它始终拒绝末端未声明/未激活工具；`LlmWireToolInputValidationMode.Disabled` 仅关闭 schema 检查，`ValidateSupportedSubset` 跳过不支持的 schema feature，`Strict` 以 `llm.tool_schema_unsupported` 拒绝。支持 `type`、`properties`、`required`、`additionalProperties`（仅 boolean 形式）、`items` 与 `enum`；其余关键字（含未知关键字）视为 unsupported。违例以 `llm.tool_arguments_schema_violation` 返回，携带 `toolCallId` 与有界 diagnostic（`tool_name`、`schema_path`、`instance_path`、`violation`、`expected`、`actual`），按 block 顺序与固定关键字优先级报告第一个违例。参数不是完整 JSON object 的调用由 wire 层处理，schema 屏障不把它重新分类为 schema 违例。
+`validateReplyToolInputs(reply, transcript, mode:, limits:)` 在 wire-valid reply 与工具执行之间提供协议无关的输入契约屏障。它始终拒绝末端未声明或未激活工具。`LlmWireToolInputValidationMode.Disabled` 仅关闭 schema 检查。`Strict` 预检所有 schema 分支，遇到未知规则或不支持的形式返回 `llm.tool_schema_unsupported`。`ValidateSupportedSubset` 可报告已知约束证明的违例，但只要仍有未知规则，就不能返回成功。
+
+除 `type`、`properties`、`required`、`additionalProperties`、`items`、`enum` 外，还支持 `const`、四种数值范围、字符串长度、数组项数、对象属性数，以及 `allOf`、`anyOf`、`oneOf`。schema 子位置接受 object 或 boolean；`additionalProperties` 也接受 schema。数值比较保持精确，字符串长度按 Unicode code point 计算。`pattern`、`$ref` 等未实现规则明确 Unsupported。
+
+`LlmWireSchemaValidationLimits` 的默认上限为 `maxDepth=256`、`maxWork=67108864`，调用方只能降低。整个调用共享预检、比较、组合分支和诊断的工作预算，超限返回 `llm.schema_validation_limit`。违例使用 `llm.tool_arguments_schema_violation`，携带有界路径和证据；超长值保留字节数标记。参数不是完整 JSON object 的调用仍由 wire 层处理。
 
 `LlmWireCapabilities` 由 `input`、`thinking`、`tools`、`output` 和 `cache` 五个不可变能力对象组成。`input.modalities` 默认为仅 `Text`。图片 source 支持 `Url`、`Base64` 与 `File`；是否可用由具体 model profile 决定。
 

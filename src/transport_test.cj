@@ -3200,7 +3200,7 @@ class Llm4CjV02Tests {
                 @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"$ref\""), true)
             case _ => @Fail("unsupported schema feature must fail strict mode")
         }
-        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("call-5", "read_file", "{\"path\":\"a\"}")]), toolsTranscript(refTool)).isOk(), true)
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("call-5", "read_file", "{\"path\":\"a\"}")]), toolsTranscript(refTool)).isOk(), false)
 
         let first = validateReplyToolInputs(replyWithCalls([
             toolCall("call-6", "read_file", "{\"path\":1}"), toolCall("call-7", "read_file", "{\"path\":2}")
@@ -3242,19 +3242,19 @@ class Llm4CjV02Tests {
         @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c4", "read_file", "{\"ratio\":0.5}")]), toolsTranscript(numberTool)).isOk(), true)
 
         let malformedType = [readTool("{\"type\":123}")]
-        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c5", "read_file", "{\"x\":1}")]), toolsTranscript(malformedType)).isOk(), true)
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c5", "read_file", "{\"x\":1}")]), toolsTranscript(malformedType)).isOk(), false)
         match (validateReplyToolInputs(replyWithCalls([toolCall("c5", "read_file", "{\"x\":1}")]), toolsTranscript(malformedType), mode: LlmWireToolInputValidationMode.Strict)) {
             case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"type\""), true)
             case _ => @Fail("malformed type must fail strict")
         }
         let unknownType = [readTool("{\"type\":\"str\"}")]
-        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c6", "read_file", "{\"x\":1}")]), toolsTranscript(unknownType)).isOk(), true)
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c6", "read_file", "{\"x\":1}")]), toolsTranscript(unknownType)).isOk(), false)
         match (validateReplyToolInputs(replyWithCalls([toolCall("c6", "read_file", "{\"x\":1}")]), toolsTranscript(unknownType), mode: LlmWireToolInputValidationMode.Strict)) {
             case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"type\""), true)
             case _ => @Fail("unknown type must fail strict")
         }
         let mixedTypeForm = [readTool("{\"type\":[\"string\",1]}")]
-        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c7", "read_file", "{\"x\":1}")]), toolsTranscript(mixedTypeForm)).isOk(), true)
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c7", "read_file", "{\"x\":1}")]), toolsTranscript(mixedTypeForm)).isOk(), false)
         match (validateReplyToolInputs(replyWithCalls([toolCall("c7", "read_file", "{\"x\":1}")]), toolsTranscript(mixedTypeForm), mode: LlmWireToolInputValidationMode.Strict)) {
             case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"type\""), true)
             case _ => @Fail("mixed type form must fail strict")
@@ -3266,7 +3266,7 @@ class Llm4CjV02Tests {
             case _ => @Fail("boolean mismatch must violate")
         }
         let malformedRequired = [readTool("{\"required\":[1]}")]
-        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c8", "read_file", "{\"x\":1}")]), toolsTranscript(malformedRequired)).isOk(), true)
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c8", "read_file", "{\"x\":1}")]), toolsTranscript(malformedRequired)).isOk(), false)
         match (validateReplyToolInputs(replyWithCalls([toolCall("c8", "read_file", "{\"x\":1}")]), toolsTranscript(malformedRequired), mode: LlmWireToolInputValidationMode.Strict)) {
             case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"required\""), true)
             case _ => @Fail("malformed required must fail strict")
@@ -3275,7 +3275,7 @@ class Llm4CjV02Tests {
         @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c9", "read_file", "\"scalar\"")]), toolsTranscript(requiredOnScalar)).isOk(), true)
 
         let malformedProps = [readTool("{\"properties\":[\"a\"],\"additionalProperties\":\"no\"}")]
-        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c10", "read_file", "{\"x\":1}")]), toolsTranscript(malformedProps)).isOk(), true)
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c10", "read_file", "{\"x\":1}")]), toolsTranscript(malformedProps)).isOk(), false)
         match (validateReplyToolInputs(replyWithCalls([toolCall("c10", "read_file", "{\"x\":1}")]), toolsTranscript(malformedProps), mode: LlmWireToolInputValidationMode.Strict)) {
             case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"properties\""), true)
             case _ => @Fail("malformed properties must fail strict")
@@ -3288,20 +3288,20 @@ class Llm4CjV02Tests {
         @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c11", "read_file", "{}")]), toolsTranscript(closedTool)).isOk(), true)
 
         let malformedItems = [readTool("{\"items\":[1]}")]
-        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c12", "read_file", "{\"x\":1}")]), toolsTranscript(malformedItems)).isOk(), true)
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c12", "read_file", "{\"x\":1}")]), toolsTranscript(malformedItems)).isOk(), false)
         match (validateReplyToolInputs(replyWithCalls([toolCall("c12", "read_file", "{\"x\":1}")]), toolsTranscript(malformedItems), mode: LlmWireToolInputValidationMode.Strict)) {
             case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"items\""), true)
             case _ => @Fail("malformed items must fail strict")
         }
         let nestedRef = [readTool("{\"type\":\"object\",\"properties\":{\"rows\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/d\"}}}}")]
-        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c13", "read_file", "{\"rows\":[1]}")]), toolsTranscript(nestedRef)).isOk(), true)
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c13", "read_file", "{\"rows\":[1]}")]), toolsTranscript(nestedRef)).isOk(), false)
         match (validateReplyToolInputs(replyWithCalls([toolCall("c13", "read_file", "{\"rows\":[1]}")]), toolsTranscript(nestedRef), mode: LlmWireToolInputValidationMode.Strict)) {
             case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"$ref\""), true)
             case _ => @Fail("nested unsupported feature must fail strict")
         }
 
         let malformedEnum = [readTool("{\"enum\":\"a\"}")]
-        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c14", "read_file", "{\"x\":1}")]), toolsTranscript(malformedEnum)).isOk(), true)
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c14", "read_file", "{\"x\":1}")]), toolsTranscript(malformedEnum)).isOk(), false)
         match (validateReplyToolInputs(replyWithCalls([toolCall("c14", "read_file", "{\"x\":1}")]), toolsTranscript(malformedEnum), mode: LlmWireToolInputValidationMode.Strict)) {
             case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"enum\""), true)
             case _ => @Fail("malformed enum must fail strict")
@@ -3320,13 +3320,13 @@ class Llm4CjV02Tests {
         }
 
         let scalarSchema = [readTool("7")]
-        @Expect(validateReplyToolInputSchemas(replyWithCalls([toolCall("c16", "read_file", "7")]), scalarSchema, LlmWireToolInputValidationMode.ValidateSupportedSubset).isOk(), true)
+        @Expect(validateReplyToolInputSchemas(replyWithCalls([toolCall("c16", "read_file", "7")]), scalarSchema, LlmWireToolInputValidationMode.ValidateSupportedSubset).isOk(), false)
         match (validateReplyToolInputSchemas(replyWithCalls([toolCall("c16", "read_file", "7")]), scalarSchema, LlmWireToolInputValidationMode.Strict)) {
             case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"schema_not_object\""), true)
             case _ => @Fail("non-object schema must fail strict")
         }
         let typoTool = [readTool("{\"description\":\"doc\",\"type\":\"object\",\"properties\":{\"p\":{\"type\":\"string\"}},\"requird\":[\"p\"]}")]
-        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c17", "read_file", "{\"p\":\"x\"}")]), toolsTranscript(typoTool)).isOk(), true)
+        @Expect(validateReplyToolInputs(replyWithCalls([toolCall("c17", "read_file", "{\"p\":\"x\"}")]), toolsTranscript(typoTool)).isOk(), false)
         match (validateReplyToolInputs(replyWithCalls([toolCall("c17", "read_file", "{\"p\":\"x\"}")]), toolsTranscript(typoTool), mode: LlmWireToolInputValidationMode.Strict)) {
             case LlmWireResult.Err(error) => @Expect(error.diagnosticJson.getOrThrow().contains("\"feature\":\"requird\""), true)
             case _ => @Fail("unknown keyword must fail strict")

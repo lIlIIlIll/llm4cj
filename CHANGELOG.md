@@ -4,6 +4,8 @@ All notable changes are recorded here.
 
 ## [0.3.0] - Unreleased
 
+- Validate common JSON Schema bounds, const, and allOf/anyOf/oneOf with exact numbers, Unicode lengths, nested boolean schemas, and a shared work budget. Preflight unused schemas and reject unknown rules instead of certifying a supported subset as valid.
+
 - Buffer builder appends without copying earlier items, retaining immutable built snapshots and full validation at build time.
 
 - Add the Codex Responses dialect, bounded WebSocket sessions, and an application-owned subscription example with offline OAuth and transport tests.

@@ -1,0 +1,41 @@
+{
+  "format": "llm4cj.schema-validation",
+  "version": 1,
+  "sources": [
+    {"url": "https://json-schema.org/draft/2020-12/json-schema-validation", "checked_date": "2026-10-18"},
+    {"url": "https://json-schema.org/draft/2020-12/json-schema-core#section-10.2.1", "checked_date": "2026-10-18"}
+  ],
+  "oracle": "Hand-reviewed expectations. SupportedSubset unknown precedence follows the llm4cj fail-closed contract, not a full JSON Schema implementation.",
+  "cases": [
+    {"id":"const-object-order", "schema":{"properties":{"v":{"const":{"a":1,"b":[true,2]}}}}, "instance":{"v":{"b":[true,2.0],"a":1e0}}, "mode":"Strict", "expected_code":"ok"},
+    {"id":"const-bool-number-distinct", "schema":{"properties":{"v":{"const":true}}}, "instance":{"v":1}, "mode":"Strict", "expected_code":"llm.tool_arguments_schema_violation"},
+    {"id":"minimum-exact-large", "schema":{"properties":{"v":{"minimum":9007199254740993}}}, "instance":{"v":9007199254740992}, "mode":"Strict", "expected_code":"llm.tool_arguments_schema_violation"},
+    {"id":"maximum-equality", "schema":{"properties":{"v":{"maximum":1}}}, "instance":{"v":10e-1}, "mode":"Strict", "expected_code":"ok"},
+    {"id":"exclusive-minimum-equality", "schema":{"properties":{"v":{"exclusiveMinimum":1}}}, "instance":{"v":1.0}, "mode":"Strict", "expected_code":"llm.tool_arguments_schema_violation"},
+    {"id":"exclusive-maximum-negative", "schema":{"properties":{"v":{"exclusiveMaximum":-1}}}, "instance":{"v":-1.0000000000000000000001}, "mode":"Strict", "expected_code":"ok"},
+    {"id":"minimum-arbitrary-exponent", "schema":{"properties":{"v":{"minimum":1e999999999999999999999999}}}, "instance":{"v":10e999999999999999999999998}, "mode":"Strict", "expected_code":"ok"},
+    {"id":"minimum-negative-zero", "schema":{"properties":{"v":{"minimum":0}}}, "instance":{"v":-0e999999999999999999999999}, "mode":"Strict", "expected_code":"ok"},
+    {"id":"min-length-unicode", "schema":{"properties":{"v":{"minLength":2}}}, "instance":{"v":"中😀"}, "mode":"Strict", "expected_code":"ok"},
+    {"id":"max-length-combining", "schema":{"properties":{"v":{"maxLength":1}}}, "instance":{"v":"e\u0301"}, "mode":"Strict", "expected_code":"llm.tool_arguments_schema_violation"},
+    {"id":"min-items-equality", "schema":{"properties":{"v":{"minItems":20e-1}}}, "instance":{"v":[0,1]}, "mode":"Strict", "expected_code":"ok"},
+    {"id":"max-items-above", "schema":{"properties":{"v":{"maxItems":2}}}, "instance":{"v":[0,1,2]}, "mode":"Strict", "expected_code":"llm.tool_arguments_schema_violation"},
+    {"id":"min-properties-below", "schema":{"minProperties":2}, "instance":{"a":1}, "mode":"Strict", "expected_code":"llm.tool_arguments_schema_violation"},
+    {"id":"max-properties-equality", "schema":{"maxProperties":1}, "instance":{"a":1}, "mode":"Strict", "expected_code":"ok"},
+    {"id":"all-of-false", "schema":{"allOf":[true,false]}, "instance":{}, "mode":"Strict", "expected_code":"llm.tool_arguments_schema_violation"},
+    {"id":"any-of-one-match", "schema":{"anyOf":[false,{"type":"object"}]}, "instance":{}, "mode":"Strict", "expected_code":"ok"},
+    {"id":"one-of-zero", "schema":{"oneOf":[{"type":"string"},{"type":"number"}]}, "instance":{}, "mode":"Strict", "expected_code":"llm.tool_arguments_schema_violation"},
+    {"id":"one-of-one", "schema":{"oneOf":[false,true]}, "instance":{}, "mode":"Strict", "expected_code":"ok"},
+    {"id":"one-of-two", "schema":{"oneOf":[true,{}]}, "instance":{}, "mode":"Strict", "expected_code":"llm.tool_arguments_schema_violation"},
+    {"id":"empty-combinator-invalid", "schema":{"anyOf":[]}, "instance":{}, "mode":"Strict", "expected_code":"llm.tool_schema_unsupported"},
+    {"id":"additional-schema", "schema":{"properties":{"known":true},"additionalProperties":{"minimum":2}}, "instance":{"known":false,"extra":1}, "mode":"Strict", "expected_code":"llm.tool_arguments_schema_violation"},
+    {"id":"boolean-property", "schema":{"properties":{"v":false}}, "instance":{"v":null}, "mode":"Strict", "expected_code":"llm.tool_arguments_schema_violation"},
+    {"id":"boolean-items", "schema":{"properties":{"v":{"items":false}}}, "instance":{"v":[]}, "mode":"Strict", "expected_code":"ok"},
+    {"id":"unused-property-preflight", "schema":{"properties":{"absent":{"pattern":"x"}}}, "instance":{}, "mode":"Strict", "expected_code":"llm.tool_schema_unsupported"},
+    {"id":"subset-any-known-and-unknown", "schema":{"anyOf":[true,{"future":1}]}, "instance":{}, "mode":"SupportedSubset", "expected_code":"llm.tool_schema_unsupported"},
+    {"id":"subset-all-known-failure", "schema":{"allOf":[false,{"future":1}]}, "instance":{}, "mode":"SupportedSubset", "expected_code":"llm.tool_arguments_schema_violation"},
+    {"id":"subset-one-two-definite", "schema":{"oneOf":[true,true,{"future":1}]}, "instance":{}, "mode":"SupportedSubset", "expected_code":"llm.tool_arguments_schema_violation"},
+    {"id":"subset-one-unused-unknown", "schema":{"oneOf":[true,{"properties":{"absent":{"pattern":"x"}}}]}, "instance":{}, "mode":"SupportedSubset", "expected_code":"llm.tool_schema_unsupported"},
+    {"id":"subset-pattern-properties-dependency", "schema":{"patternProperties":{".*":true},"additionalProperties":false}, "instance":{"extra":1}, "mode":"SupportedSubset", "expected_code":"llm.tool_schema_unsupported"},
+    {"id":"subset-prefix-items-dependency", "schema":{"properties":{"v":{"prefixItems":[true],"items":false}}}, "instance":{"v":[1]}, "mode":"SupportedSubset", "expected_code":"llm.tool_schema_unsupported"}
+  ]
+}
