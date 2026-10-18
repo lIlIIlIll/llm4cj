@@ -788,7 +788,7 @@
         "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
         "revision": "rolling reference",
         "checked_at": "2026-10-18",
-        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. The tool call explicitly reports type:function while omitting id and name to isolate truncated identity validation: object arguments remain Complete, the outcome remains Incomplete, and continuation fails for the missing identity. No live capture."
       },
       "wire": {
         "fixed": "cases/chat-length-identity.json",
@@ -880,7 +880,7 @@
         "url": "https://developers.openai.com/api/reference/resources/chat/completions/",
         "revision": "rolling reference",
         "checked_at": "2026-10-18",
-        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. No live capture."
+        "notes": "Synthetic IDs, model, text and replay payload; complete lifecycle reconstructed from documented event schemas. The tool call explicitly reports type:function while omitting id and name to isolate truncated identity validation: object arguments remain Complete, the outcome remains Incomplete, and continuation fails for the missing identity. No live capture."
       },
       "wire": {
         "fixed": "cases/chat-content_filter-identity.json",
