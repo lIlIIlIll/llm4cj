@@ -35,7 +35,7 @@ precedence over Unspecified text. Analysis and Commentary text are excluded.
 The extractor does not invent message boundaries lost from legacy data.
 
 Known reasoning and native replay blocks are not answer text. A completed choice
-with tool calls is rejected as a mixed answer. Refused/incomplete outcomes take
+with tool calls or audio is rejected as a mixed answer. Refused/incomplete outcomes take
 precedence over that extraction check.
 
 `JsonObject` requires a JSON object. Named and document schema formats validate

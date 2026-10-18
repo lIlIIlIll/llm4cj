@@ -11,7 +11,7 @@ public enum LlmWireRole { User | Assistant }
 @Derive[Equatable]
 public enum LlmWireInstructionRole { System | Developer }
 @Derive[Equatable]
-public enum LlmWireInputModality { Text | Image }
+public enum LlmWireInputModality { Text | Image | Audio }
 @Derive[Equatable]
 public enum LlmWireImageSourceKind { Url | Base64 | File }
 @Derive[Equatable]
@@ -383,6 +383,8 @@ func parseReplayScope(value: String): LlmWireNativeReplayScope { match (value) {
 public enum LlmWireBlock {
     Text(LlmWireTextBlock)
     | Image(LlmWireImageBlock)
+    | AudioInput(LlmWireAudioInputBlock)
+    | AudioReplay(LlmWireAssistantAudioReplayBlock)
     | Reasoning(LlmWireReasoningBlock)
     | ToolCall(LlmWireToolCallBlock)
     | ToolResult(LlmWireToolResultBlock)
@@ -393,6 +395,7 @@ public enum LlmWireBlock {
 
 public enum LlmWireOutputBlock {
     Text(LlmWireTextBlock)
+    | Audio(LlmWireAudioOutputBlock)
     | Reasoning(LlmWireReasoningBlock)
     | ToolCall(LlmWireToolCallBlock)
     | Refusal(LlmWireRefusalBlock)
@@ -481,6 +484,7 @@ public class LlmWireRequest {
     public let promptCacheRoutingKey: ?String
     public let toolChoice: LlmWireToolChoice
     public let structuredOutput: LlmWireStructuredOutput
+    public let audioOutput: ?LlmWireAudioOutputOptions
 
     public init(
         model: String,
@@ -494,7 +498,8 @@ public class LlmWireRequest {
         promptCache!: LlmWirePromptCache = LlmWirePromptCache.ProviderDefault,
         promptCacheRoutingKey!: ?String = None,
         toolChoice!: LlmWireToolChoice = LlmWireToolChoice.ProviderDefault,
-        structuredOutput!: LlmWireStructuredOutput = LlmWireStructuredOutput.ProviderDefault
+        structuredOutput!: LlmWireStructuredOutput = LlmWireStructuredOutput.ProviderDefault,
+        audioOutput!: ?LlmWireAudioOutputOptions = None
     ) {
         this.model = model
         this.transcript = transcript
@@ -508,6 +513,7 @@ public class LlmWireRequest {
         this.promptCacheRoutingKey = promptCacheRoutingKey
         this.toolChoice = toolChoice
         this.structuredOutput = structuredOutput
+        this.audioOutput = audioOutput
     }
 }
 
@@ -525,6 +531,8 @@ public class LlmWireUsage {
     public let totalTokens: ?Int64
     public let webSearchRequests: ?Int64
     public let webFetchRequests: ?Int64
+    public let audioInputTokens: ?Int64
+    public let audioOutputTokens: ?Int64
     public let serviceTier: ?String
     public let source: LlmWireUsageSource
     public prop cacheReadAvailability: LlmWireUsageAvailability { get() {
@@ -537,7 +545,8 @@ public class LlmWireUsage {
         inputTokens!: ?Int64 = None, outputTokens!: ?Int64 = None, reasoningTokens!: ?Int64 = None,
         cacheReadTokens!: ?Int64 = None, cacheWriteTokens!: ?Int64 = None, totalTokens!: ?Int64 = None,
         webSearchRequests!: ?Int64 = None, webFetchRequests!: ?Int64 = None, serviceTier!: ?String = None,
-        source!: LlmWireUsageSource = LlmWireUsageSource.Unknown
+        source!: LlmWireUsageSource = LlmWireUsageSource.Unknown,
+        audioInputTokens!: ?Int64 = None, audioOutputTokens!: ?Int64 = None
     ) {
         this.inputTokens = inputTokens
         this.outputTokens = outputTokens
@@ -547,6 +556,7 @@ public class LlmWireUsage {
         this.totalTokens = totalTokens
         this.webSearchRequests = webSearchRequests
         this.webFetchRequests = webFetchRequests
+        this.audioInputTokens = audioInputTokens; this.audioOutputTokens = audioOutputTokens
         this.serviceTier = serviceTier
         this.source = source
     }
@@ -621,6 +631,14 @@ func projectContinuationBlocks(blocks: Array<LlmWireOutputBlock>, messageSpans!:
         let toolCallIds = HashSet<String>()
         for (block in blocks) { match (block) {
             case LlmWireOutputBlock.Text(value) => replayable.add(LlmWireBlock.Text(value))
+            case LlmWireOutputBlock.Audio(value) => match (value.replay) {
+                case Some(replay) =>
+                    if (replay.blockOrder != replayable.size) {
+                        throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.audio_replay_position_invalid", "continuation projection would change audio block order")
+                    }
+                    replayable.add(LlmWireBlock.AudioReplay(replay))
+                case None => throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.audio_replay_incomplete", "incomplete audio cannot be projected into continuation input")
+            }
             case LlmWireOutputBlock.NativeReplay(value) =>
                 if (value.blockOrder != replayable.size) {
                     throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.native_replay_projection_order_invalid", "continuation projection would change provider-native block order")

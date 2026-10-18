@@ -5,6 +5,7 @@
 - [协议与 dialect](choosing-a-protocol.md)
 - [接入 Codex 订阅](codex-subscription.md)
 - [请求与响应](requests-and-replies.md)
+- [OpenAI Chat 音频输入、输出与续传](audio.md)
 - [有序 transcript 与动态上下文](ordered-transcript.md)
 - [从 v0.2 迁移与 Axyndra 消费契约](migrating-from-v0.2.md)
 - [缓存实验与证据边界](cache-experiments.md)

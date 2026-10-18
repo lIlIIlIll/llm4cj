@@ -121,7 +121,7 @@ func encodeChatTranscript(codec: LlmWireCodec, transcript: LlmWireTranscript): J
 
 func appendChatMessage(codec: LlmWireCodec, messages: JsonNode, message: LlmWireMessage): Unit {
     let content = StringBuilder(); let contentParts = wireJsonArray([]); let calls = wireJsonArray([])
-    var hasImage = false; var reasoningContent: ?String = None
+    var hasImage = false; var reasoningContent: ?String = None; var audioReplay: ?LlmWireAssistantAudioReplayBlock = None
     for (block in message.blocks) { match (block) {
         case LlmWireBlock.Text(value) => content.append(value.text); contentParts.add(wireJsonObject([WireJsonField("type", wireJsonString("text")), WireJsonField("text", wireJsonString(value.text))]))
         case LlmWireBlock.ToolResult(result) => messages.add(wireJsonObject([WireJsonField("role", wireJsonString("tool")), WireJsonField("tool_call_id", wireJsonString(result.callId)), WireJsonField("content", if (codec.dialect.contract.requestStyle == LlmWireRequestStyle.KimiChat) { encodeKimiToolResult(result) } else { encodeChatToolResult(codec, result) })]))
@@ -132,11 +132,17 @@ func appendChatMessage(codec: LlmWireCodec, messages: JsonNode, message: LlmWire
         case LlmWireBlock.Opaque(_) => unsupportedRequest("llm.chat_opaque_unsupported", "Chat Completions cannot replay diagnostic blocks")
         case LlmWireBlock.Reasoning(_) | LlmWireBlock.Refusal(_) => unsupportedRequest("llm.chat_block_unsupported", "display-only blocks cannot be encoded as request input")
         case LlmWireBlock.Image(value) => hasImage = true; contentParts.add(encodeChatImage(codec, value))
+        case LlmWireBlock.AudioInput(value) => hasImage = true; contentParts.add(wireJsonObject([
+            WireJsonField("type", wireJsonString("input_audio")), WireJsonField("input_audio", wireJsonObject([
+                WireJsonField("format", wireJsonString(audioFormatName(value.format))), WireJsonField("data", wireJsonString(encodeAudioBase64(value.audioBytes())))
+            ]))]))
+        case LlmWireBlock.AudioReplay(value) => audioReplay = Some(value)
     } }
     let text = content.toString()
-    if (text != "" || hasImage || !calls.items.isEmpty() || reasoningContent.isSome()) {
+    if (text != "" || hasImage || !calls.items.isEmpty() || reasoningContent.isSome() || audioReplay.isSome()) {
         let encoded = wireJsonObject([WireJsonField("role", wireJsonString(roleName(message.role))), WireJsonField("content", if (hasImage) { contentParts } else { wireJsonString(text) })])
         match (reasoningContent) { case Some(value) => encoded.put("reasoning_content", wireJsonString(value)); case None => () }
+        match (audioReplay) { case Some(value) => encoded.put("audio", wireJsonObject([WireJsonField("id", wireJsonString(value.id))])); case None => () }
         if (!calls.items.isEmpty()) { encoded.put("tool_calls", calls) }
         messages.add(encoded)
     }

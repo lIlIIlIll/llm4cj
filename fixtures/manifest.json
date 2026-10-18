@@ -3,6 +3,18 @@
   "live_provider": "not_run",
   "public_checks": [
     {
+      "id": "openai-chat-audio",
+      "fixture": "audio/openai-chat.json",
+      "command": "check-audio",
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Hand-authored audio bytes, request, fixed/SSE and continuation oracles for six output formats. Each JSON data value is a complete RFC4648 segment; synthetic bytes are not valid media or a live provider framing observation."
+      }
+    },
+    {
       "id": "structured-output",
       "fixture": "structured-output.json",
       "command": "check-structured",

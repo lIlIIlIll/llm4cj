@@ -6,7 +6,7 @@ import std.fs.*
 import std.io.*
 
 func inspectionCodecFor(name: String, tools!: Bool = false): LlmWireCodec {
-    codecFor(name, model: "fixture-model", tools: tools)
+    codecFor(name, model: if (isAudioProbe(name)) { "gpt-audio-1.5" } else { "fixture-model" }, tools: tools)
 }
 
 // Only project public typed values; never interpret provider JSON here.
@@ -37,7 +37,7 @@ func usageJson(value: LlmWireUsage): LlmWireJson {
         case LlmWireUsageSource.Unknown => jnull()
         case LlmWireUsageSource.ProviderReported(provider, dialect) => jo([jf("provider", js(provider)), jf("dialect", js(dialect))])
     }
-    jo([
+    let fields = ArrayList<LlmWireJsonField>([
         jf("input_tokens", optionalInt(value.inputTokens)), jf("output_tokens", optionalInt(value.outputTokens)),
         jf("reasoning_tokens", optionalInt(value.reasoningTokens)), jf("cache_read_tokens", optionalInt(value.cacheReadTokens)),
         jf("cache_write_tokens", optionalInt(value.cacheWriteTokens)), jf("total_tokens", optionalInt(value.totalTokens)),
@@ -46,6 +46,9 @@ func usageJson(value: LlmWireUsage): LlmWireJson {
         jf("cache_read_availability", js(if (value.cacheReadAvailability == LlmWireUsageAvailability.Reported) { "reported" } else { "unknown" })),
         jf("cache_write_availability", js(if (value.cacheWriteAvailability == LlmWireUsageAvailability.Reported) { "reported" } else { "unknown" }))
     ])
+    match (value.audioInputTokens) { case Some(tokens) => fields.add(jf("audio_input_tokens", ji(tokens))); case None => () }
+    match (value.audioOutputTokens) { case Some(tokens) => fields.add(jf("audio_output_tokens", ji(tokens))); case None => () }
+    jo(fields.toArray())
 }
 func optionalUsage(value: ?LlmWireUsage): LlmWireJson { match (value) { case Some(value) => usageJson(value); case None => jnull() } }
 func errorJson(value: LlmWireError): LlmWireJson {
@@ -150,6 +153,11 @@ func blockJson(value: LlmWireOutputBlock): LlmWireJson {
             if (value.kind == LlmWireToolKind.Custom) { fields.add(jf("tool_kind", js("custom"))) }
             ("tool_call", jo(fields.toArray()))
         case LlmWireOutputBlock.NativeReplay(value) => ("native_replay", jp(value.snapshot()))
+        case LlmWireOutputBlock.Audio(value) => ("audio", jo([
+            jf("format", js(audioProbeFormatName(value.format))), jf("id", js(value.id)), jf("transcript", js(value.transcript)),
+            jf("expires_at", ji(value.expiresAtEpochSeconds)), jf("bytes", ja(value.bytes.map({ byte: Byte => ji(Int64(byte)) }))),
+            jf("completion", js(if (value.completion == LlmWireAudioCompletion.Complete) { "complete" } else { "partial" }))
+        ]))
     }
     jo([jf("kind", js(kind)), jf("value", data)])
 }
@@ -208,7 +216,8 @@ func projectionJson(name: String, result: LlmWireResult<Array<LlmWireMessage>>):
         if (!results.isEmpty()) { history.add(LlmWireInputItem.Message(LlmWireMessage(LlmWireRole.User, results.toArray()))) }
         history.add(LlmWireInputItem.Message(userMessage("next")))
         let request = probeRequest(name, LlmWireTranscript(LlmWireInitialContext(tools: declarations.toArray()), items: history.toArray()))
-        let encoded = probeValue(inspectionCodecFor(name, tools: !declarations.isEmpty()).encodeRequest(request, streaming: name == "openai-codex-responses").materialize())
+        let encoded = probeValue(inspectionCodecFor(name, tools: !declarations.isEmpty()).encodeRequest(request, streaming: name == "openai-codex-responses")
+            .materialize(nowEpochSeconds: if (isAudioProbe(name)) { Some(99) } else { None }))
         jo([jf("kind", js("ok")), jf("snapshot", jp(snapshot)), jf("restored_snapshot", jp(probeValue(restored.snapshot()))), jf("encoded", materializedJson(encoded))])
     } catch (error: LlmWireError) { projectionError(error) }
 }
@@ -232,6 +241,10 @@ func inspectionError(value: LlmWireError): LlmWireJson {
 }
 
 func probeRequest(name: String, transcript: LlmWireTranscript, model!: String = "fixture-model"): LlmWireRequest {
+    if (isAudioProbe(name)) {
+        return LlmWireRequest("gpt-audio-1.5", transcript, maxOutputTokens: Some(256),
+            audioOutput: Some(LlmWireAudioOutputOptions(audioProbeFormat(name.replace("openai-chat-audio-", "")), LlmWireAudioVoice.Alloy)))
+    }
     LlmWireRequest(model, transcript, maxOutputTokens: if (name == "openai-codex-responses") { None } else { Some(256) })
 }
 func userMessage(text: String): LlmWireMessage { LlmWireMessage(LlmWireRole.User, [LlmWireBlock.Text(LlmWireTextBlock(text))]) }
@@ -247,9 +260,9 @@ class ProbeStreamResult {
 }
 
 // Retain the terminal from push; finish need not repeat it. Preserve legacy exit codes.
-func decodeSse(codec: LlmWireCodec, bytes: Array<Byte>, chunkBytes: Int64, cancel: Bool): ProbeStreamResult {
+func decodeSse(codec: LlmWireCodec, bytes: Array<Byte>, chunkBytes: Int64, cancel: Bool, responseContext!: ?LlmWireResponseContext = None): ProbeStreamResult {
     if (chunkBytes < 1 || chunkBytes > 65536) { throw IllegalArgumentException("invalid chunk size") }
-    let decoder = codec.newStreamDecoder(sseLimits: LlmWireSseLimits(maxEventsPerPush: 4096))
+    let decoder = codec.newStreamDecoder(sseLimits: LlmWireSseLimits(maxEventsPerPush: 4096), responseContext: responseContext)
     var terminal: ?LlmWireTerminal = None
     var offset: Int64 = 0
     while (offset < bytes.size) {

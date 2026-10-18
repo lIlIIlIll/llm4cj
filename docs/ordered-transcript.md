@@ -20,6 +20,6 @@ Anthropic 的 update 放在 user turn 后、下一 assistant turn前或 messages
 
 transcript、嵌套 message/数组/schema 在构建时冻结；修改传入数组或 getter 返回的数组不改变已准备请求。builder 的 `append` 只冻结新增输入，连续追加的复制量随新增内容线性增长。`build()` 仍需复制完整历史并执行完整校验；反复 build 仍有该成本。公开不可变 transcript 的 `append` 返回独立快照，每次复制已有历史，长会话增量构造优先使用 builder。这些复制量说明不代表已测得特定时间加速。
 
-`snapshot()` 返回 `LlmWireResult<String>`，写入 `llm4cj.transcript` version 2；`restore()` 返回 `LlmWireResult<LlmWireTranscript>`，读取 version 1 和 2。version 2 保存 assistant `messageSpans` 的边界及 phase，并保存 schema、定义、版本与历史顺序；不保存凭据或消费者运行时状态。version 1 没有 spans，恢复后保持为空，不猜测已丢失的边界或 phase。恢复校验格式、字段、标签和 native replay allowlist，部分/待闭合历史仍可保存；恢复成功不等于可发送，build/encode 和工具视图重放继续执行时序与能力校验。恢复不自动迁移消费者自有的旧会话格式。
+`snapshot()` 返回 `LlmWireResult<String>`，含音频时写入 `llm4cj.transcript` version 3，其余写 version 2；`restore()` 返回 `LlmWireResult<LlmWireTranscript>`，读取 version 1、2、3。version 2 保存 assistant `messageSpans` 的边界及 phase，并保存 schema、定义、版本与历史顺序；version 3 增加 typed audio input/replay。snapshot 不保存凭据或消费者运行时状态。version 1 没有 spans，恢复后保持为空，不猜测已丢失的边界或 phase。恢复校验格式、字段、标签和 native replay allowlist，部分/待闭合历史仍可保存；恢复成功不等于可发送，build/encode 和工具视图重放继续执行时序与能力校验。[音频 replay](audio.md) 还要求发送时提供显式时钟并验证过期。恢复不自动迁移消费者自有的旧会话格式。
 
 输入片段不改写有利于 provider 的缓存前缀匹配，仍不保证缓存命中。cache usage 未报告时保持 unknown；明示零不等于缺失。详情及当前未运行的 live 项见 [缓存实验](cache-experiments.md)。

@@ -727,19 +727,21 @@ class FixtureOracleTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 check_fixtures.validate_manifest()
 
-    def test_public_checks_use_fixed_cache_runner_and_reject_unknown_dispatch(self) -> None:
+    def test_public_checks_use_fixed_feature_runners_and_reject_unknown_dispatch(self) -> None:
         fixtures, manifest = self.manifest()
         checks = []
-        for command, name in [("check-cache", "cache"), ("check-schema", "schema"),
+        for command, name in [("check-cache", "cache"), ("check-audio", "audio"), ("check-schema", "schema"),
                               ("check-structured", "structured")]:
             (fixtures / f"{name}.json").write_text("{}\n")
             checks.append({"command": command, "fixture": f"{name}.json"})
         executable = fixtures.parent / "public-probe"
         with patch.object(check_fixtures.subprocess, "run") as run:
-            self.assertEqual(check_fixtures.verify_public_checks(executable, {"public_checks": checks}), 3)
+            self.assertEqual(check_fixtures.verify_public_checks(executable, {"public_checks": checks}), 4)
             arguments = [call.args[0] for call in run.call_args_list]
             self.assertIn([sys.executable, str(check_fixtures.ROOT / "scripts/check_cache_fixtures.py"),
                            "--probe", str(executable), "--fixture", str(fixtures / "cache.json")], arguments)
+            self.assertIn([sys.executable, str(check_fixtures.ROOT / "support/provider_probe/check_audio.py"),
+                           str(executable), str(fixtures / "audio.json")], arguments)
             self.assertIn([str(executable), "check-schema", str(fixtures / "schema.json")], arguments)
             self.assertIn([str(executable), "check-structured", str(fixtures / "structured.json")], arguments)
             run.reset_mock()

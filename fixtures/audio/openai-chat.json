@@ -1,0 +1,59 @@
+{
+  "source": {
+    "kind": "schema_derived",
+    "url": "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create",
+    "revision": "rolling reference",
+    "checked_at": "2026-10-18",
+    "notes": "Independent hand-authored request, fixed, SSE, typed bytes, usage and replay oracle. Complete per-field RFC4648 segments define the supported offline framing subset; no provider capture."
+  },
+  "additional_sources": [
+    "https://developers.openai.com/api/docs/guides/audio-chat-completions",
+    "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create",
+    "https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events"
+  ],
+  "checked_date": "2026-10-18",
+  "schema_derived": true,
+  "live": "not_run",
+  "notes": "Synthetic byte vectors test wire encoding only; they are not valid media files. Each JSON data value is a complete RFC4648 segment. This fixture does not claim observed provider SSE framing.",
+  "formats": ["wav", "mp3", "aac", "flac", "opus", "pcm16"],
+  "request": {
+    "model": "gpt-audio-1.5", "max_completion_tokens": 256,
+    "modalities": ["text", "audio"], "audio": {"format": "<output-format>", "voice": "alloy"},
+    "messages": [{"role": "user", "content": [
+      {"type": "text", "text": "Describe this audio."},
+      {"type": "input_audio", "input_audio": {"format": "wav", "data": "AAECA/7/"}}
+    ]}]
+  },
+  "fixed": {
+    "id": "audio-fixture", "model": "audio-resolved-model",
+    "choices": [{"index": 0, "finish_reason": "stop", "message": {
+      "role": "assistant", "content": "Audio follows.",
+      "audio": {"id": "audio-reference", "data": "AAECA/7/", "transcript": "Hello.", "expires_at": 100}
+    }}],
+    "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3,
+      "prompt_tokens_details": {"audio_tokens": 0}, "completion_tokens_details": {"audio_tokens": 2}}
+  },
+  "stream": [
+    {"id": "audio-fixture", "model": "audio-resolved-model", "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Audio follows.", "audio": {"id": "audio-reference"}}}]},
+    {"choices": [{"index": 0, "delta": {"audio": {"data": "AAEC", "transcript": "Hel"}}}]},
+    {"choices": [{"index": 0, "finish_reason": "stop", "delta": {"audio": {"data": "A/7/", "transcript": "lo."}}}]},
+    {"choices": [{"index": 0, "finish_reason": null, "delta": {"audio": {"expires_at": 100}}}]},
+    {"choices": [], "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3,
+      "prompt_tokens_details": {"audio_tokens": 0}, "completion_tokens_details": {"audio_tokens": 2}}},
+    "[DONE]"
+  ],
+  "oracle": {
+    "text": {"kind": "text", "value": {"text": "Audio follows.", "phase": "unspecified", "logprobs": [], "citations": [], "annotations": []}},
+    "audio": {"kind": "audio", "value": {"format": "<output-format>", "id": "audio-reference", "transcript": "Hello.", "expires_at": 100, "bytes": [0, 1, 2, 3, 254, 255], "completion": "complete"}},
+    "usage": {"input_tokens": 1, "output_tokens": 2, "reasoning_tokens": null, "cache_read_tokens": null,
+      "cache_write_tokens": null, "total_tokens": 3, "web_search_requests": null, "web_fetch_requests": null,
+      "service_tier": null, "source": {"provider": "openai", "dialect": "openai.chat.v1"},
+      "cache_read_availability": "unknown", "cache_write_availability": "unknown", "audio_input_tokens": 0, "audio_output_tokens": 2},
+    "replay": {"kind": "audio_replay", "value": {"protocol": "chat_completions", "dialect_id": "openai.chat.v1",
+      "format": "<output-format>", "data": "AAECA/7/", "id": "audio-reference", "transcript": "Hello.", "expires_at": 100,
+      "provider": "openai", "model": "gpt-audio-1.5", "block_order": 1}},
+    "continuation_messages": [{"role": "user", "content": "hello"},
+      {"role": "assistant", "content": "Audio follows.", "audio": {"id": "audio-reference"}},
+      {"role": "user", "content": "next"}]
+  }
+}

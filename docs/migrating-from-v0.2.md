@@ -9,7 +9,7 @@ v0.3.0 是有意的 breaking 变更。旧请求入口删除，没有兼容重载
 | 当前全部工具每轮重新赋值 | 初始定义池 + 保留发生位置的声明/激活/撤销 |
 | tools=true 推断全部工具变更 | 独立 context-update capability + endpoint profile + dialect 契约 |
 | 以最后工具集合校验整段历史 | 逐时点 active 定义校验历史；validateReplyToolInputs(reply, transcript) 校验新回复 |
-| 任意旧 JSON 会话快照 | 旧语义写 llm4cj.transcript version 2，custom 语义写 version 3；读取 version 1/2/3，其他格式和版本失败 |
+| 任意旧 JSON 会话快照 | 含音频写 version 3，其余写 version 2，读取 version 1/2/3；其他格式和版本失败 |
 | LlmWireJson.string/array 直接返回值 | 返回 LlmWireResult；显式处理构造限额错误 |
 | 只保存 Responses blocks | 同时保存 messageSpans，保留 assistant message 边界与 phase |
 
@@ -19,7 +19,7 @@ Axyndra 的适配边界如下：
 
 1. 每个会话基线建立一次 initial context。宿主发现工具时 append ToolDeclaration；Anthropic reference contract 只能激活在池中已声明的定义。不要把当前全部发现工具重写到 initial context。
 2. 把 instruction 更新、工具变化和普通消息写成不同输入项并保存位置。调用/结果继续使用 canonical ToolCall/ToolResult；thinking/native replay 保持来源与顺序。
-3. 持久化库返回的 snapshot，不手动改版本。旧语义继续写 version 2，custom 定义、Text/PartialText 调用或 custom 结果要求 version 3。已存在的 version 1 transcript 可直接读取，其 messageSpans 保持为空；库不能恢复旧数据未保存的 message 边界、phase 或历史更新位置。消费者自有的旧会话格式仍需显式迁移。未知版本走明确失败通道。
+3. 持久化 version 2 snapshot。已存在的 version 1 transcript 可直接读取，其 messageSpans 保持为空；库不能恢复旧数据未保存的 message 边界、phase 或历史更新位置。消费者自有的旧会话格式仍需显式迁移。未知版本走明确失败通道。
 4. 请求准备前校验 profile 绑定的 endpoint/model/contractVersion；准备失败不发网络。网络层只使用 materialize 的 bytes/headers，避免丢弃 beta。服务端拒绝不触发 collapse、换协议/模型或删更新重试。
 5. 对生成 reply 调用 `validateReplyToolInputs(reply, transcript, mode:)`，所有模式都验证工具在请求末端有效。撤销之前的历史调用保持原定义；已观测 usage 在失败路径进入 Axyndra 原计费记录，unknown 不补零。
 
@@ -63,17 +63,7 @@ OpenAI Responses 与 Codex wire 接受缺失或 null phase、`commentary`、`fin
 
 schema 的 `integer` 现在按数学值判断：`1`、`1.0`、`10e-1` 都是整数。`enum` 对象忽略键顺序、数组保持顺序，数值使用精确十进制比较；布尔值与数值不同。无需将大整数或指数转成浮点数。`Disabled` 仍只关闭 schema 校验。
 
-`ValidateSupportedSubset` 不再忽略未知规则后返回成功。它只在已知约束能证明失败时返回 schema 违例，否则含未知规则的 schema 返回 `llm.tool_schema_unsupported`。`Strict` 还会预检未使用的 properties、items、定义和组合分支。处理结果时应分别处理 Unsupported、schema 违例和 LimitExceeded，不能把 Unsupported 当作已验证。`validateReplyToolInputs` 新增可选 `limits:`，用于降低整次调用的深度和工作预算。
-
 在截断终态中，最终工具参数若是完整 JSON object 则为 `Complete`，合法非对象为 `InvalidShape`，非法或未闭合 JSON 为 `InvalidJson`；choice 仍为 `Incomplete`。只有有效 identity 加 `Complete` 参数能进入 continuation。应用执行工具前仍需按自己的终态策略及 `validateReplyToolInputs` 结果作决定。
-
-## 迁移 custom tools 与请求预算
-
-`LlmWireCustomTool`、`LlmWireCustomToolFormat`、`LlmWireGrammar` 和 `LlmWireGrammarSyntax` 从 `llm4cj.experimental` 提升至 `llm4cj`。将其 import 改为 `llm4cj.*`。`LlmWireToolDeclaration.tool`、`effectiveTools` 和派生工具视图现在返回 `LlmWireToolDefinition`：匹配 `Function(value)` 后读取原 `LlmWireTool.inputSchema`，匹配 `Custom(value)` 后读取 raw-text 格式。`LlmWireToolDeclaration(LlmWireTool(...))` 构造重载保留。
-
-custom 调用以 `Text` 或 `PartialText` 保存原字符串，不能通过 JSON 解析判断工具 kind。自定义结果显式设置 `kind: LlmWireToolKind.Custom`，并匹配待处理调用的 ID 和 kind；`PartialText` 不能进入 continuation 或工具执行。Regex/Lark wire 格式需要 dialect 与模型的显式 `customFormats`。本库没有 grammar 引擎，`Strict` 和 `ValidateSupportedSubset` 均返回 `llm.tool_grammar_validation_unsupported`；应用选择 `Disabled` 时仍保留身份和完整性检查。完整示例见 [custom tools](custom-tools.md)。
-
-请求预算现在统一包含 Responses、Chat Completions 与 Messages 的工具定义、完整历史和协议 envelope。序列化在追加前限制为 8 MiB 和 256 层；独立合法的 JSON schema 加上请求包装后仍可能超限。普通协议返回 `BodyLimit` / `llm.request_too_large`，Codex 保留 `llm.codex_request_too_large` 及原消息。处理拒绝后可以用同一 codec 编码更小的独立请求。
 
 ## 固定依赖版本
 
