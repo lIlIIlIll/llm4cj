@@ -31,6 +31,28 @@ func capabilityFixtureInput(scenario: String, dialect: String): (LlmWireCodec, L
             let capabilities = LlmWireCapabilities(output: LlmWireOutputCapabilities(generationSpeeds: [LlmWireGenerationSpeed.Fast]))
             (anthropicMessagesCodec(anthropicMessagesModelProfile("fixture-model", capabilities: capabilities)),
                 LlmWireRequest("fixture-model", LlmWireTranscript(items: [user]), maxOutputTokens: Some(32), generationSpeed: LlmWireGenerationSpeed.Fast), false)
+        case "fast-undeclared" =>
+            (anthropicMessagesCodec(anthropicMessagesModelProfile("fixture-model")),
+                LlmWireRequest("fixture-model", LlmWireTranscript(items: [user]), maxOutputTokens: Some(32), generationSpeed: LlmWireGenerationSpeed.Fast), false)
+        case "fast-budget-invalid" =>
+            let capabilities = LlmWireCapabilities(thinking: LlmWireThinkingCapabilities(modes: [LlmWireThinkingMode.Budget(1024)]),
+                output: LlmWireOutputCapabilities(generationSpeeds: [LlmWireGenerationSpeed.Fast]))
+            (anthropicMessagesCodec(anthropicMessagesModelProfile("fixture-model", capabilities: capabilities)),
+                LlmWireRequest("fixture-model", LlmWireTranscript(items: [user]), maxOutputTokens: Some(32),
+                    thinkingMode: LlmWireThinkingMode.Budget(1), generationSpeed: LlmWireGenerationSpeed.Fast), false)
+        case "cache-undeclared" | "cache-routing-invalid" | "cache-routing-unsupported" | "provider-cache" | "openai-cache" =>
+            let capabilities = LlmWireCapabilities(cache: LlmWireCacheCapabilities(lifetimes:
+                if (scenario == "cache-undeclared") { [] } else { [LlmWirePromptCacheLifetime.ProviderDefault] }))
+            let providerAutomatic = scenario == "provider-cache" || scenario == "cache-routing-unsupported"
+            let codec = if (providerAutomatic) { deepSeekMessagesCodec(deepSeekMessagesModelProfile("fixture-model", capabilities: capabilities)) }
+                else { openAiChatCodec(openAiChatModelProfile("fixture-model", capabilities: capabilities)) }
+            let routing: ?String = match (scenario) {
+                case "cache-routing-invalid" => Some("")
+                case "cache-routing-unsupported" => Some("private-routing-key")
+                case _ => None
+            }
+            (codec, LlmWireRequest("fixture-model", LlmWireTranscript(items: [user]), maxOutputTokens: Some(32),
+                promptCache: LlmWirePromptCache.Automatic(LlmWirePromptCacheLifetime.ProviderDefault), promptCacheRoutingKey: routing), false)
         case "undeclared" => (openAiResponsesCodec(openAiResponsesModelProfile("fixture-model")),
             LlmWireRequest("fixture-model", LlmWireTranscript(items: [user]), thinkingMode: LlmWireThinkingMode.Enabled), false)
         case "cache" =>
