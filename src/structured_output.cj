@@ -219,6 +219,8 @@ public func extractStructuredOutput(
             match (block) {
                 case LlmWireOutputBlock.ToolCall(_) =>
                     throw structuredError(LlmWireErrorKind.InvalidState, "llm.structured_output_tool_calls_present", "a mixed tool-call reply is not a complete structured answer", choice.index, usage)
+                case LlmWireOutputBlock.Audio(_) =>
+                    throw structuredError(LlmWireErrorKind.InvalidState, "llm.structured_output_audio_present", "a mixed audio reply is not a complete structured answer", choice.index, usage)
                 case _ => ()
             }
         }

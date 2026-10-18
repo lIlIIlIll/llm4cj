@@ -78,6 +78,8 @@ func mergeWireUsage(current: LlmWireUsage, next: LlmWireUsage, style: LlmWireUsa
         totalTokens: mergeUsageValue(current.totalTokens, next.totalTokens, style),
         webSearchRequests: mergeUsageValue(current.webSearchRequests, next.webSearchRequests, style),
         webFetchRequests: mergeUsageValue(current.webFetchRequests, next.webFetchRequests, style),
+        audioInputTokens: mergeUsageValue(current.audioInputTokens, next.audioInputTokens, style),
+        audioOutputTokens: mergeUsageValue(current.audioOutputTokens, next.audioOutputTokens, style),
         serviceTier: match (next.serviceTier) { case Some(_) => next.serviceTier; case None => current.serviceTier },
         source: match (next.source) { case LlmWireUsageSource.Unknown => current.source; case _ => next.source }
     )

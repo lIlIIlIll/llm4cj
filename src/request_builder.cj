@@ -18,6 +18,7 @@ public class LlmWireRequestBuilder {
     private var promptCacheRoutingKey: ?String = None
     private var toolChoice = LlmWireToolChoice.ProviderDefault
     private var structuredOutput = LlmWireStructuredOutput.ProviderDefault
+    private var audioOutput: ?LlmWireAudioOutputOptions = None
 
     init(codec: LlmWireCodec, model: String) { this.codec = codec; this.model = model }
 
@@ -115,6 +116,7 @@ public class LlmWireRequestBuilder {
     }
     public func setToolChoice(value: LlmWireToolChoice): Unit { toolChoice = value }
     public func setStructuredOutput(value: LlmWireStructuredOutput): Unit { structuredOutput = value }
+    public func setAudioOutput(value: ?LlmWireAudioOutputOptions): Unit { audioOutput = value }
 
     public func build(): LlmWireResult<LlmWireRequest> {
         let request = LlmWireRequest(
@@ -122,7 +124,7 @@ public class LlmWireRequestBuilder {
             thinkingMode: thinkingMode, reasoningEffort: reasoningEffort, maxOutputTokens: maxOutputTokens,
             parallelToolCalls: parallelToolCalls, serviceTier: serviceTier, generationSpeed: generationSpeed,
             promptCache: promptCache, promptCacheRoutingKey: promptCacheRoutingKey,
-            toolChoice: toolChoice, structuredOutput: structuredOutput
+            toolChoice: toolChoice, structuredOutput: structuredOutput, audioOutput: audioOutput
         )
         try { validateWireRequest(codec, request); LlmWireResult.Ok(request) }
         catch (error: LlmWireError) { LlmWireResult.Err(withCodecContext(error, codec, LlmTransportPhase.Encode)) }
@@ -137,5 +139,6 @@ public class LlmWireRequestBuilder {
         generationSpeed = LlmWireGenerationSpeed.ProviderDefault; promptCache = LlmWirePromptCache.ProviderDefault
         promptCacheRoutingKey = None; toolChoice = LlmWireToolChoice.ProviderDefault
         structuredOutput = LlmWireStructuredOutput.ProviderDefault
+        audioOutput = None
     }
 }

@@ -16,7 +16,7 @@
 
 `LlmWireProtocol`、`LlmWireRole`、`LlmWireInstructionRole`、`LlmWireInstruction`、`LlmWireInputModality`、`LlmWireImageSourceKind`、`LlmWireImageDetail`、`LlmWireReasoningEffort`、`LlmWireThinkingMode`、`LlmWireServiceTier`、`LlmWireGenerationSpeed`、`LlmWirePromptCacheLifetime`、`LlmWirePromptCache`、`LlmWireToolChoice`、`LlmWireOpaqueCompletion`、`LlmWireNativeReplayScope`、`LlmWireImageBlock`、`LlmWireTextBlock`、`LlmWireReasoningBlock`、`LlmWireToolArguments`、`LlmWireToolCallBlock`、`LlmWireToolResultContent`、`LlmWireToolResultBlock`、`LlmWireRefusalBlock`、`LlmWireNativeReplayBlock`、`LlmWireOpaqueBlock`、`LlmWireBlock`、`LlmWireOutputBlock`、`LlmWireOutputPhase`、`LlmWireCitation`、`LlmWireCitationKind`、`LlmWireAnnotation`、`LlmWireTokenLogprob`、`LlmWireTokenLogprobCandidate`、`LlmWireMessage`、`LlmWireTool`、`LlmWireJson`、`LlmWireJsonSchema`、`LlmWireStructuredOutput`、`LlmWireRequest`、`LlmWireRequestBuilder`、`LlmWireUsage`、`LlmWireChoice`、`LlmWireChoiceOutcome`、`LlmWireReply`、`LlmWirePendingReply`、`LlmWireIncompleteReason`、`LlmWireFailureKind`、`LlmWireFailure`、`LlmWireTerminal`、`LlmWireResponseState`。
 
-`LlmWireRequest.transcript` 保存单一输入事实。`LlmWireInitialContext` 保留初始 system/developer instruction 和工具池；`LlmWireInputItem` 有序联合保存 Message、InstructionUpdate、ToolDeclaration、ToolActivation 和 ToolDeactivation。`LlmWireToolDeclaration` 绑定完整工具、version、deferred；其 identity 为 `LlmWireToolDefinitionIdentity`。`LlmWireTranscript` 的 append 返回新快照，effectiveTools 是顺序重放的只读派生视图。snapshot 为旧语义写 llm4cj.transcript version 2，为 custom 定义、Text/PartialText 调用或 custom 结果写 version 3；restore 读 version 1、2 和 3，两者返回 Result；version 1 中未保存的消息边界保持缺失。Messages dialect 不表示 developer role，因此构建请求时返回 `Unsupported`。`LlmWireToolResultBlock.content` 是 `LlmWireToolResultContent` 数组，每个元素是 text 或 image。
+`LlmWireRequest.transcript` 保存单一输入事实。`LlmWireInitialContext` 保留初始 system/developer instruction 和工具池；`LlmWireInputItem` 有序联合保存 Message、InstructionUpdate、ToolDeclaration、ToolActivation 和 ToolDeactivation。`LlmWireToolDeclaration` 绑定完整工具、version、deferred；其 identity 为 `LlmWireToolDefinitionIdentity`。`LlmWireTranscript` 的 append 返回新快照，effectiveTools 是顺序重放的只读派生视图。snapshot 为旧语义写 llm4cj.transcript version 2，为 custom、显式 cache 或 typed audio 语义写 version 3；restore 读 version 1、2 和 3，两者返回 Result；version 1 中未保存的消息边界保持缺失。Messages dialect 不表示 developer role，因此构建请求时返回 `Unsupported`。`LlmWireToolResultBlock.content` 是 `LlmWireToolResultContent` 数组，每个元素是 text 或 image。
 
 `LlmWireCachePosition` 使用 InitialTool、InitialInstruction、MessageBlock 和 Item 指定原始 transcript 位置。`LlmWireCacheBreakpoint` 绑定位置与 lifetime；transcript 和 builder 保留独立的 cacheBreakpoints 数组。显式断点需要内置 Anthropic contract 和 `LlmWireCacheCapabilities.explicitBreakpoints`，按 tools → system → messages 校验目标、槽位和 TTL，不会移动断点。显式 metadata 随 snapshot v3 保存，可与 custom 语义共存；旧语义继续写 v2。详见[显式缓存断点](prompt-cache-breakpoints.md)。
 
@@ -34,7 +34,7 @@ usage 来源以 `LlmWireUsageSource.Unknown` 或 ProviderReported(provider, dial
 
 `LlmWireSchemaValidationLimits` 的默认上限为 `maxDepth=256`、`maxWork=67108864`，调用方只能降低。整个调用共享预检、比较、组合分支和诊断的工作预算，超限返回 `llm.schema_validation_limit`。违例使用 `llm.tool_arguments_schema_violation`，携带有界路径和证据；超长值保留字节数标记。参数不是完整 JSON object 的调用仍由 wire 层处理。
 
-`LlmWireCapabilities` 由 `input`、`thinking`、`tools`、`output` 和 `cache` 五个不可变能力对象组成。`input.modalities` 默认为仅 `Text`。图片 source 支持 `Url`、`Base64` 与 `File`；是否可用由具体 model profile 决定。
+`LlmWireCapabilities` 由 `input`、`thinking`、`tools`、`output`、`cache` 和 `audio` 六个不可变能力对象组成。`input.modalities` 默认为仅 `Text`。图片 source 支持 `Url`、`Base64` 与 `File`；是否可用由具体 model profile 决定。
 
 对应类型是 `LlmWireInputCapabilities`、`LlmWireThinkingCapabilities`、`LlmWireToolCapabilities`、`LlmWireOutputCapabilities` 和 `LlmWireCacheCapabilities`。
 
@@ -52,7 +52,17 @@ usage 来源以 `LlmWireUsageSource.Unknown` 或 ProviderReported(provider, dial
 
 `extractStructuredOutput(reply, request, choiceIndex:, mode:, limits:, maxTextBytes:)` 是解码后的显式校验入口。结果类型 `LlmWireStructuredOutputResult` 保留 `choiceIndex`、可选原始 `rawText` 和 `LlmWireStructuredOutputOutcome`，通过 `LlmWireResult` 返回。六种 outcome 为 Valid、InvalidJson、SchemaViolation、UnsupportedSchema、Incomplete、Refused；拒绝和截断不返回候选文本，也不会因合法 JSON 被升级为成功。
 
-多 choice 按显式 index 选择；只提取唯一 Final message，没有 Final 时接受唯一 Unspecified message。候选内部按顺序拼接文本，不修复 JSON 或移除代码围栏。默认文本上限为 8 MiB，schema 使用同一 `LlmWireSchemaValidationLimits`。Disabled、Text 和 ProviderDefault 格式不适用。语法错误仅包含安全消息、choice 和已知的 UTF-8 字节位置。用法见[结构化输出](structured-output.md)。
+多 choice 按显式 index 选择；只提取唯一 Final message，没有 Final 时接受唯一 Unspecified message。候选内部按顺序拼接文本，不修复 JSON 或移除代码围栏。默认文本上限为 8 MiB，schema 使用同一 `LlmWireSchemaValidationLimits`。Disabled、Text 和 ProviderDefault 格式不适用。完成的混合 tool/audio choice 会明确拒绝；语法错误仅包含安全消息、choice 和已知的 UTF-8 字节位置。用法见[结构化输出](structured-output.md)。
+
+## 音频
+
+`LlmWireAudioFormat`、`LlmWireAudioVoice`、`LlmWireAudioCompletion`、`LlmWireAudioInputBlock`、`LlmWireAudioOutputOptions`、`LlmWireAudioCapabilities`、`LlmWireResponseContext`、`LlmWireAudioOutputBlock`、`LlmWireAssistantAudioReplayBlock`、`LlmWireAudioChunk`。
+
+`LlmWireAudioInputBlock.fromBytes(format, bytes)` 返回 Result，复制非空 WAV/MP3 bytes。`LlmWireRequest.audioOutput` 或 builder 的 `setAudioOutput` 显式选择输出 format/voice。capability 分别声明 inputFormats、fixedOutputFormats、streamOutputFormats、voices 和 assistantReplay。支持范围和限额见[音频接入](audio.md)。
+
+`LlmWirePreparedRequest.responseContext` 只读绑定请求协议、dialect、provider、model 与可选 requestedAudioFormat。两个 `decodeResponse` 入口、`newStreamDecoder` 和 `newHttpStreamDecoder` 的 `responseContext` named 参数默认为 None；遇到音频时必须提供 prepared context。`LlmWireAudioOutputBlock` 与 replay token 只能由 decoder 或经过校验的 snapshot 恢复产生，bytes getter 返回独立数组。`LlmWireUsage.audioInputTokens` / `audioOutputTokens` 保留 None 与 Some(0)。
+
+`materialize(nowEpochSeconds: Some(now))` 对每个 audio replay 验证 `0 <= now < expiresAtEpochSeconds`。缺少时钟或已过期返回 Result.Err。无 audio replay 的请求不需要此参数。音频流事件为 `AudioIdObserved`、`AudioDataDelta`、`AudioTranscriptDelta`、`AudioExpiryObserved`，沿用带 identity 的 ContentBlockStarted/Completed。
 
 ## 流式
 

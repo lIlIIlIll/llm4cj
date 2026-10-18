@@ -84,11 +84,18 @@ public class LlmWirePreparedRequest {
     private let requiredHeaders: Array<LlmWireHeader>
     private let featureRequirements: Array<LlmWireFeatureRequirement>
     private let streaming: Bool
-    init(body: String, requiredHeaders!: Array<LlmWireHeader> = [], featureRequirements!: Array<LlmWireFeatureRequirement> = [], streaming!: Bool = false) {
+    private let responseContextValue: ?LlmWireResponseContext
+    public prop responseContext: LlmWireResponseContext { get() {
+        match (responseContextValue) { case Some(value) => value; case None => throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.audio_context_required", "request has no response context") }
+    } }
+    private let audioDeadlines: Array<Int64>
+    init(body: String, requiredHeaders!: Array<LlmWireHeader> = [], featureRequirements!: Array<LlmWireFeatureRequirement> = [], streaming!: Bool = false,
+        responseContext!: ?LlmWireResponseContext = None, audioDeadlines!: Array<Int64> = []) {
         this.body = body
         this.requiredHeaders = copyValues(requiredHeaders)
         this.featureRequirements = copyValues(featureRequirements)
         this.streaming = streaming
+        this.responseContextValue = responseContext; this.audioDeadlines = copyValues(audioDeadlines)
     }
     // Package-only inspection helpers for deterministic codec tests.
     func contains(fragment: String): Bool { body.contains(fragment) }
@@ -96,9 +103,10 @@ public class LlmWirePreparedRequest {
     func bodyText(): String { body }
     func requiredHeadersForTest(): Array<LlmWireHeader> { copyValues(requiredHeaders) }
     func featureRequirementsForTest(): Array<LlmWireFeatureRequirement> { copyValues(featureRequirements) }
-    public func materialize(resolver!: ?LlmWireRequirementResolver = None, userHeaders!: Array<LlmWireHeader> = []): LlmWireResult<LlmWireMaterializedRequest> {
+    public func materialize(resolver!: ?LlmWireRequirementResolver = None, userHeaders!: Array<LlmWireHeader> = [], nowEpochSeconds!: ?Int64 = None): LlmWireResult<LlmWireMaterializedRequest> {
         try {
             validateForSend(resolver)
+            validateAudioReplayClock(audioDeadlines, nowEpochSeconds)
             let output = ArrayList<LlmWireHeader>()
             mergeOneHeader(output, LlmWireHeader("content-type", "application/json"))
             mergeOneHeader(output, LlmWireHeader("accept", if (streaming) { "text/event-stream" } else { "application/json" }))
@@ -279,14 +287,16 @@ public class LlmWireCapabilities {
     public let tools: LlmWireToolCapabilities
     public let output: LlmWireOutputCapabilities
     public let cache: LlmWireCacheCapabilities
+    public let audio: LlmWireAudioCapabilities
     public init(
         input!: LlmWireInputCapabilities = LlmWireInputCapabilities(),
         thinking!: LlmWireThinkingCapabilities = LlmWireThinkingCapabilities(),
         tools!: LlmWireToolCapabilities = LlmWireToolCapabilities(),
         output!: LlmWireOutputCapabilities = LlmWireOutputCapabilities(),
-        cache!: LlmWireCacheCapabilities = LlmWireCacheCapabilities()
+        cache!: LlmWireCacheCapabilities = LlmWireCacheCapabilities(),
+        audio!: LlmWireAudioCapabilities = LlmWireAudioCapabilities()
     ) {
-        this.input = input; this.thinking = thinking; this.tools = tools; this.output = output; this.cache = cache
+        this.input = input; this.thinking = thinking; this.tools = tools; this.output = output; this.cache = cache; this.audio = audio
     }
 }
 
@@ -397,17 +407,18 @@ public class LlmWireCodec {
         } }
         LlmWireRequestBuilder(this, resolved)
     }
-    public func decodeResponse(source: String): LlmWireResponseState {
-        try { decodeWireResponse(this, source) }
+    public func decodeResponse(source: String, responseContext!: ?LlmWireResponseContext = None): LlmWireResponseState {
+        try { validateAudioContext(this, responseContext); decodeWireResponse(this, source, responseContext: responseContext) }
         catch (error: LlmWireError) { throw withCodecContext(error, this, LlmTransportPhase.WireDecode) }
     }
-    public func decodeResponse(response: LlmWireHttpResponse, nowEpochMillis!: Int64 = 0): LlmWireResult<LlmWireResponseState> {
-        decodeHttpResponse(this, response, nowEpochMillis)
+    public func decodeResponse(response: LlmWireHttpResponse, nowEpochMillis!: Int64 = 0, responseContext!: ?LlmWireResponseContext = None): LlmWireResult<LlmWireResponseState> {
+        try { validateAudioContext(this, responseContext); decodeHttpResponse(this, response, nowEpochMillis, responseContext: responseContext) }
+        catch (error: LlmWireError) { LlmWireResult.Err(withCodecContext(error, this, LlmTransportPhase.WireDecode)) }
     }
     public func newStreamDecoder(
         limits!: LlmWireStreamLimits = LlmWireStreamLimits(),
-        sseLimits!: LlmWireSseLimits = LlmWireSseLimits()
-    ): LlmWireStreamDecoder { LlmWireStreamDecoder(this, 200, [], limits, sseLimits) }
+        sseLimits!: LlmWireSseLimits = LlmWireSseLimits(), responseContext!: ?LlmWireResponseContext = None
+    ): LlmWireStreamDecoder { validateAudioContext(this, responseContext); LlmWireStreamDecoder(this, 200, [], limits, sseLimits, responseContext: responseContext) }
     public func newResponsesWebSocketSession(
         limits!: LlmWireStreamLimits = LlmWireStreamLimits()
     ): LlmWireResponsesWebSocketSession { LlmWireResponsesWebSocketSession(this, limits) }
@@ -415,9 +426,9 @@ public class LlmWireCodec {
         statusCode: Int64, headers!: Array<LlmWireHeader> = [],
         limits!: LlmWireStreamLimits = LlmWireStreamLimits(),
         sseLimits!: LlmWireSseLimits = LlmWireSseLimits(),
-        nowEpochMillis!: Int64 = 0
+        nowEpochMillis!: Int64 = 0, responseContext!: ?LlmWireResponseContext = None
     ): LlmWireResult<LlmWireStreamDecoder> {
-        try { LlmWireResult.Ok(LlmWireStreamDecoder(this, statusCode, headers, limits, sseLimits, nowEpochMillis: nowEpochMillis)) }
+        try { validateAudioContext(this, responseContext); LlmWireResult.Ok(LlmWireStreamDecoder(this, statusCode, headers, limits, sseLimits, nowEpochMillis: nowEpochMillis, responseContext: responseContext)) }
         catch (error: LlmWireError) { LlmWireResult.Err(withCodecContext(error, this, LlmTransportPhase.ResponseHeaders)) }
     }
 }

@@ -51,6 +51,7 @@ func readTranscriptSnapshot(source: String): JsonNode {
 // Version 3 distinguishes raw custom inputs, definitions, and explicit cache
 // metadata. Legacy semantic values retain their exact version 2 encoding.
 func transcriptSnapshotVersion(transcript: LlmWireTranscript): Int64 {
+    if (transcriptHasAudio(transcript)) { return 3 }
     if (!transcript.cacheBreakpoints.isEmpty()) { return 3 }
     for (tool in transcript.initialContext.tools where tool.tool.kind == LlmWireToolKind.Custom) { return 3 }
     for (item in transcript.items) { match (item) {
@@ -67,6 +68,7 @@ func transcriptSnapshotVersion(transcript: LlmWireTranscript): Int64 {
 
 func encodeTranscriptSnapshot(transcript: LlmWireTranscript): JsonNode {
     let version = transcriptSnapshotVersion(transcript)
+    preflightAudioSnapshot(transcript)
     let instructions = ArrayList<JsonNode>()
     let tools = ArrayList<JsonNode>()
     let items = ArrayList<JsonNode>()
@@ -265,6 +267,7 @@ func restoreMessage(value: JsonNode, version!: Int64 = 2): LlmWireMessage {
         spans.add(LlmWireAssistantMessageSpan(wireRequiredInt(span, "block_start"), wireRequiredInt(span, "block_count"), phase: restoreSnapshotPhase(wireRequiredString(span, "phase"))))
     } }
     let content = blocks.toArray(); let metadata = spans.toArray()
+    validateSnapshotAudioMessage(role, content)
     validateSnapshotMessageSpans(role, content, metadata)
     LlmWireMessage(role, content, messageSpans: metadata)
 }
@@ -298,6 +301,8 @@ func snapshotBlock(block: LlmWireBlock, version!: Int64 = 2): JsonNode {
     let (kind, value) = match (block) {
         case LlmWireBlock.Text(text) => ("text", snapshotText(text))
         case LlmWireBlock.Image(image) => ("image", snapshotImage(image))
+        case LlmWireBlock.AudioInput(audio) => ("audio_input", snapshotAudioInput(audio))
+        case LlmWireBlock.AudioReplay(audio) => ("audio_replay", snapshotAudioReplay(audio))
         case LlmWireBlock.Reasoning(reasoning) => ("reasoning", wireJsonObject([
             WireJsonField("text", wireJsonString(reasoning.text)), WireJsonField("replay_dialect_id", wireJsonString(reasoning.replayDialectId))
         ]))
@@ -323,6 +328,8 @@ func restoreBlock(block: JsonNode, version!: Int64 = 2): LlmWireBlock {
     match (wireRequiredString(block, "kind")) {
         case "text" => LlmWireBlock.Text(restoreText(value))
         case "image" => LlmWireBlock.Image(restoreImage(value))
+        case "audio_input" => if (version >= 3) { LlmWireBlock.AudioInput(restoreAudioInput(value)) } else { snapshotInvalid("audio requires transcript snapshot version 3") }
+        case "audio_replay" => if (version >= 3) { LlmWireBlock.AudioReplay(restoreAudioReplay(value)) } else { snapshotInvalid("audio requires transcript snapshot version 3") }
         case "reasoning" =>
             snapshotFields(value, ["text", "replay_dialect_id"])
             LlmWireBlock.Reasoning(LlmWireReasoningBlock(wireRequiredString(value, "text"), replayDialectId: wireRequiredString(value, "replay_dialect_id")))

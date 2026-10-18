@@ -96,7 +96,8 @@ func withObservedUsage(error: LlmWireError, observedUsage: ?LlmWireUsage): LlmWi
 func observedWireUsage(usage: LlmWireUsage): ?LlmWireUsage {
     if (usage.inputTokens.isNone() && usage.outputTokens.isNone() && usage.reasoningTokens.isNone() &&
         usage.cacheReadTokens.isNone() && usage.cacheWriteTokens.isNone() && usage.totalTokens.isNone() &&
-        usage.webSearchRequests.isNone() && usage.webFetchRequests.isNone() && usage.serviceTier.isNone()) {
+        usage.webSearchRequests.isNone() && usage.webFetchRequests.isNone() && usage.serviceTier.isNone() &&
+        usage.audioInputTokens.isNone() && usage.audioOutputTokens.isNone()) {
         None
     } else { Some(usage) }
 }

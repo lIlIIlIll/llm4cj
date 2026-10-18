@@ -141,6 +141,7 @@ func validateWireRequest(codec: LlmWireCodec, request: LlmWireRequest, allowCach
     validateServiceTier(codec, request.serviceTier)
     validateGenerationSpeed(codec, request.generationSpeed)
     validatePromptCache(codec, request.promptCache, request.promptCacheRoutingKey)
+    validateAudioRequest(codec, request, false, anyOutputMode: true)
     for (itemIndex in 0..transcriptItems.size) { match (transcriptItems[itemIndex]) {
         case LlmWireInputItem.Message(message) =>
         try {

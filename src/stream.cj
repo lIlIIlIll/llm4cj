@@ -5,7 +5,7 @@ import std.deriving.Derive
 import yjson.*
 
 @Derive[Equatable]
-public enum LlmWireStreamBlockKind { Text | Reasoning | Refusal | ToolCall }
+public enum LlmWireStreamBlockKind { Text | Reasoning | Refusal | ToolCall | Audio }
 
 public class LlmWireEventIdentity {
     public let blockIndex: ?Int64
@@ -46,6 +46,10 @@ public enum LlmWireEvent {
     | TextDelta(String, LlmWireEventIdentity)
     | ReasoningDelta(String, LlmWireEventIdentity)
     | RefusalDelta(String, LlmWireEventIdentity)
+    | AudioIdObserved(String, LlmWireEventIdentity)
+    | AudioDataDelta(LlmWireAudioChunk, LlmWireEventIdentity)
+    | AudioTranscriptDelta(String, LlmWireEventIdentity)
+    | AudioExpiryObserved(Int64, LlmWireEventIdentity)
     | CitationAdded(LlmWireCitation, LlmWireEventIdentity)
     | RefusalObserved(LlmWireRefusalBlock)
     | ToolCallStarted(LlmWireToolIdentity)
@@ -99,6 +103,7 @@ public class LlmWireStreamLimits {
 
 class StreamBudget {
     private let limits: LlmWireStreamLimits
+    private var audioBytes: Int64 = 0
     private var totalBytes: Int64 = 0
     private var textBytes: Int64 = 0
     private var reasoningBytes: Int64 = 0
@@ -129,6 +134,11 @@ class StreamBudget {
         }
         retainedBytes -= previousBytes - nextBytes
     }
+    func audio(size: Int64): Unit {
+        if (size > AUDIO_MAX_BYTES - audioBytes) { throw audioLimit() }
+        if (size > limits.maxTotalSemanticBytes - totalBytes) { limit("llm.stream_semantic_too_large", "stream semantic output exceeds configured limit") }
+        retainBytes(size); audioBytes += size; totalBytes += size
+    }
     private func retainBytes(size: Int64): Unit {
         if (size > limits.maxRetainedStateBytes - retainedBytes) { limit("llm.stream_retained_state_too_large", "stream retained state exceeds configured limit") }
         retainedBytes += size
@@ -138,6 +148,7 @@ class StreamBudget {
     func terminalReply(reply: LlmWireReply): Unit {
         for (entry in reply.blocks) { match (entry) {
             case LlmWireOutputBlock.Text(value) => block(); semantic(value.text, "text")
+            case LlmWireOutputBlock.Audio(value) => block(); audio(value.audioBytes().size); semantic(value.transcript, "text")
             case LlmWireOutputBlock.Reasoning(value) => block(); semantic(value.text, "reasoning")
             case LlmWireOutputBlock.Refusal(value) => block(); semantic(value.text, "text")
             case LlmWireOutputBlock.ToolCall(value) =>
@@ -174,7 +185,7 @@ public class LlmWireStreamDecoder {
     init(
         codec: LlmWireCodec, statusCode: Int64, headers: Array<LlmWireHeader>,
         streamLimits: LlmWireStreamLimits, sseLimits: LlmWireSseLimits,
-        nowEpochMillis!: Int64 = 0
+        nowEpochMillis!: Int64 = 0, responseContext!: ?LlmWireResponseContext = None
     ) {
         if (statusCode < 100 || statusCode > 599) { throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.http_status_invalid", "HTTP status must be between 100 and 599") }
         this.codec = codec; this.statusCode = statusCode; this.headers = copyValues(headers)
@@ -185,7 +196,7 @@ public class LlmWireStreamDecoder {
             maxBufferedBytes: sseLimits.maxBufferedBytes, maxEventsPerPush: sseLimits.maxEventsPerPush,
             maxOutputBytesPerPush: sseLimits.maxOutputBytesPerPush
         )
-        this.protocol = newWireProtocolStreamDecoder(codec, streamLimits)
+        this.protocol = newWireProtocolStreamDecoder(codec, streamLimits, responseContext: responseContext)
     }
 
     public func push(chunk: String): LlmWireResult<LlmWireStreamUpdate> { push(chunk.toArray()) }
@@ -273,10 +284,10 @@ func terminalEvents(value: LlmWireTerminal): Array<LlmWireEvent> {
     }
 }
 
-func newWireProtocolStreamDecoder(codec: LlmWireCodec, limits: LlmWireStreamLimits): WireProtocolStreamDecoder {
+func newWireProtocolStreamDecoder(codec: LlmWireCodec, limits: LlmWireStreamLimits, responseContext!: ?LlmWireResponseContext = None): WireProtocolStreamDecoder {
     match (codec.protocol) {
         case LlmWireProtocol.Responses => ResponsesStreamDecoder(codec, limits)
-        case LlmWireProtocol.ChatCompletions => ChatStreamDecoder(codec, limits)
+        case LlmWireProtocol.ChatCompletions => ChatStreamDecoder(codec, limits, responseContext: responseContext)
         case LlmWireProtocol.Messages => MessagesStreamDecoder(codec, limits)
     }
 }
@@ -824,12 +835,14 @@ class ChatStreamChoice {
     var textBlockAccounted = false
     var reasoningBlockAccounted = false
     var refusalBlockAccounted = false
+    let audio = ChatAudioState()
     init(index: Int64) { this.index = index }
 }
 
 class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
     private let codec: LlmWireCodec
     private let budget: StreamBudget
+    private let responseContext: ?LlmWireResponseContext
     private var responseId = ""
     private var model = ""
     private var started = false
@@ -837,7 +850,9 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
     private let choices = ArrayList<ChatStreamChoice>()
     private let calls = ArrayList<StreamCall>()
     private var usage = LlmWireUsage()
-    init(codec: LlmWireCodec, limits: LlmWireStreamLimits) { this.codec = codec; this.budget = StreamBudget(limits) }
+    init(codec: LlmWireCodec, limits: LlmWireStreamLimits, responseContext!: ?LlmWireResponseContext = None) {
+        this.codec = codec; this.budget = StreamBudget(limits); this.responseContext = responseContext
+    }
 
     public func push(event: SseEvent): LlmWireStreamUpdate { guardedPush(codec, { => budget.inputEvent(); pushActive(event) }) }
     private func pushActive(event: SseEvent): LlmWireStreamUpdate {
@@ -871,6 +886,7 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
         for (raw in wireChoices) {
             let (choiceIndex, reason) = decodeChatChoiceHeader(codec, raw)
             let state = chatChoice(choices, choiceIndex)
+            if (state.finishReason.isSome() && audioExpiryTail(raw, state.audio)) { continue }
             if (state.finishReason.isSome()) { invalidWire("llm.chat_event_after_choice_finished", "Chat content appeared after finish_reason", provider: codec.provider) }
             if (reason == "insufficient_system_resource") {
                 state.finishReason = Some("insufficient_system_resource")
@@ -883,6 +899,10 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
             let choice = wireObject(raw, "Chat stream choice", provider: codec.provider)
             let choiceIndex = wireRequiredInt(choice, "index", provider: codec.provider)
             let state = chatChoice(choices, choiceIndex)
+            if (state.finishReason.isSome() && audioExpiryTail(choice, state.audio)) {
+                state.audio.push(codec, choice["delta"]["audio"], responseContext, budget, events, LlmWireEventIdentity(choiceIndex: Some(choiceIndex)))
+                continue
+            }
             if (state.finishReason.isSome()) { invalidWire("llm.chat_event_after_choice_finished", "Chat content appeared after finish_reason", provider: codec.provider) }
             match (wireOptionalObject(choice, "logprobs", provider: codec.provider)) {
                 case Some(value) =>
@@ -893,10 +913,14 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
             }
             match (wireOptionalObject(choice, "delta", provider: codec.provider)) {
                 case Some(delta) =>
-                    rejectUnsupportedChatSemantic(codec, delta, "chat.delta")
+                    rejectUnsupportedChatSemantic(codec, delta, "chat.delta", allowAudio: true)
                     match (wireOptionalString(delta, "content", provider: codec.provider)) { case Some(value) => if (value != "" && !state.textBlockAccounted) { budget.block(); state.textBlockAccounted = true }; budget.semantic(value, "text"); state.text.append(value); events.add(LlmWireEvent.TextDelta(value, LlmWireEventIdentity(choiceIndex: Some(choiceIndex)))); case None => () }
                     match (wireOptionalString(delta, "reasoning_content", provider: codec.provider)) { case Some(value) => if (value != "" && !state.reasoningBlockAccounted) { budget.block(); state.reasoningBlockAccounted = true }; budget.semantic(value, "reasoning"); state.reasoning.append(value); events.add(LlmWireEvent.ReasoningDelta(value, LlmWireEventIdentity(choiceIndex: Some(choiceIndex)))); case None => () }
                     match (wireOptionalString(delta, "refusal", provider: codec.provider)) { case Some(value) => if (value != "" && !state.refusalBlockAccounted) { budget.block(); state.refusalBlockAccounted = true }; budget.semantic(value, "text"); state.refusal.append(value); events.add(LlmWireEvent.RefusalDelta(value, LlmWireEventIdentity(choiceIndex: Some(choiceIndex)))); case None => () }
+                    match (wireOptionalObject(delta, "audio", provider: codec.provider)) {
+                        case Some(value) => state.audio.push(codec, value, responseContext, budget, events, LlmWireEventIdentity(choiceIndex: Some(choiceIndex)))
+                        case None => ()
+                    }
                     match (wireOptionalArray(delta, "tool_calls", provider: codec.provider)) {
                         case Some(values) => for (entry in values) {
                             let before = calls.size
@@ -956,6 +980,7 @@ class ChatStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
             let arguments = classifyToolArguments(raw)
             blocks.add(LlmWireOutputBlock.ToolCall(LlmWireToolCallBlock(call.callId, call.name, arguments)))
         }
+        if (choice.audio.observed) { blocks.add(LlmWireOutputBlock.Audio(choice.audio.materialize(codec, responseContext, reason == "stop" && denied == "", blocks.size))) }
         let reply = assembleCanonicalReply(
             responseId, model, blocks.toArray(), LlmWireUsage(), reason,
             requireExecutableToolCalls: reason != "length" && reason != "content_filter"

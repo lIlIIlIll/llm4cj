@@ -13,6 +13,7 @@ func messageItems(messages: Array<LlmWireMessage>): Array<LlmWireInputItem> {
 }
 
 func codecFor(name: String, model!: String = "probe-model", tools!: Bool = false): LlmWireCodec {
+    if (isAudioProbe(name)) { return audioProbeCodec(model: model) }
     let capabilities = LlmWireCapabilities(tools: LlmWireToolCapabilities(enabled: tools,
         customFormats: if (tools) { [LlmWireCustomToolFormatKind.Text, LlmWireCustomToolFormatKind.Regex, LlmWireCustomToolFormatKind.Lark] } else { [] }))
     match (name) {
@@ -91,6 +92,9 @@ main(args: Array<String>): Int64 {
     if (args.size == 2 && args[0] == "check-structured") { return checkStructuredFixture(args[1]) }
     if (args.size < 3) { return 2 }
     match (args[0]) {
+        case "encode-audio" => encodeAudio(args[1], args[2] == "stream")
+        case "inspect-audio-fixed" => inspectAudioFixed(args[1], args[2])
+        case "inspect-audio-stream" => if (args.size == 4) { inspectAudioStream(args[1], args[2], Int64.parse(args[3])) } else { 2 }
         case "inspect-cache" => inspectCache(args[1], args[2])
         case "encode" => encode(args[1], args[2], true)
         case "encode-fixture" => encode(args[1], args[2], false)

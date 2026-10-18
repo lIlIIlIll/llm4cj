@@ -1,4 +1,10 @@
+class LlmWireAssistantAudioReplayBlock
 class LlmWireAssistantMessageSpan
+class LlmWireAudioCapabilities
+class LlmWireAudioChunk
+class LlmWireAudioInputBlock
+class LlmWireAudioOutputBlock
+class LlmWireAudioOutputOptions
 class LlmWireCacheBreakpoint
 class LlmWireCacheCapabilities
 class LlmWireCapabilities
@@ -37,6 +43,7 @@ class LlmWireRefusalBlock
 class LlmWireReply
 class LlmWireRequest
 class LlmWireRequestBuilder
+class LlmWireResponseContext
 class LlmWireResponsesWebSocketSession
 class LlmWireSchemaValidationLimits
 class LlmWireSseLimits
@@ -61,6 +68,9 @@ class SseDecoder
 class SseEvent
 enum LlmTransportPhase
 enum LlmWireAnnotation
+enum LlmWireAudioCompletion
+enum LlmWireAudioFormat
+enum LlmWireAudioVoice
 enum LlmWireBlock
 enum LlmWireBuiltinDialect
 enum LlmWireCachePosition
