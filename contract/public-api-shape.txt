@@ -3,8 +3,10 @@
 @ Derive [ Equatable ] public enum LlmWireCapabilityEvidence
 @ Derive [ Equatable ] public enum LlmWireCitationKind
 @ Derive [ Equatable ] public enum LlmWireContextUpdateStyle
+@ Derive [ Equatable ] public enum LlmWireCustomToolFormatKind
 @ Derive [ Equatable ] public enum LlmWireErrorKind
 @ Derive [ Equatable ] public enum LlmWireGenerationSpeed
+@ Derive [ Equatable ] public enum LlmWireGrammarSyntax
 @ Derive [ Equatable ] public enum LlmWireImageDetail
 @ Derive [ Equatable ] public enum LlmWireImageSourceKind
 @ Derive [ Equatable ] public enum LlmWireIncompleteReason
@@ -30,6 +32,7 @@
 @ Derive [ Equatable ] public enum LlmWireToolChoice
 @ Derive [ Equatable ] public enum LlmWireToolErrorStyle
 @ Derive [ Equatable ] public enum LlmWireToolInputValidationMode
+@ Derive [ Equatable ] public enum LlmWireToolKind
 @ Derive [ Equatable ] public enum LlmWireUsageAvailability
 @ Derive [ Equatable ] public enum LlmWireUsageMergeStyle
 @ Derive [ Equatable ] public enum LlmWireUsageSource
@@ -101,10 +104,17 @@ LlmWireContextUpdateContract member public let style : LlmWireContextUpdateStyle
 LlmWireContextUpdateContract member public let version : Int64
 LlmWireContextUpdateContract member public prop requiredHeaders : Array < LlmWireHeader > accessors get ( )
 LlmWireContextUpdateStyle cases Unsupported | ResponsesAdditionalTools | AnthropicToolReferences | KimiSystemTools
+LlmWireCustomTool member public init ( name : String , description ! : String = "" , format ! : LlmWireCustomToolFormat = LlmWireCustomToolFormat . Text )
+LlmWireCustomTool member public let description : String
+LlmWireCustomTool member public let format : LlmWireCustomToolFormat
+LlmWireCustomTool member public let name : String
+LlmWireCustomToolFormat cases Text | Grammar ( LlmWireGrammar )
+LlmWireCustomToolFormat member public prop kind : LlmWireCustomToolFormatKind accessors get ( )
+LlmWireCustomToolFormatKind cases Text | Regex | Lark
 LlmWireDialect member prop compatibilityId : String
 LlmWireDialect member prop contract : LlmWireDialectContract
 LlmWireDialect member prop protocol : LlmWireProtocol
-LlmWireDialectContract member public init ( compatibilityId : String , protocol : LlmWireProtocol , requestStyle : LlmWireRequestStyle , outputTokenField : LlmWireOutputTokenField , requireMaxOutputTokens ! : Bool = false , thinkingModes ! : Array < LlmWireThinkingMode > = [ LlmWireThinkingMode . ProviderDefault ] , reasoningEfforts ! : Array < LlmWireReasoningEffort > = [ ] , structuredOutputModes ! : Array < LlmWireStructuredOutputMode > = [ ] , serviceTiers ! : Array < LlmWireServiceTier > = [ ] , generationSpeeds ! : Array < LlmWireGenerationSpeed > = [ ] , promptCacheStyle ! : LlmWirePromptCacheStyle = LlmWirePromptCacheStyle . Unsupported , promptCacheLifetimes ! : Array < LlmWirePromptCacheLifetime > = [ ] , promptCacheRoutingKey ! : Bool = false , parallelToolStyle ! : LlmWireParallelToolStyle = LlmWireParallelToolStyle . Unsupported , tools ! : Bool = true , usageMergeStyle ! : LlmWireUsageMergeStyle = LlmWireUsageMergeStyle . ReplacePresent , toolErrorStyle ! : LlmWireToolErrorStyle = LlmWireToolErrorStyle . Unsupported , contextUpdates ! : LlmWireContextUpdateContract = LlmWireContextUpdateContract ( ) )
+LlmWireDialectContract member public init ( compatibilityId : String , protocol : LlmWireProtocol , requestStyle : LlmWireRequestStyle , outputTokenField : LlmWireOutputTokenField , requireMaxOutputTokens ! : Bool = false , thinkingModes ! : Array < LlmWireThinkingMode > = [ LlmWireThinkingMode . ProviderDefault ] , reasoningEfforts ! : Array < LlmWireReasoningEffort > = [ ] , structuredOutputModes ! : Array < LlmWireStructuredOutputMode > = [ ] , serviceTiers ! : Array < LlmWireServiceTier > = [ ] , generationSpeeds ! : Array < LlmWireGenerationSpeed > = [ ] , promptCacheStyle ! : LlmWirePromptCacheStyle = LlmWirePromptCacheStyle . Unsupported , promptCacheLifetimes ! : Array < LlmWirePromptCacheLifetime > = [ ] , promptCacheRoutingKey ! : Bool = false , parallelToolStyle ! : LlmWireParallelToolStyle = LlmWireParallelToolStyle . Unsupported , tools ! : Bool = true , usageMergeStyle ! : LlmWireUsageMergeStyle = LlmWireUsageMergeStyle . ReplacePresent , toolErrorStyle ! : LlmWireToolErrorStyle = LlmWireToolErrorStyle . Unsupported , contextUpdates ! : LlmWireContextUpdateContract = LlmWireContextUpdateContract ( ) , customToolFormats ! : Array < LlmWireCustomToolFormatKind > = [ ] )
 LlmWireDialectContract member public let compatibilityId : String
 LlmWireDialectContract member public let contextUpdates : LlmWireContextUpdateContract
 LlmWireDialectContract member public let outputTokenField : LlmWireOutputTokenField
@@ -117,6 +127,7 @@ LlmWireDialectContract member public let requireMaxOutputTokens : Bool
 LlmWireDialectContract member public let toolErrorStyle : LlmWireToolErrorStyle
 LlmWireDialectContract member public let tools : Bool
 LlmWireDialectContract member public let usageMergeStyle : LlmWireUsageMergeStyle
+LlmWireDialectContract member public prop customToolFormats : Array < LlmWireCustomToolFormatKind > accessors get ( )
 LlmWireDialectContract member public prop generationSpeeds : Array < LlmWireGenerationSpeed > accessors get ( )
 LlmWireDialectContract member public prop promptCacheLifetimes : Array < LlmWirePromptCacheLifetime > accessors get ( )
 LlmWireDialectContract member public prop reasoningEfforts : Array < LlmWireReasoningEffort > accessors get ( )
@@ -185,6 +196,10 @@ LlmWireFeatureRequirement member public init ( featureId : String , state : LlmW
 LlmWireFeatureRequirement member public let featureId : String
 LlmWireFeatureRequirement member public let state : LlmWireRequirementState
 LlmWireGenerationSpeed cases ProviderDefault | Standard | Fast
+LlmWireGrammar member public init ( syntax : LlmWireGrammarSyntax , definition : String )
+LlmWireGrammar member public let definition : String
+LlmWireGrammar member public let syntax : LlmWireGrammarSyntax
+LlmWireGrammarSyntax cases Regex | Lark
 LlmWireHeader member public init ( name : String , value : String )
 LlmWireHeader member public let name : String
 LlmWireHeader member public let value : String
@@ -392,40 +407,50 @@ LlmWireTool member public init ( name : String , description : String , inputSch
 LlmWireTool member public let description : String
 LlmWireTool member public let inputSchema : LlmWireJson
 LlmWireTool member public let name : String
-LlmWireToolArguments cases Complete ( LlmWireJson ) | InvalidJson ( String ) | InvalidShape ( LlmWireJson ) | Partial ( String )
+LlmWireToolArguments cases Complete ( LlmWireJson ) | InvalidJson ( String ) | InvalidShape ( LlmWireJson ) | Partial ( String ) | Text ( String ) | PartialText ( String )
 LlmWireToolCallBlock member public init ( callId : String , name : String , arguments : LlmWireToolArguments )
 LlmWireToolCallBlock member public let arguments : LlmWireToolArguments
 LlmWireToolCallBlock member public let callId : String
 LlmWireToolCallBlock member public let name : String
-LlmWireToolCapabilities member public init ( enabled ! : Bool = false , parallelCalls ! : Bool = false )
+LlmWireToolCallBlock member public prop kind : LlmWireToolKind accessors get ( )
+LlmWireToolCapabilities member public init ( enabled ! : Bool = false , parallelCalls ! : Bool = false , customFormats ! : Array < LlmWireCustomToolFormatKind > = [ ] )
 LlmWireToolCapabilities member public let enabled : Bool
 LlmWireToolCapabilities member public let parallelCalls : Bool
+LlmWireToolCapabilities member public prop customFormats : Array < LlmWireCustomToolFormatKind > accessors get ( )
 LlmWireToolChoice cases ProviderDefault | Auto | NoTools | Required
 LlmWireToolDeclaration member public init ( tool : LlmWireTool , version ! : String = "1" , deferred ! : Bool = false )
+LlmWireToolDeclaration member public init ( tool : LlmWireToolDefinition , version ! : String = "1" , deferred ! : Bool = false )
 LlmWireToolDeclaration member public let deferred : Bool
-LlmWireToolDeclaration member public let tool : LlmWireTool
+LlmWireToolDeclaration member public let tool : LlmWireToolDefinition
 LlmWireToolDeclaration member public let version : String
 LlmWireToolDeclaration member public prop identity : LlmWireToolDefinitionIdentity accessors get ( )
+LlmWireToolDefinition cases Function ( LlmWireTool ) | Custom ( LlmWireCustomTool )
+LlmWireToolDefinition member public prop description : String accessors get ( )
+LlmWireToolDefinition member public prop kind : LlmWireToolKind accessors get ( )
+LlmWireToolDefinition member public prop name : String accessors get ( )
 LlmWireToolDefinitionIdentity member public init ( name : String , version ! : String = "1" )
 LlmWireToolDefinitionIdentity member public let name : String
 LlmWireToolDefinitionIdentity member public let version : String
 LlmWireToolErrorStyle cases Unsupported | NativeField | ContentMarker
-LlmWireToolIdentity member public init ( location : LlmWireEventIdentity , callId : String , name : String )
+LlmWireToolIdentity member public init ( location : LlmWireEventIdentity , callId : String , name : String , kind ! : LlmWireToolKind = LlmWireToolKind . Function )
 LlmWireToolIdentity member public let callId : String
+LlmWireToolIdentity member public let kind : LlmWireToolKind
 LlmWireToolIdentity member public let location : LlmWireEventIdentity
 LlmWireToolIdentity member public let name : String
 LlmWireToolInputValidationMode cases Disabled | ValidateSupportedSubset | Strict
-LlmWireToolResultBlock member public init ( callId : String , content : Array < LlmWireToolResultContent > , isError ! : Bool = false )
+LlmWireToolKind cases Function | Custom
+LlmWireToolResultBlock member public init ( callId : String , content : Array < LlmWireToolResultContent > , isError ! : Bool = false , kind ! : LlmWireToolKind = LlmWireToolKind . Function )
 LlmWireToolResultBlock member public let callId : String
 LlmWireToolResultBlock member public let content : Array < LlmWireToolResultContent >
 LlmWireToolResultBlock member public let isError : Bool
+LlmWireToolResultBlock member public let kind : LlmWireToolKind
 LlmWireToolResultContent cases Text ( LlmWireTextBlock ) | Image ( LlmWireImageBlock )
 LlmWireTranscript member public func append ( item : LlmWireInputItem ) : LlmWireTranscript
 LlmWireTranscript member public func snapshot ( ) : LlmWireResult < String >
 LlmWireTranscript member public init ( initialContext : LlmWireInitialContext , items ! : Array < LlmWireInputItem > = [ ] )
 LlmWireTranscript member public init ( items ! : Array < LlmWireInputItem > = [ ] )
 LlmWireTranscript member public let initialContext : LlmWireInitialContext
-LlmWireTranscript member public prop effectiveTools : Array < LlmWireTool > accessors get ( )
+LlmWireTranscript member public prop effectiveTools : Array < LlmWireToolDefinition > accessors get ( )
 LlmWireTranscript member public prop items : Array < LlmWireInputItem > accessors get ( )
 LlmWireTranscript member public static func restore ( snapshot : String ) : LlmWireResult < LlmWireTranscript >
 LlmWireUsage member public init ( inputTokens ! : ? Int64 = None , outputTokens ! : ? Int64 = None , reasoningTokens ! : ? Int64 = None , cacheReadTokens ! : ? Int64 = None , cacheWriteTokens ! : ? Int64 = None , totalTokens ! : ? Int64 = None , webSearchRequests ! : ? Int64 = None , webFetchRequests ! : ? Int64 = None , serviceTier ! : ? String = None , source ! : LlmWireUsageSource = LlmWireUsageSource . Unknown )
@@ -461,12 +486,14 @@ public class LlmWireCitation
 public class LlmWireCodec
 public class LlmWireContextUpdateCapabilities
 public class LlmWireContextUpdateContract
+public class LlmWireCustomTool
 public class LlmWireDialectContract
 public class LlmWireEndpointProfile
 public class LlmWireError < : Exception
 public class LlmWireEventIdentity
 public class LlmWireFailure
 public class LlmWireFeatureRequirement
+public class LlmWireGrammar
 public class LlmWireHeader
 public class LlmWireHttpResponse
 public class LlmWireImageBlock
@@ -514,6 +541,7 @@ public class SseEvent
 public enum LlmWireAnnotation
 public enum LlmWireBlock
 public enum LlmWireChoiceOutcome
+public enum LlmWireCustomToolFormat
 public enum LlmWireEvent
 public enum LlmWireFailureKind
 public enum LlmWireInputItem
@@ -526,6 +554,7 @@ public enum LlmWireStructuredOutput
 public enum LlmWireStructuredOutputOutcome
 public enum LlmWireTerminal
 public enum LlmWireToolArguments
+public enum LlmWireToolDefinition
 public enum LlmWireToolResultContent
 public func anthropicMessagesCodec ( profile : LlmWireModelProfile , provider ! : String = "anthropic" ) : LlmWireCodec
 public func anthropicMessagesDialect ( ) : LlmWireDialect

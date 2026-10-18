@@ -1,7 +1,6 @@
 package llm4cj.experimental
 
 import llm4cj.*
-import std.deriving.Derive
 
 // Experimental APIs may change without the stable llm4cj compatibility guarantees.
 public class LlmWireStandardDialect <: LlmWireDialect {
@@ -90,41 +89,6 @@ public func prepareAnthropicCachePrewarm(
         LlmWireResult.Ok(LlmWireCachePrewarmExchange(codec, encodeAnthropicCachePrewarm(codec, request)))
     } catch (error: LlmWireError) {
         LlmWireResult.Err(error)
-    }
-}
-
-@Derive[Equatable]
-public enum LlmWireGrammarSyntax { Regex | Lark }
-
-public class LlmWireGrammar {
-    public let syntax: LlmWireGrammarSyntax
-    public let definition: String
-
-    public init(syntax: LlmWireGrammarSyntax, definition: String) {
-        if (definition.trimAscii() == "") {
-            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.grammar_empty", "grammar definition must not be empty")
-        }
-        this.syntax = syntax
-        this.definition = definition
-    }
-}
-
-public enum LlmWireCustomToolFormat {
-    Text | Grammar(LlmWireGrammar)
-}
-
-public class LlmWireCustomTool {
-    public let name: String
-    public let description: String
-    public let format: LlmWireCustomToolFormat
-
-    public init(name: String, description!: String = "", format!: LlmWireCustomToolFormat = LlmWireCustomToolFormat.Text) {
-        if (name.trimAscii() == "") {
-            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.custom_tool_name_invalid", "custom tool name must not be empty")
-        }
-        this.name = name
-        this.description = description
-        this.format = format
     }
 }
 

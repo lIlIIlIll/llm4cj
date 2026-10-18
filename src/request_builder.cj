@@ -65,9 +65,7 @@ public class LlmWireRequestBuilder {
         if (!validToolName(declaration.tool.name)) {
             throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_name_invalid", "tool names must use the tool-name grammar", toolName: declaration.tool.name, toolVersion: declaration.version)
         }
-        if (declaration.tool.inputSchema.kind != LlmWireJsonKind.Object) {
-            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.tool_schema_invalid", "tool input schema must be a JSON object", toolName: declaration.tool.name, toolVersion: declaration.version)
-        }
+        validateToolDefinitionShape(declaration.tool)
     }
     private func validateItemShape(item: LlmWireInputItem, itemIndex: Int64): Unit {
         try {

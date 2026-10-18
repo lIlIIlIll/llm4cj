@@ -13,7 +13,8 @@ func messageItems(messages: Array<LlmWireMessage>): Array<LlmWireInputItem> {
 }
 
 func codecFor(name: String, model!: String = "probe-model", tools!: Bool = false): LlmWireCodec {
-    let capabilities = LlmWireCapabilities(tools: LlmWireToolCapabilities(enabled: tools))
+    let capabilities = LlmWireCapabilities(tools: LlmWireToolCapabilities(enabled: tools,
+        customFormats: if (tools) { [LlmWireCustomToolFormatKind.Text, LlmWireCustomToolFormatKind.Regex, LlmWireCustomToolFormatKind.Lark] } else { [] }))
     match (name) {
         case "openai-responses" => openAiResponsesCodec(openAiResponsesModelProfile(model, capabilities: capabilities))
         case "openai-codex-responses" => openAiCodexResponsesCodec(openAiCodexResponsesModelProfile(model, capabilities: capabilities))
@@ -71,6 +72,20 @@ func decodeStream(name: String, path: String, chunkBytes: Int64): Int64 {
     }
 }
 
+func encodeCustomFixture(name: String, formatName: String): Int64 {
+    let format = match (formatName) {
+        case "text" => LlmWireCustomToolFormat.Text
+        case "regex" => LlmWireCustomToolFormat.Grammar(LlmWireGrammar(LlmWireGrammarSyntax.Regex, "[a-z]+"))
+        case "lark" => LlmWireCustomToolFormat.Grammar(LlmWireGrammar(LlmWireGrammarSyntax.Lark, "start: \"hello\""))
+        case _ => return 2
+    }
+    let declaration = LlmWireToolDeclaration(LlmWireToolDefinition.Custom(LlmWireCustomTool("emit", description: "Emit text", format: format)))
+    let transcript = LlmWireTranscript(LlmWireInitialContext(tools: [declaration]), items: messageItems([userMessage("hello")]))
+    let request = probeRequest(name, transcript)
+    println(materializedJson(probeValue(inspectionCodecFor(name, tools: true).encodeRequest(request, streaming: name == "openai-codex-responses").materialize())).stringify())
+    0
+}
+
 main(args: Array<String>): Int64 {
     if (args.size == 2 && args[0] == "check-schema") { return checkSchemaFixture(args[1]) }
     if (args.size == 2 && args[0] == "check-structured") { return checkStructuredFixture(args[1]) }
@@ -78,6 +93,7 @@ main(args: Array<String>): Int64 {
     match (args[0]) {
         case "encode" => encode(args[1], args[2], true)
         case "encode-fixture" => encode(args[1], args[2], false)
+        case "encode-custom-fixture" => encodeCustomFixture(args[1], args[2])
         case "decode-stream" => if (args.size == 4) { decodeStream(args[1], args[2], Int64.parse(args[3])) } else { 2 }
         case "decode-websocket" => inspectWebSocket(args[1], args[2], true)
         case "inspect-fixed" => inspectFixed(args[1], args[2])

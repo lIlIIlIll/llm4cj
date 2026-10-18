@@ -1579,6 +1579,107 @@
       },
       "expected": "expected/messages-usage-decreased.json",
       "pair": false
+    },
+    {
+      "id": "custom-text-openai-responses",
+      "dialect": "openai.responses.v1",
+      "probe": "openai-responses",
+      "scenario": [
+        "custom-tool",
+        "raw-text",
+        "continuation",
+        "snapshot-v3",
+        "complete"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/docs/guides/function-calling#custom-tools",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic model, IDs and text; custom input/output and lifecycle independently reconstructed from the official custom tools and streaming event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/custom-text.json",
+        "stream": "streams/custom-text.json"
+      },
+      "expected": "expected/custom-text-openai-responses.json",
+      "pair": true
+    },
+    {
+      "id": "custom-text-openai-codex-responses",
+      "dialect": "openai.codex.responses.v1",
+      "probe": "openai-codex-responses",
+      "scenario": [
+        "custom-tool",
+        "raw-text",
+        "continuation",
+        "snapshot-v3",
+        "complete"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/docs/guides/function-calling#custom-tools",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic model, IDs and text; custom input/output and lifecycle independently reconstructed from the official custom tools and streaming event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/custom-text.json",
+        "stream": "streams/custom-text.json",
+        "websocket": "streams/custom-text.json"
+      },
+      "expected": "expected/custom-text-openai-codex-responses.json",
+      "pair": true
+    },
+    {
+      "id": "custom-partial-openai-responses",
+      "dialect": "openai.responses.v1",
+      "probe": "openai-responses",
+      "scenario": [
+        "custom-tool",
+        "raw-text",
+        "continuation",
+        "snapshot-v3",
+        "partial"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/docs/guides/function-calling#custom-tools",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic model, IDs and text; custom input/output and lifecycle independently reconstructed from the official custom tools and streaming event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/custom-partial.json",
+        "stream": "streams/custom-partial.json"
+      },
+      "expected": "expected/custom-partial-openai-responses.json",
+      "pair": true
+    },
+    {
+      "id": "custom-partial-openai-codex-responses",
+      "dialect": "openai.codex.responses.v1",
+      "probe": "openai-codex-responses",
+      "scenario": [
+        "custom-tool",
+        "raw-text",
+        "continuation",
+        "snapshot-v3",
+        "partial"
+      ],
+      "source": {
+        "kind": "schema_derived",
+        "url": "https://developers.openai.com/api/docs/guides/function-calling#custom-tools",
+        "revision": "rolling reference",
+        "checked_at": "2026-10-18",
+        "notes": "Synthetic model, IDs and text; custom input/output and lifecycle independently reconstructed from the official custom tools and streaming event schemas. No live capture."
+      },
+      "wire": {
+        "fixed": "cases/custom-partial.json",
+        "stream": "streams/custom-partial.json"
+      },
+      "expected": "expected/custom-partial-openai-codex-responses.json",
+      "pair": true
     }
   ],
   "requests": [
@@ -1595,5 +1696,37 @@
     "transcripts/openai-responses.json",
     "transcripts/anthropic-messages.json",
     "transcripts/kimi-chat.json"
+  ],
+  "custom_requests": [
+    {
+      "probe": "openai-responses",
+      "format": "text",
+      "expected": "custom-tools/request-text-openai-responses.json"
+    },
+    {
+      "probe": "openai-codex-responses",
+      "format": "text",
+      "expected": "custom-tools/request-text-openai-codex-responses.json"
+    },
+    {
+      "probe": "openai-responses",
+      "format": "regex",
+      "expected": "custom-tools/request-regex-openai-responses.json"
+    },
+    {
+      "probe": "openai-codex-responses",
+      "format": "regex",
+      "expected": "custom-tools/request-regex-openai-codex-responses.json"
+    },
+    {
+      "probe": "openai-responses",
+      "format": "lark",
+      "expected": "custom-tools/request-lark-openai-responses.json"
+    },
+    {
+      "probe": "openai-codex-responses",
+      "format": "lark",
+      "expected": "custom-tools/request-lark-openai-codex-responses.json"
+    }
   ]
 }

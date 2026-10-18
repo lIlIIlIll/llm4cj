@@ -1,0 +1,19 @@
+{
+  "fixture": "openai.responses.custom-tools",
+  "source": {
+    "kind": "schema_derived",
+    "url": "https://developers.openai.com/api/docs/guides/function-calling#custom-tools",
+    "revision": "rolling reference",
+    "checked_at": "2026-10-18",
+    "notes": "Synthetic model, IDs and text; custom input/output and lifecycle independently reconstructed from the official custom tools and streaming event schemas. No live capture."
+  },
+  "live_provider": "not_run",
+  "events": [
+    "{\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_custom_fixture\",\"model\":\"fixture-model\",\"status\":\"in_progress\",\"output\":[]}}",
+    "{\"type\":\"response.output_item.added\",\"sequence_number\":1,\"output_index\":0,\"item\":{\"id\":\"custom_fixture\",\"type\":\"custom_tool_call\",\"call_id\":\"call_custom_fixture\",\"name\":\"run\",\"input\":\"\"}}",
+    "{\"type\":\"response.custom_tool_call_input.delta\",\"sequence_number\":2,\"output_index\":0,\"item_id\":\"custom_fixture\",\"delta\":\"run é\"}",
+    "{\"type\":\"response.custom_tool_call_input.done\",\"sequence_number\":3,\"output_index\":0,\"item_id\":\"custom_fixture\",\"input\":\"run é\"}",
+    "{\"type\":\"response.output_item.done\",\"sequence_number\":4,\"output_index\":0,\"item\":{\"id\":\"custom_fixture\",\"type\":\"custom_tool_call\",\"call_id\":\"call_custom_fixture\",\"name\":\"run\",\"input\":\"run é\"}}",
+    "{\"type\":\"response.completed\",\"sequence_number\":5,\"response\":{\"id\":\"resp_custom_fixture\",\"object\":\"response\",\"model\":\"fixture-model\",\"status\":\"completed\",\"output\":[{\"id\":\"custom_fixture\",\"type\":\"custom_tool_call\",\"call_id\":\"call_custom_fixture\",\"name\":\"run\",\"input\":\"run é\"}],\"usage\":{\"input_tokens\":3,\"output_tokens\":2,\"total_tokens\":5,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens_details\":{\"reasoning_tokens\":1}}}}"
+  ]
+}

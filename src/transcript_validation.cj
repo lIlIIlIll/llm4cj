@@ -58,16 +58,14 @@ internal func canonicalToolSchemaValue(value: JsonNode): JsonNode {
 }
 
 internal func sameToolDeclaration(left: LlmWireToolDeclaration, right: LlmWireToolDeclaration): Bool {
-    left.tool.name == right.tool.name && left.version == right.version &&
-    left.tool.description == right.tool.description &&
-    canonicalToolSchema(left.tool.inputSchema.jsonNode()) == canonicalToolSchema(right.tool.inputSchema.jsonNode())
+    left.version == right.version && sameToolDefinition(left.tool, right.tool)
 }
 
 internal class LlmWireTranscriptView {
     internal let messages: Array<LlmWireMessage>
-    internal let activeTools: Array<LlmWireTool>
+    internal let activeTools: Array<LlmWireToolDefinition>
     internal let declaredTools: Array<LlmWireToolDeclaration>
-    internal init(messages: Array<LlmWireMessage>, activeTools: Array<LlmWireTool>, declaredTools: Array<LlmWireToolDeclaration>) {
+    internal init(messages: Array<LlmWireMessage>, activeTools: Array<LlmWireToolDefinition>, declaredTools: Array<LlmWireToolDeclaration>) {
         this.messages = messages; this.activeTools = activeTools; this.declaredTools = declaredTools
     }
 }
@@ -84,9 +82,8 @@ internal class TranscriptToolState {
         if (value.version == "" || value.version.toArray().size > 64) {
             throw transcriptError("llm.tool_version_invalid", "tool versions must contain 1-64 bytes", itemIndex, toolName: value.tool.name, toolVersion: value.version)
         }
-        if (value.tool.inputSchema.jsonNode().wireKind != WireJsonKind.Object) {
-            throw transcriptError("llm.tool_schema_invalid", "tool input schemas must be JSON objects", itemIndex, toolName: value.tool.name, toolVersion: value.version)
-        }
+        try { validateToolDefinitionShape(value.tool) }
+        catch (error: LlmWireError) { throw withInputItemContext(error, itemIndex) }
         match (declared.get(value.tool.name)) {
             case Some(previous) =>
                 if (!sameToolDeclaration(previous, value)) {
@@ -125,18 +122,22 @@ internal class TranscriptToolState {
         active.remove(identity.name)
     }
 
-    internal func requireActive(call: LlmWireToolCallBlock, itemIndex: Int64, blockIndex: Int64): Unit {
+    internal func requireActive(call: LlmWireToolCallBlock, itemIndex: Int64, blockIndex: Int64): LlmWireToolDeclaration {
         match (declared.get(call.name)) {
             case None => throw transcriptError("llm.tool_reference_unknown", "tool calls must refer to a prior declaration", itemIndex, toolName: call.name, blockIndex: blockIndex, toolCallId: call.callId)
             case Some(value) =>
                 if (!active.contains(call.name)) {
                     throw transcriptError("llm.tool_not_active", "tool calls must refer to a tool active at this transcript item", itemIndex, toolName: call.name, toolVersion: value.version, blockIndex: blockIndex, toolCallId: call.callId)
                 }
+                if (value.tool.kind != call.kind) {
+                    throw transcriptError("llm.tool_kind_mismatch", "tool call kind must match its declared definition", itemIndex, toolName: call.name, toolVersion: value.version, blockIndex: blockIndex, toolCallId: call.callId)
+                }
+                value
         }
     }
 
-    internal func activeTools(): Array<LlmWireTool> {
-        let tools = ArrayList<LlmWireTool>()
+    internal func activeTools(): Array<LlmWireToolDefinition> {
+        let tools = ArrayList<LlmWireToolDefinition>()
         for (name in order where active.contains(name)) { tools.add(declared[name].tool) }
         tools.toArray()
     }
@@ -155,7 +156,7 @@ internal func replayTranscript(transcript: LlmWireTranscript): LlmWireTranscript
     let messages = ArrayList<LlmWireMessage>()
     let items = transcript.items
     let known = HashSet<String>()
-    let pending = HashSet<String>()
+    let pending = HashMap<String, LlmWireToolDeclaration>()
     for (declaration in transcript.initialContext.tools) { state.declare(declaration, -1) }
     for (itemIndex in 0..items.size) {
         match (items[itemIndex]) {
@@ -190,14 +191,17 @@ internal func replayTranscript(transcript: LlmWireTranscript): LlmWireTranscript
                         if (call.callId == "" || known.contains(call.callId)) {
                             throw transcriptError("llm.tool_call_duplicate", "tool call IDs must be non-empty and unique", itemIndex, blockIndex: blockIndex, toolCallId: call.callId)
                         }
-                        state.requireActive(call, itemIndex, blockIndex)
-                        known.add(call.callId); pending.add(call.callId)
+                        let definition = state.requireActive(call, itemIndex, blockIndex)
+                        known.add(call.callId); pending[call.callId] = definition
                     case LlmWireBlock.ToolResult(result) =>
                         if (message.role != LlmWireRole.User) {
                             throw transcriptError("llm.tool_result_role_invalid", "tool results must belong to user messages", itemIndex, blockIndex: blockIndex, toolCallId: result.callId)
                         }
                         if (!pending.contains(result.callId)) {
                             throw transcriptError("llm.tool_result_unmatched", "tool results must match a prior unconsumed tool call", itemIndex, blockIndex: blockIndex, toolCallId: result.callId)
+                        }
+                        if (pending[result.callId].tool.kind != result.kind) {
+                            throw transcriptError("llm.tool_kind_mismatch", "tool result kind must match its pending call", itemIndex, toolName: pending[result.callId].tool.name, toolVersion: pending[result.callId].version, blockIndex: blockIndex, toolCallId: result.callId)
                         }
                         pending.remove(result.callId)
                     case _ => ()

@@ -3,8 +3,8 @@ package llm4cj
 import std.collection.*
 import yjson.*
 
-func initialTranscriptTools(transcript: LlmWireTranscript): Array<LlmWireTool> {
-    let seen = HashSet<String>(); let output = ArrayList<LlmWireTool>()
+func initialTranscriptTools(transcript: LlmWireTranscript): Array<LlmWireToolDefinition> {
+    let seen = HashSet<String>(); let output = ArrayList<LlmWireToolDefinition>()
     for (declaration in transcript.initialContext.tools) {
         if (seen.add(declaration.tool.name)) { output.add(declaration.tool) }
     }
@@ -94,8 +94,8 @@ func encodeResponsesMessageContent(codec: LlmWireCodec, role: LlmWireRole, block
 
 func appendResponsesStandalone(input: JsonNode, block: LlmWireBlock): Unit {
     match (block) {
-        case LlmWireBlock.ToolCall(call) => input.add(wireJsonObject([WireJsonField("type", wireJsonString("function_call")), WireJsonField("call_id", wireJsonString(call.callId)), WireJsonField("name", wireJsonString(call.name)), WireJsonField("arguments", wireJsonString(toolArgumentsRaw(call.arguments)))]))
-        case LlmWireBlock.ToolResult(result) => input.add(wireJsonObject([WireJsonField("type", wireJsonString("function_call_output")), WireJsonField("call_id", wireJsonString(result.callId)), WireJsonField("output", encodeResponsesToolResult(result))]))
+        case LlmWireBlock.ToolCall(call) => input.add(wireJsonObject([WireJsonField("type", wireJsonString(if (call.kind == LlmWireToolKind.Custom) { "custom_tool_call" } else { "function_call" })), WireJsonField("call_id", wireJsonString(call.callId)), WireJsonField("name", wireJsonString(call.name)), WireJsonField(if (call.kind == LlmWireToolKind.Custom) { "input" } else { "arguments" }, wireJsonString(toolArgumentsRaw(call.arguments)))]))
+        case LlmWireBlock.ToolResult(result) => input.add(wireJsonObject([WireJsonField("type", wireJsonString(if (result.kind == LlmWireToolKind.Custom) { "custom_tool_call_output" } else { "function_call_output" })), WireJsonField("call_id", wireJsonString(result.callId)), WireJsonField("output", encodeResponsesToolResult(result))]))
         case LlmWireBlock.NativeReplay(value) => input.add(value.payload())
         case _ => unsupportedRequest("llm.responses_block_unsupported", "display and diagnostic blocks cannot be encoded as request input")
     }
@@ -185,7 +185,7 @@ func addMessagesInitialTools(root: JsonNode, transcript: LlmWireTranscript): Uni
     let tools = wireJsonArray([]); let seen = HashSet<String>()
     for (declaration in transcript.initialContext.tools) {
         if (!seen.add(declaration.tool.name)) { continue }
-        let tool = declaration.tool
+        let tool = requireFunctionTool(declaration.tool)
         let value = wireJsonObject([WireJsonField("name", wireJsonString(tool.name)), WireJsonField("description", wireJsonString(tool.description)), WireJsonField("input_schema", tool.inputSchema.jsonNode())])
         if (declaration.deferred) { value.put("defer_loading", wireJsonBool(true)) }
         tools.add(value)

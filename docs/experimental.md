@@ -30,4 +30,4 @@
 
 ## Custom tool 与 grammar
 
-`LlmWireCustomTool`、`LlmWireCustomToolFormat`、`LlmWireGrammar` 和 `LlmWireGrammarSyntax` 只描述实验语义，目前不会被稳定 request encoder 自动发送。构造器会拒绝空名称或空 grammar；使用方必须把它们视为实验配置，而不是稳定 provider 能力声明。
+未发布的 0.3.0 将 `LlmWireCustomTool`、`LlmWireCustomToolFormat`、`LlmWireGrammar` 和 `LlmWireGrammarSyntax` 提升至 `llm4cj`。请把这些类型的 import 从 `llm4cj.experimental.*` 改为 `llm4cj.*`，并使用 `LlmWireToolDefinition.Custom` 加入有序工具声明池。请求、原始文本输入、结果、能力门禁和快照迁移见 [custom tools](custom-tools.md)。

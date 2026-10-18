@@ -135,6 +135,8 @@ func argumentsJson(value: LlmWireToolArguments): LlmWireJson {
         case LlmWireToolArguments.InvalidJson(value) => ("invalid_json", js(value))
         case LlmWireToolArguments.InvalidShape(value) => ("invalid_shape", value)
         case LlmWireToolArguments.Partial(value) => ("partial", js(value))
+        case LlmWireToolArguments.Text(value) => ("text", js(value))
+        case LlmWireToolArguments.PartialText(value) => ("partial_text", js(value))
     }
     jo([jf("kind", js(kind)), jf("value", data)])
 }
@@ -143,7 +145,10 @@ func blockJson(value: LlmWireOutputBlock): LlmWireJson {
         case LlmWireOutputBlock.Text(value) => ("text", textJson(value))
         case LlmWireOutputBlock.Refusal(value) => ("refusal", refusalJson(value))
         case LlmWireOutputBlock.Reasoning(value) => ("reasoning", jo([jf("text", js(value.text)), jf("replay_dialect_id", js(value.replayDialectId))]))
-        case LlmWireOutputBlock.ToolCall(value) => ("tool_call", jo([jf("call_id", js(value.callId)), jf("name", js(value.name)), jf("arguments", argumentsJson(value.arguments))]))
+        case LlmWireOutputBlock.ToolCall(value) =>
+            let fields = ArrayList<LlmWireJsonField>(); fields.add(jf("call_id", js(value.callId))); fields.add(jf("name", js(value.name))); fields.add(jf("arguments", argumentsJson(value.arguments)))
+            if (value.kind == LlmWireToolKind.Custom) { fields.add(jf("tool_kind", js("custom"))) }
+            ("tool_call", jo(fields.toArray()))
         case LlmWireOutputBlock.NativeReplay(value) => ("native_replay", jp(value.snapshot()))
     }
     jo([jf("kind", js(kind)), jf("value", data)])
@@ -190,8 +195,10 @@ func projectionJson(name: String, result: LlmWireResult<Array<LlmWireMessage>>):
         for (item in restored.items) { match (item) {
             case LlmWireInputItem.Message(message) => for (block in message.blocks) { match (block) {
                 case LlmWireBlock.ToolCall(call) =>
-                    if (names.add(call.name)) { declarations.add(LlmWireToolDeclaration(LlmWireTool(call.name, "fixture tool", jp("{\"type\":\"object\"}")))) }
-                    results.add(LlmWireBlock.ToolResult(LlmWireToolResultBlock(call.callId, [LlmWireToolResultContent.Text(LlmWireTextBlock("done"))])))
+                    if (names.add(call.name)) { declarations.add(if (call.kind == LlmWireToolKind.Custom) {
+                        LlmWireToolDeclaration(LlmWireToolDefinition.Custom(LlmWireCustomTool(call.name, description: "fixture tool")))
+                    } else { LlmWireToolDeclaration(LlmWireTool(call.name, "fixture tool", jp("{\"type\":\"object\"}"))) }) }
+                    results.add(LlmWireBlock.ToolResult(LlmWireToolResultBlock(call.callId, [LlmWireToolResultContent.Text(LlmWireTextBlock("done"))], kind: call.kind)))
                 case _ => ()
             } }
             case _ => throw IllegalStateException("projection returned a non-message item")
@@ -284,7 +291,7 @@ func inspectStream(name: String, path: String, chunkBytes: Int64, cancel: Bool):
     println(output.stringify()); 0
 }
 func inspectWebSocket(name: String, path: String, legacy: Bool): Int64 {
-    let session = inspectionCodecFor(name).newResponsesWebSocketSession()
+    let session = inspectionCodecFor(name, tools: true).newResponsesWebSocketSession()
     let _ = session.prepare(probeRequest(name, LlmWireTranscript(items: messageItems([userMessage("hello")]))))
     var terminal: ?LlmWireTerminal = None
     for (event in String.fromUtf8(readBytes(path)).split('\n') where event != "") {
@@ -309,8 +316,22 @@ func inspectWebSocket(name: String, path: String, legacy: Bool): Int64 {
     try {
         let history = ArrayList<LlmWireInputItem>(); history.add(LlmWireInputItem.Message(userMessage("hello")))
         for (message in completed.toContinuationInput()) { history.add(LlmWireInputItem.Message(message)) }
+        let declarations = ArrayList<LlmWireToolDeclaration>(); let results = ArrayList<LlmWireBlock>(); let names = HashSet<String>()
+        var hasCustom = false
+        for (block in completed.blocks) { match (block) { case LlmWireOutputBlock.ToolCall(call) => if (call.kind == LlmWireToolKind.Custom) { hasCustom = true }; case _ => () } }
+        if (hasCustom) {
+            for (block in completed.blocks) { match (block) {
+                case LlmWireOutputBlock.ToolCall(call) =>
+                    if (names.add(call.name)) { declarations.add(if (call.kind == LlmWireToolKind.Custom) {
+                        LlmWireToolDeclaration(LlmWireToolDefinition.Custom(LlmWireCustomTool(call.name, description: "fixture tool")))
+                    } else { LlmWireToolDeclaration(LlmWireTool(call.name, "fixture tool", jp("{\"type\":\"object\"}"))) }) }
+                    results.add(LlmWireBlock.ToolResult(LlmWireToolResultBlock(call.callId, [LlmWireToolResultContent.Text(LlmWireTextBlock("done"))], kind: call.kind)))
+                case _ => ()
+            } }
+            history.add(LlmWireInputItem.Message(LlmWireMessage(LlmWireRole.User, results.toArray())))
+        }
         history.add(LlmWireInputItem.Message(userMessage("next")))
-        let next = jp(String.fromUtf8(session.prepare(probeRequest(name, LlmWireTranscript(items: history.toArray()))).body))
+        let next = jp(String.fromUtf8(session.prepare(probeRequest(name, LlmWireTranscript(LlmWireInitialContext(tools: declarations.toArray()), items: history.toArray()))).body))
         if (legacy) { println(next.stringify()) } else {
             println(jo([jf("result", inspectionJson(name, LlmWireTerminal.Completed(completed))), jf("next_request", next)]).stringify())
         }

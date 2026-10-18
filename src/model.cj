@@ -144,6 +144,58 @@ public enum LlmWireToolArguments {
     | InvalidJson(String)
     | InvalidShape(LlmWireJson)
     | Partial(String)
+    | Text(String)
+    | PartialText(String)
+}
+
+@Derive[Equatable]
+public enum LlmWireToolKind { Function | Custom }
+
+@Derive[Equatable]
+public enum LlmWireCustomToolFormatKind { Text | Regex | Lark }
+
+@Derive[Equatable]
+public enum LlmWireGrammarSyntax { Regex | Lark }
+
+public class LlmWireGrammar {
+    public let syntax: LlmWireGrammarSyntax
+    public let definition: String
+    public init(syntax: LlmWireGrammarSyntax, definition: String) {
+        if (definition.trimAscii() == "") {
+            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.grammar_empty", "grammar definition must not be empty")
+        }
+        this.syntax = syntax; this.definition = definition
+    }
+}
+
+public enum LlmWireCustomToolFormat {
+    Text | Grammar(LlmWireGrammar)
+    public prop kind: LlmWireCustomToolFormatKind { get() { match (this) {
+        case Text => LlmWireCustomToolFormatKind.Text
+        case Grammar(value) => match (value.syntax) {
+            case LlmWireGrammarSyntax.Regex => LlmWireCustomToolFormatKind.Regex
+            case LlmWireGrammarSyntax.Lark => LlmWireCustomToolFormatKind.Lark
+        }
+    } } }
+}
+
+public class LlmWireCustomTool {
+    public let name: String
+    public let description: String
+    public let format: LlmWireCustomToolFormat
+    public init(name: String, description!: String = "", format!: LlmWireCustomToolFormat = LlmWireCustomToolFormat.Text) {
+        if (!validToolName(name)) {
+            throw LlmWireError(LlmWireErrorKind.InvalidRequest, "llm.custom_tool_name_invalid", "custom tool names must use the tool-name grammar")
+        }
+        this.name = name; this.description = description; this.format = format
+    }
+}
+
+public enum LlmWireToolDefinition {
+    Function(LlmWireTool) | Custom(LlmWireCustomTool)
+    public prop name: String { get() { match (this) { case Function(value) => value.name; case Custom(value) => value.name } } }
+    public prop description: String { get() { match (this) { case Function(value) => value.description; case Custom(value) => value.description } } }
+    public prop kind: LlmWireToolKind { get() { match (this) { case Function(_) => LlmWireToolKind.Function; case Custom(_) => LlmWireToolKind.Custom } } }
 }
 
 public class LlmWireToolCallBlock {
@@ -155,6 +207,10 @@ public class LlmWireToolCallBlock {
         this.name = name
         this.arguments = arguments
     }
+    public prop kind: LlmWireToolKind { get() { match (arguments) {
+        case LlmWireToolArguments.Text(_) | LlmWireToolArguments.PartialText(_) => LlmWireToolKind.Custom
+        case _ => LlmWireToolKind.Function
+    } } }
 }
 
 public enum LlmWireToolResultContent {
@@ -165,10 +221,12 @@ public class LlmWireToolResultBlock {
     public let callId: String
     public let content: Array<LlmWireToolResultContent>
     public let isError: Bool
-    public init(callId: String, content: Array<LlmWireToolResultContent>, isError!: Bool = false) {
+    public let kind: LlmWireToolKind
+    public init(callId: String, content: Array<LlmWireToolResultContent>, isError!: Bool = false, kind!: LlmWireToolKind = LlmWireToolKind.Function) {
         this.callId = callId
         this.content = content
         this.isError = isError
+        this.kind = kind
     }
 }
 
@@ -574,7 +632,7 @@ func projectContinuationBlocks(blocks: Array<LlmWireOutputBlock>, messageSpans!:
                 }
                 toolCallIds.add(value.callId)
                 match (value.arguments) {
-                    case LlmWireToolArguments.Complete(_) => replayable.add(LlmWireBlock.ToolCall(value))
+                    case LlmWireToolArguments.Complete(_) | LlmWireToolArguments.Text(_) => replayable.add(LlmWireBlock.ToolCall(value))
                     case _ => throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.tool_arguments_not_executable", "diagnostic or partial tool arguments cannot be projected into continuation input")
                 }
             case _ => throw LlmWireError(LlmWireErrorKind.InvalidState, "llm.continuation_projection_lossy", "continuation projection would discard a semantic reply block")

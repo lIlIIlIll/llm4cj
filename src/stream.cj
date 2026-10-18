@@ -33,8 +33,10 @@ public class LlmWireToolIdentity {
     public let location: LlmWireEventIdentity
     public let callId: String
     public let name: String
-    public init(location: LlmWireEventIdentity, callId: String, name: String) {
+    public let kind: LlmWireToolKind
+    public init(location: LlmWireEventIdentity, callId: String, name: String, kind!: LlmWireToolKind = LlmWireToolKind.Function) {
         this.location = location; this.callId = callId; this.name = name
+        this.kind = kind
     }
 }
 
@@ -107,7 +109,7 @@ class StreamBudget {
     private var events: Int64 = 0
     init(limits: LlmWireStreamLimits) { this.limits = limits }
     func semantic(value: String, kind: String): Unit {
-        let size = Int64(value.toArray().size); totalBytes += size; retainBytes(size)
+        let size = value.size; totalBytes += size; retainBytes(size)
         if (totalBytes > limits.maxTotalSemanticBytes) { limit("llm.stream_semantic_too_large", "stream semantic output exceeds configured limit") }
         match (kind) {
             case "text" => textBytes += size; if (textBytes > limits.maxTextBytes) { limit("llm.stream_text_too_large", "stream text exceeds configured limit") }
@@ -116,7 +118,7 @@ class StreamBudget {
             case _ => ()
         }
     }
-    func retain(value: String): Unit { retainBytes(Int64(value.toArray().size)) }
+    func retain(value: String): Unit { retainBytes(value.size) }
     func replaceRetainedString(previous: ?String, next: String): Unit {
         if (previous == Some(next)) { return }
         let previousBytes = match (previous) { case Some(value) => Int64(value.size); case None => 0 }
@@ -145,6 +147,8 @@ class StreamBudget {
                     case LlmWireToolArguments.InvalidJson(raw) => semantic(raw, "tool")
                     case LlmWireToolArguments.Partial(raw) => semantic(raw, "tool")
                     case LlmWireToolArguments.InvalidShape(arguments) => semantic(arguments.stringify(), "tool")
+                    case LlmWireToolArguments.Text(raw) => semantic(raw, "tool")
+                    case LlmWireToolArguments.PartialText(raw) => semantic(raw, "tool")
                 }
             case LlmWireOutputBlock.NativeReplay(value) =>
                 block(); retain(value.payload().stringify())
@@ -346,10 +350,12 @@ class ResponseStreamCall {
     let outputIndex: Int64
     let itemId: String
     let callId: String
+    let kind: LlmWireToolKind
     var name: String
     let arguments = StringBuilder()
     var completed = false
-    init(outputIndex: Int64, itemId: String, callId: String, name: String) { this.outputIndex = outputIndex; this.itemId = itemId; this.callId = callId; this.name = name }
+    init(outputIndex: Int64, itemId: String, callId: String, name: String, kind!: LlmWireToolKind = LlmWireToolKind.Function) { this.outputIndex = outputIndex; this.itemId = itemId; this.callId = callId; this.name = name; this.kind = kind }
+    prop inputField: String { get() { if (kind == LlmWireToolKind.Custom) { "input" } else { "arguments" } } }
 }
 class ResponseStreamPart {
     let index: Int64
@@ -440,30 +446,40 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
                 if (outputIndex != items.size || findResponseItem(items, itemId).isSome() || findResponseItemAt(items, outputIndex).isSome()) { invalidWire("llm.responses_output_item_order_invalid", "Responses output item indexes must be contiguous and identities unique", provider: codec.provider) }
                 budget.retain(itemId); budget.retain(itemType)
                 items.add(ResponseStreamItem(outputIndex, itemId, itemType, decodeResponsesPhase(codec, item, outputIndex)))
-                if (itemType == "function_call") {
+                if (itemType == "function_call" || itemType == "custom_tool_call") {
                     budget.block(); budget.toolCall()
                     if (findResponseCall(calls, itemId).isSome()) { invalidWire("llm.responses_function_call_duplicate", "Responses function item was started twice", provider: codec.provider) }
-                    let call = ResponseStreamCall(outputIndex, itemId, wireRequiredString(item, "call_id", provider: codec.provider), optionalStringOrEmpty(item, "name", codec.provider))
+                    let call = ResponseStreamCall(outputIndex, itemId, wireRequiredString(item, "call_id", provider: codec.provider), optionalStringOrEmpty(item, "name", codec.provider), kind: if (itemType == "custom_tool_call") { LlmWireToolKind.Custom } else { LlmWireToolKind.Function })
+                    if (call.kind == LlmWireToolKind.Custom && (call.callId == "" || !validToolName(call.name))) { invalidWire("llm.tool_call_incomplete", "custom tool call requires an id and a valid name", provider: codec.provider) }
+                    for (previous in calls where previous.callId == call.callId && call.callId != "") { invalidWire("llm.tool_call_id_duplicate", "Responses output repeats a tool call ID", provider: codec.provider) }
                     budget.retain(call.callId); budget.retain(call.name)
                     calls.add(call)
-                    LlmWireStreamUpdate(events: [LlmWireEvent.ToolCallStarted(LlmWireToolIdentity(
-                        LlmWireEventIdentity(outputIndex: Some(outputIndex), itemId: itemId), call.callId, call.name
-                    ))])
+                    let identity = LlmWireToolIdentity(LlmWireEventIdentity(outputIndex: Some(outputIndex), itemId: itemId), call.callId, call.name, kind: call.kind)
+                    let events = ArrayList<LlmWireEvent>(); events.add(LlmWireEvent.ToolCallStarted(identity))
+                    if (call.kind == LlmWireToolKind.Custom) { match (wireOptionalString(item, "input", provider: codec.provider)) {
+                        case Some(prefix) =>
+                            budget.semantic(prefix, "tool"); call.arguments.append(prefix)
+                            if (prefix != "") { events.add(LlmWireEvent.ToolArgumentsDelta(prefix, identity)) }
+                        case None => ()
+                    } }
+                    LlmWireStreamUpdate(events: events.toArray())
                 } else if (itemType == "message" || itemType == "reasoning") { LlmWireStreamUpdate() }
                 else { unsupportedSemantic(codec, itemType, item, "llm.responses_stream_block_unsupported", blockIndex: indexOr(root, "output_index", -1, codec.provider), eventType: kind) }
-            case "response.function_call_arguments.delta" =>
+            case "response.function_call_arguments.delta" | "response.custom_tool_call_input.delta" =>
                 let call = responseCallForEvent(codec, calls, root)
                 if (call.completed) { invalidWire("llm.responses_function_delta_after_done", "Responses function arguments arrived after done", provider: codec.provider) }
                 let fragment = wireRequiredString(root, "delta", provider: codec.provider); budget.semantic(fragment, "tool"); call.arguments.append(fragment)
                 LlmWireStreamUpdate(events: [LlmWireEvent.ToolArgumentsDelta(fragment, LlmWireToolIdentity(
-                    LlmWireEventIdentity(outputIndex: Some(call.outputIndex), itemId: call.itemId), call.callId, call.name
+                    LlmWireEventIdentity(outputIndex: Some(call.outputIndex), itemId: call.itemId), call.callId, call.name, kind: call.kind
                 ))])
-            case "response.function_call_arguments.done" => completeResponseCall(root)
+            case "response.function_call_arguments.done" | "response.custom_tool_call_input.done" => completeResponseCall(root)
             case "response.completed" | "response.incomplete" | "response.failed" =>
                 let terminalResponse = wireObject(wireRequiredField(root, "response", provider: codec.provider), "Responses terminal response", provider: codec.provider)
                 reconcileResponsesMetadata(terminalResponse)
                 usage = mergeWireUsage(usage, decodeResponsesUsage(codec, terminalResponse), codec.dialect.contract.usageMergeStyle)
-                let state = decodeResponsesResponse(codec, terminalResponse, resolvedPhases: resolveResponsesTerminalPhases(codec, terminalResponse, items))
+                let completedCustomInputs = ArrayList<Int64>()
+                for (call in calls where call.kind == LlmWireToolKind.Custom && call.completed) { completedCustomInputs.add(call.outputIndex) }
+                let state = decodeResponsesResponse(codec, terminalResponse, resolvedPhases: resolveResponsesTerminalPhases(codec, terminalResponse, items), completedCustomInputs: completedCustomInputs.toArray())
                 match (state) {
                     case LlmWireResponseState.Terminal(decodedTerminal) =>
                         let value = terminalWithObservedUsage(decodedTerminal, observedUsage())
@@ -623,7 +639,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
         reconcileResponsesTerminalParts(codec, item, payload, false)
         reconcileResponsesTerminalParts(codec, item, payload, true)
         match (findResponseCall(calls, item.itemId)) {
-            case Some(call) => if (wireRequiredString(payload, "call_id", provider: codec.provider) != call.callId || wireRequiredString(payload, "name", provider: codec.provider) != call.name || wireRequiredString(payload, "arguments", provider: codec.provider) != call.arguments.toString()) { invalidWire("llm.responses_terminal_function_mismatch", "completed Responses function item differs from streamed call", provider: codec.provider) }
+            case Some(call) => if (wireRequiredString(payload, "call_id", provider: codec.provider) != call.callId || wireRequiredString(payload, "name", provider: codec.provider) != call.name || wireRequiredString(payload, call.inputField, provider: codec.provider) != call.arguments.toString()) { invalidWire("llm.responses_terminal_function_mismatch", "completed Responses tool item differs from streamed call", provider: codec.provider) }
             case None => ()
         }
         if (item.nativeType == "reasoning") {
@@ -640,7 +656,7 @@ class ResponsesStreamDecoder <: StreamLifecycle & WireProtocolStreamDecoder {
         if (call.completed) { invalidWire("llm.responses_function_done_duplicate", "Responses function arguments completed twice", provider: codec.provider) }
         match (wireOptionalString(root, "name", provider: codec.provider)) { case Some(value) => if (call.name != "" && call.name != value) { invalidWire("llm.responses_function_name_mismatch", "Responses function name changed during streaming", provider: codec.provider) } else { call.name = value }; case None => () }
         if (call.name == "") { invalidWire("llm.responses_function_name_missing", "Responses function name was absent from every event", provider: codec.provider) }
-        let arguments = wireRequiredString(root, "arguments", provider: codec.provider)
+        let arguments = wireRequiredString(root, call.inputField, provider: codec.provider)
         let accumulated = call.arguments.toString()
         if (accumulated != "" && accumulated != arguments) { invalidWire("llm.responses_function_arguments_mismatch", "Responses function done arguments do not match streamed fragments", provider: codec.provider) }
         if (accumulated == "") { budget.semantic(arguments, "tool"); call.arguments.append(arguments) }
@@ -727,7 +743,7 @@ func reconcileResponsesTerminal(codec: LlmWireCodec, response: JsonNode, streame
         match (wireOptionalString(actual, "id", provider: codec.provider)) { case Some(value) => if (value != expected.itemId) { invalidWire("llm.responses_terminal_output_mismatch", "Responses terminal output ID changed", provider: codec.provider) }; case None => () }
         match (findResponseCall(calls, expected.itemId)) {
             case Some(call) =>
-                if (wireRequiredString(actual, "call_id", provider: codec.provider) != call.callId || wireRequiredString(actual, "name", provider: codec.provider) != call.name || wireRequiredString(actual, "arguments", provider: codec.provider) != call.arguments.toString()) {
+                if (wireRequiredString(actual, "call_id", provider: codec.provider) != call.callId || wireRequiredString(actual, "name", provider: codec.provider) != call.name || wireRequiredString(actual, call.inputField, provider: codec.provider) != call.arguments.toString()) {
                     invalidWire("llm.responses_terminal_function_mismatch", "Responses terminal function call differs from streamed identity or arguments", provider: codec.provider)
                 }
             case None => ()
@@ -767,6 +783,9 @@ func responseCallForEvent(codec: LlmWireCodec, values: ArrayList<ResponseStreamC
     if (requiredIndex(root, "output_index", codec.provider) != call.outputIndex) {
         invalidWire("llm.responses_output_index_mismatch", "Responses output index changed for a function-call item", provider: codec.provider)
     }
+    let eventType = wireRequiredString(root, "type", provider: codec.provider)
+    let customEvent = eventType == "response.custom_tool_call_input.delta" || eventType == "response.custom_tool_call_input.done"
+    if (customEvent != (call.kind == LlmWireToolKind.Custom)) { invalidWire("llm.tool_kind_mismatch", "tool input event kind differs from its output item", provider: codec.provider) }
     call
 }
 
