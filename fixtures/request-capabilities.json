@@ -37,6 +37,29 @@
     {"id":"external-requirement-stays-unknown","scenario":"unknown","dialects":["anthropic-messages"],"expected":{
       "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[["Requirement","anthropic.fast_mode","llm.feature_requirement_unresolved",-1,-1,"Unknown"]]},
       "strict_code":"llm.feature_requirement_unresolved","resolved_code":"ok","clock_code":"llm.feature_requirement_unresolved"}},
+    {"id":"undeclared-fast-is-not-an-external-requirement","scenario":"fast-undeclared","dialects":["anthropic-messages"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[["Unsupported","generation_speed","llm.generation_speed_unsupported",-1,-1,null]]},
+      "strict_code":"llm.generation_speed_unsupported","resolved_code":"llm.generation_speed_unsupported","clock_code":"llm.generation_speed_unsupported"}},
+    {"id":"unrelated-budget-error-retains-accepted-fast","scenario":"fast-budget-invalid","dialects":["anthropic-messages"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[
+        ["Invalid","thinking","llm.thinking_budget_invalid",-1,-1,null],
+        ["Requirement","anthropic.fast_mode","llm.feature_requirement_unresolved",-1,-1,"Unknown"]
+      ]},"strict_code":"llm.thinking_budget_invalid","resolved_code":"llm.thinking_budget_invalid","clock_code":"llm.thinking_budget_invalid"}},
+    {"id":"undeclared-cache-is-not-satisfied","scenario":"cache-undeclared","dialects":["openai-chat"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[["Unsupported","cache","llm.cache_lifetime_unsupported",-1,-1,null]]},
+      "strict_code":"llm.cache_lifetime_unsupported","resolved_code":"llm.cache_lifetime_unsupported","clock_code":"llm.cache_lifetime_unsupported"}},
+    {"id":"empty-routing-key-prevents-cache-requirement","scenario":"cache-routing-invalid","dialects":["openai-chat"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[["Invalid","cache","llm.prompt_cache_routing_key_invalid",-1,-1,null]]},
+      "strict_code":"llm.prompt_cache_routing_key_invalid","resolved_code":"llm.prompt_cache_routing_key_invalid","clock_code":"llm.prompt_cache_routing_key_invalid"}},
+    {"id":"unsupported-routing-prevents-cache-requirement","scenario":"cache-routing-unsupported","dialects":["deepseek-messages"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[["Unsupported","cache","llm.prompt_cache_routing_unsupported",-1,-1,null]]},
+      "strict_code":"llm.prompt_cache_routing_unsupported","resolved_code":"llm.prompt_cache_routing_unsupported","clock_code":"llm.prompt_cache_routing_unsupported"}},
+    {"id":"accepted-provider-cache-is-locally-satisfied","scenario":"provider-cache","dialects":["deepseek-messages"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[["Requirement","provider.prompt_cache_automatic","",-1,-1,"Satisfied"]]},
+      "strict_code":"ok","resolved_code":"ok","clock_code":"ok"}},
+    {"id":"accepted-openai-cache-is-locally-satisfied","scenario":"openai-cache","dialects":["openai-chat"],"expected":{
+      "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[["Requirement","openai.prompt_cache_automatic","",-1,-1,"Satisfied"]]},
+      "strict_code":"ok","resolved_code":"ok","clock_code":"ok"}},
     {"id":"undeclared-capability-is-unsupported","scenario":"undeclared","dialects":["openai-responses"],"expected":{
       "report":{"profile_id":"","contract_version":1,"complete":true,"truncated":false,"diagnostics":[
         ["Unsupported","thinking","llm.thinking_unsupported",-1,-1,null],["Unsupported","thinking.representation","llm.thinking_not_representable",-1,-1,null]

@@ -50,6 +50,9 @@ class RankedRequestDiagnostic {
 // first-error behavior. Collection has separate work and retention budgets.
 class RequestCheckSink {
     let collecting: Bool
+    // Keep option results independent of unrelated failures and diagnostic retention.
+    var generationSpeedAccepted: Bool = false
+    var promptCacheAccepted: Bool = false
     private let diagnostics = ArrayList<RankedRequestDiagnostic>()
     private var visits: Int64 = 0
     private var scannedBytes: Int64 = 0
@@ -190,15 +193,19 @@ public func inspectRequestCapabilities(codec: LlmWireCodec, request: LlmWireRequ
         checks.charge(bytes: request.model.size)
         let _ = checkWireRequest(codec, request, checks)
         validateEncodingRequestChecks(codec, request, streaming, checks)
-        for (requirement in requestFeatureRequirements(codec, request)) { checks.requirement(requirement) }
+        for (requirement in requestFeatureRequirements(codec, request, checks)) { checks.requirement(requirement) }
     } catch (_: RequestInspectionStopped) { () }
     checks.report(codec)
 }
 
-func requestFeatureRequirements(codec: LlmWireCodec, request: LlmWireRequest): Array<LlmWireFeatureRequirement> {
+func requestFeatureRequirements(codec: LlmWireCodec, request: LlmWireRequest, checks: RequestCheckSink): Array<LlmWireFeatureRequirement> {
     let output = ArrayList<LlmWireFeatureRequirement>()
-    for (value in generationFeatureRequirements(codec, request.generationSpeed)) { output.add(value) }
-    for (value in cacheFeatureRequirements(codec, request.promptCache)) { output.add(value) }
+    if (checks.generationSpeedAccepted) {
+        for (value in generationFeatureRequirements(codec, request.generationSpeed)) { output.add(value) }
+    }
+    if (checks.promptCacheAccepted) {
+        for (value in cacheFeatureRequirements(codec, request.promptCache)) { output.add(value) }
+    }
     output.toArray()
 }
 

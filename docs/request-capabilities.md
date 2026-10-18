@@ -16,7 +16,7 @@ func inspect(codec: LlmWireCodec, request: LlmWireRequest): Unit {
 
 诊断的 `kind` 为 `Requirement`、`Unsupported` 或 `Invalid`。每条诊断提供稳定的 `featureId`、错误 `code`、库定义的安全 `message`、`inputItemIndex` 和 `blockIndex`；全局或初始上下文位置为 `-1`。`Requirement` 还保留 `requirementState`：`Unknown` 需要在最终 materialize 时解决，`Satisfied` 仅表示本地声明满足要求，不证明服务端已经验证。
 
-报告使用 codec 已绑定的 endpoint profile。`profileId` 和 `contractVersion` 标识该声明；要检查另一组声明，应通过已有 model-profile 工厂构造另一个 codec。预检不根据模型名称推测能力，也不改写或回退请求。普通 capability 未声明允许时仍返回 `Unsupported`，不会擅自转成可由 resolver 放行的要求。
+报告使用 codec 已绑定的 endpoint profile。`profileId` 和 `contractVersion` 标识该声明；要检查另一组声明，应通过已有 model-profile 工厂构造另一个 codec。预检不根据模型名称推测能力，也不改写或回退请求。普通 capability 未声明允许时仍返回 `Unsupported`，不会擅自转成可由 resolver 放行的要求。只有对应选项的静态检查通过后才报告其 requirement；其他独立选项的错误不影响该 requirement。
 
 诊断按输入项、block、固定检查次序排列，返回数组是独立副本。严格编码保留首错行为，报告首条不一定等于严格入口首错。无法 replay 的 transcript 会保留结构错误，并继续检查独立选项；需要有效工具状态的检查被跳过，`complete` 为 false。
 

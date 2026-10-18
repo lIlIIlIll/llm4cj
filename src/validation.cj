@@ -178,9 +178,9 @@ func checkWireRequest(codec: LlmWireCodec, request: LlmWireRequest, checks: Requ
         case None => ()
     }
     checks.check("service_tier", { => validateServiceTier(codec, request.serviceTier) })
-    checks.check("generation_speed", { => validateGenerationSpeed(codec, request.generationSpeed) })
+    checks.generationSpeedAccepted = checks.check("generation_speed", { => validateGenerationSpeed(codec, request.generationSpeed) })
     match (request.promptCacheRoutingKey) { case Some(value) => checks.charge(bytes: value.size); case None => () }
-    checks.check("cache", { => validatePromptCache(codec, request.promptCache, request.promptCacheRoutingKey, checks: checks) })
+    checks.promptCacheAccepted = checks.check("cache", { => validatePromptCache(codec, request.promptCache, request.promptCacheRoutingKey, checks: checks) })
     validateAudioRequest(codec, request, false, anyOutputMode: true, checks: checks)
     for (index in 0..items.size) { checks.charge(); match (items[index]) {
         case LlmWireInputItem.Message(message) =>
